@@ -1,0 +1,94 @@
+{# ===========================================================================
+   Macros: modal de confirmación.
+
+   Hay un único modal global por página. Cualquier elemento lo abre
+   despachando el evento `confirmar`:
+
+     @click="$dispatch('confirmar', {
+        titulo: 'Anular venta',
+        mensaje: '¿Confirmás la anulación?',
+        url: '/api/v1/ventas/123',
+        metodo: 'delete'
+     })"
+
+   Uso en la página:
+     {% from "components/modal.html" import modal_confirmacion %}
+     {{ modal_confirmacion() }}
+   =========================================================================== #}
+
+{% macro modal_confirmacion(id='modal-confirmacion') %}
+<div id="{{ id }}"
+     x-data="{
+        abierto: false,
+        titulo: '',
+        mensaje: '',
+        url: '',
+        metodo: 'delete',
+        abrir(detalle) {
+            this.titulo  = detalle.titulo  || 'Confirmar acción';
+            this.mensaje = detalle.mensaje || '¿Confirmás la acción?';
+            this.url     = detalle.url     || '';
+            this.metodo  = detalle.metodo  || 'delete';
+            this.abierto = true;
+        },
+        cerrar() { this.abierto = false; }
+     }"
+     @confirmar.window="abrir($event.detail)"
+     @keydown.escape.window="cerrar()"
+     x-cloak>
+
+    <div x-show="abierto"
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="cerrar()"
+         role="dialog"
+         aria-modal="true"
+         :aria-label="titulo">
+
+        <div class="w-full max-w-md bg-surface border border-borde rounded-input shadow-xl">
+            <div class="flex items-start justify-between px-6 pt-5">
+                <h2 class="text-lg font-semibold text-texto" x-text="titulo"></h2>
+                <button type="button" @click="cerrar()" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto text-lg leading-none">&times;</button>
+            </div>
+
+            <p class="px-6 py-4 text-base text-texto-muted" x-text="mensaje"></p>
+
+            <div class="flex justify-end gap-3 px-6 pb-5">
+                <button type="button" @click="cerrar()"
+                        class="h-[35px] px-5 rounded-input text-base border border-borde
+                               text-texto hover:border-primary hover:text-primary">
+                    Cancelar
+                </button>
+                <button type="button"
+                        class="h-[35px] px-5 rounded-input text-base font-medium bg-danger text-white
+                               hover:opacity-90"
+                        @click="
+                            htmx.ajax(metodo.toUpperCase(), url, { target: '#contenido', swap: 'outerHTML' });
+                            cerrar();
+                        ">
+                    Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+
+{# Modal genérico con contenido propio: {% call modal('Título') %}...{% endcall %} #}
+{% macro modal(titulo, id='modal') %}
+<div id="{{ id }}" x-data="{ abierto: false }" @abrir-{{ id }}.window="abierto = true"
+     @keydown.escape.window="abierto = false" x-cloak>
+    <div x-show="abierto" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="abierto = false" role="dialog" aria-modal="true" aria-label="{{ titulo }}">
+        <div class="w-full max-w-2xl bg-surface border border-borde rounded-input shadow-xl">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-borde">
+                <h2 class="text-lg font-semibold text-texto">{{ titulo }}</h2>
+                <button type="button" @click="abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto text-lg leading-none">&times;</button>
+            </div>
+            <div class="px-6 py-5">{{ caller() }}</div>
+        </div>
+    </div>
+</div>
+{% endmacro %}

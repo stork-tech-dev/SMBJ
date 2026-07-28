@@ -1,0 +1,65 @@
+# Soleil / Mallorca — entorno de desarrollo
+#
+# No hay servicio "frontend": FastAPI sirve el HTML con Jinja2 en el mismo
+# proceso. Sin build process, sin nginx, sin node_modules.
+
+services:
+  db:
+    image: postgres:15
+    container_name: soleil_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-soleil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soleil}
+      POSTGRES_DB: ${POSTGRES_DB:-soleil}
+      TZ: ${TIMEZONE:-America/Argentina/Buenos_Aires}
+      PGTZ: ${TIMEZONE:-America/Argentina/Buenos_Aires}
+    ports:
+      # Expuesto para poder conectar un cliente SQL desde el host.
+      - "${POSTGRES_PORT_HOST:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-soleil} -d ${POSTGRES_DB:-soleil}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: soleil_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Dentro de la red de compose la base se llama "db", no "localhost".
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Puertos del HOST configurables desde .env, por si ya están ocupados
+      # por otro proyecto. El puerto interno siempre es 8000.
+      - "${BACKEND_PORT_HOST:-8000}:8000"       # desarrollo
+      - "${BACKEND_PORT_PROD:-80}:8000"         # producción
+    volumes:
+      # Bind mount para que --reload tome los cambios sin rebuild.
+      - ./backend:/app
+    command: >
+      uvicorn main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  postgres_data:

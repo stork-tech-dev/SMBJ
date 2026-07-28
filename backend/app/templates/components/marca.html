@@ -1,0 +1,28 @@
+{# ===========================================================================
+   Macro: logotipo de la empresa.
+
+   Qué se muestra depende de `configuracion_sistema.letra_empresa`:
+     'M' → logotipo de Mallorca (SVG)
+     'S' → la palabra "Soleil" en texto, hasta que exista el logo
+
+   El SVG se incrusta en el HTML (no va como <img>) para que herede
+   `currentColor`: así el mismo archivo sirve en blanco sobre el azul del
+   sidebar y en el color que haga falta en cualquier otro lado.
+
+   Uso:
+     {% from "components/marca.html" import marca %}
+     {{ marca(letra_empresa) }}
+   =========================================================================== #}
+
+{% macro marca(letra, clases='h-12') %}
+    {% if letra == 'M' %}
+        <span class="{{ clases }} inline-block [&>svg]:h-full [&>svg]:w-auto">
+            {% include "components/logo_mallorca.svg" %}
+        </span>
+    {% else %}
+        {# Placeholder de Soleil: texto con la tipografía de la marca. #}
+        <span class="{{ clases }} inline-flex items-center text-lg font-black tracking-wide">
+            Soleil
+        </span>
+    {% endif %}
+{% endmacro %}

@@ -1,0 +1,27 @@
+{# Pantalla de permisos de un rol: usa el mismo árbol que los overrides
+   de usuario, en modo 'rol' (todo editable). #}
+{% extends "base.html" %}
+
+{% from "components/permisos_tree.html" import arbol_permisos %}
+
+{% block contenido %}
+<nav class="text-sm text-texto-muted mb-2">
+    <a href="/roles" class="hover:text-primary">Roles</a>
+    <span class="mx-1" aria-hidden="true">/</span>
+    <span>Permisos</span>
+</nav>
+
+<h1 class="text-xl font-semibold">Permisos del rol: {{ rol.nombre }}</h1>
+{% if rol.descripcion %}
+    <p class="mt-1 text-base text-texto-muted">{{ rol.descripcion }}</p>
+{% endif %}
+
+{{ arbol_permisos(
+    url_datos='/api/v1/roles/' ~ rol.id ~ '/permisos',
+    url_guardar='/api/v1/roles/' ~ rol.id ~ '/permisos',
+    modo='rol') }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/permisos.js') }}"></script>
+{% endblock %}

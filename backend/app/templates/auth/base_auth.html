@@ -1,0 +1,92 @@
+{# ===========================================================================
+   Layout de las pantallas de autenticación (login, cambio de contraseña,
+   reseteo). Sin sidebar ni header: todavía no hay sesión.
+
+   Comparte los tokens del design system con base.html a través de
+   custom.css, así que el modo oscuro funciona igual acá.
+   =========================================================================== #}
+<!DOCTYPE html>
+<html lang="es" x-data="temaApp()" x-init="aplicar()" :class="{ 'dark': dark }">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block titulo_auth %}Ingresar{% endblock %} · {{ APP_NAME }}</title>
+
+    {# Evita el flash de tema claro antes de que Alpine monte. #}
+    <script>
+        if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600;900&display=swap"
+          rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Misma config que base.html: los colores apuntan a las CSS
+        // variables de custom.css, que es donde vive el modo oscuro.
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--color-primary)',
+                        'primary-hover': 'var(--color-primary-hover)',
+                        accent: 'var(--color-accent)',
+                        bg: 'var(--color-bg)',
+                        surface: 'var(--color-surface)',
+                        'surface-alt': 'var(--color-surface-alt)',
+                        borde: 'var(--color-border)',
+                        texto: 'var(--color-text)',
+                        'texto-muted': 'var(--color-text-muted)',
+                        'texto-disabled': 'var(--color-text-disabled)',
+                        danger: 'var(--color-danger)',
+                        success: 'var(--color-success)',
+                        'sidebar-bg': 'var(--color-sidebar-bg)',
+                    },
+                    fontFamily: { sans: ['Archivo', 'system-ui', 'sans-serif'] },
+                    fontSize: {
+                        xs: '14px', sm: '15px', base: '18px',
+                        lg: '22px', xl: '30px', '2xl': '60px',
+                    },
+                    borderRadius: { input: '5px', pill: '15px', search: '25px' },
+                },
+            },
+        };
+    </script>
+
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/custom.css') }}">
+    <script src="{{ url_for('static', path='/js/app.js') }}" defer></script>
+    <script src="https://unpkg.com/alpinejs@3.x/dist/cdn.min.js" defer></script>
+</head>
+
+<body class="bg-bg text-texto font-light antialiased">
+
+{% from "components/toast.html" import contenedor_toasts %}
+{% from "components/marca.html" import marca %}
+
+<div class="min-h-screen grid lg:grid-cols-2">
+
+    {# Panel de marca. Oculto en pantallas chicas. #}
+    <div class="hidden lg:flex flex-col justify-center px-16 bg-sidebar-bg text-white">
+        <div class="text-white">
+            {{ marca(letra_empresa|default('S'), clases='h-20') }}
+        </div>
+        <p class="mt-4 text-lg font-light opacity-90">Gestión comercial</p>
+    </div>
+
+    <div class="flex items-center justify-center px-6 py-12">
+        <div class="w-full max-w-sm">
+            {% block formulario_auth %}{% endblock %}
+        </div>
+    </div>
+</div>
+
+{{ contenedor_toasts() }}
+
+{% block scripts_auth %}{% endblock %}
+</body>
+</html>

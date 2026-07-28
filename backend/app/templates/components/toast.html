@@ -1,0 +1,46 @@
+{# ===========================================================================
+   Macro: contenedor global de notificaciones (toasts).
+
+   Se incluye una sola vez en base.html. Desde cualquier lugar:
+
+     window.toast('Producto creado', 'exito');
+     $dispatch('toast', { mensaje: 'Error al guardar', tipo: 'error' });
+
+   El backend también puede dispararlos devolviendo el header HTTP
+   `HX-Trigger: {"toast": {"mensaje": "...", "tipo": "exito"}}`.
+   =========================================================================== #}
+
+{% macro contenedor_toasts() %}
+<div class="fixed bottom-6 right-6 z-[60] flex flex-col gap-2 no-print"
+     x-data="{
+        items: [],
+        agregar(detalle) {
+            const id = Date.now() + Math.random();
+            this.items.push({
+                id,
+                mensaje: detalle.mensaje || '',
+                tipo: detalle.tipo || 'info'
+            });
+            setTimeout(() => this.quitar(id), detalle.duracion || 4000);
+        },
+        quitar(id) { this.items = this.items.filter(t => t.id !== id); }
+     }"
+     @toast.window="agregar($event.detail)"
+     x-cloak>
+
+    <template x-for="t in items" :key="t.id">
+        <div role="status"
+             class="flex items-start gap-3 min-w-[18rem] max-w-sm px-4 py-3 rounded-input
+                    border bg-surface shadow-lg"
+             :class="{
+                'border-success text-success': t.tipo === 'exito',
+                'border-danger text-danger':   t.tipo === 'error',
+                'border-borde text-texto':     t.tipo !== 'exito' && t.tipo !== 'error'
+             }">
+            <span class="text-sm font-medium flex-1" x-text="t.mensaje"></span>
+            <button type="button" @click="quitar(t.id)" aria-label="Cerrar notificación"
+                    class="text-texto-muted hover:text-texto leading-none">&times;</button>
+        </div>
+    </template>
+</div>
+{% endmacro %}

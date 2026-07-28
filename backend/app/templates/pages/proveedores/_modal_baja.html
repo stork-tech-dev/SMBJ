@@ -1,0 +1,39 @@
+{# Confirmación de baja. Ofrece desactivar o inhabilitar, y advierte si el
+   proveedor tiene productos activos asociados. #}
+<div x-show="baja.abierta" x-cloak
+     class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+     @click.self="baja.abierta = false" @keydown.escape.window="baja.abierta = false"
+     role="dialog" aria-modal="true">
+    <div class="w-full max-w-md bg-surface rounded-[10px] shadow-xl p-8">
+        <h2 class="text-lg font-semibold">Dar de baja proveedor</h2>
+        <p class="mt-3 text-base text-texto-muted">
+            <span x-text="baja.proveedor?.razon_social"></span>. Elegí el tipo de baja:
+        </p>
+
+        <div class="mt-4 space-y-2">
+            <label class="flex items-start gap-2 cursor-pointer">
+                <input type="radio" value="desactivado" x-model="baja.estado" class="mt-1 accent-[color:var(--color-primary)]">
+                <span><span class="font-medium">Desactivar</span>
+                    <span class="block text-sm text-texto-muted">Se puede reactivar libremente.</span></span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+                <input type="radio" value="inhabilitado" x-model="baja.estado" class="mt-1 accent-[color:var(--color-primary)]">
+                <span><span class="font-medium">Inhabilitar</span>
+                    <span class="block text-sm text-texto-muted">Solo Cuenta Maestra o Dueño puede reactivarlo.</span></span>
+            </label>
+        </div>
+
+        {# Advertencia de productos activos: aparece recién cuando el backend
+           rechaza la baja por ese motivo, y habilita confirmar igual. #}
+        <p x-show="baja.advertencia" x-cloak class="mt-4 text-sm text-danger" x-text="baja.advertencia"></p>
+
+        <div class="flex justify-end gap-3 mt-6">
+            <button type="button" @click="baja.abierta = false"
+                    class="h-9 px-5 rounded-input border border-borde
+                           hover:border-primary hover:text-primary">Cancelar</button>
+            <button type="button" @click="confirmarBaja()" :disabled="baja.procesando"
+                    class="h-9 px-5 rounded-input bg-danger text-white font-medium hover:opacity-90 disabled:opacity-60"
+                    x-text="baja.advertencia ? 'Dar de baja igualmente' : 'Confirmar'"></button>
+        </div>
+    </div>
+</div>

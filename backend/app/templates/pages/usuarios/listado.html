@@ -1,0 +1,348 @@
+{# ABM de usuarios — ajustado al diseño de Figma (capa "Usuarios CM").
+   Los datos se piden a /api/v1/usuarios: esta página no consulta la base. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones %}
+
+{% block contenido %}
+<div x-data="abmUsuarios()" x-init="cargar(); cargarRoles()">
+
+    {# Título: Archivo Black 50px en azul grisáceo, según el diseño. #}
+    <h1 class="text-[50px] leading-none font-black text-welcome">Usuarios</h1>
+
+    {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <label class="sr-only" for="f-nombre">Nombre</label>
+        <input id="f-nombre" type="text" x-model="filtros.nombre" @input.debounce.400ms="cargar()"
+               placeholder="Nombre"
+               class="h-10 w-[220px] px-4 text-sm font-semibold bg-surface border-2 border-borde
+                      rounded-input text-texto placeholder:text-texto-disabled
+                      focus:outline-none focus:border-primary">
+
+        {# Los selects traen su propio chevron: se oculta el nativo y se
+           dibuja el del diseño con el icono del sistema. #}
+        <div class="relative">
+            <label class="sr-only" for="f-rol">Rol</label>
+            <select id="f-rol" x-model="filtros.rol_id" @change="cargar()"
+                    class="h-10 w-[220px] pl-4 pr-10 text-sm font-semibold bg-surface border-2
+                           border-borde rounded-input appearance-none focus:outline-none
+                           focus:border-primary"
+                    :class="filtros.rol_id ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Rol</option>
+                <template x-for="r in roles" :key="r.id">
+                    <option :value="r.id" x-text="r.nombre" class="text-texto"></option>
+                </template>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+
+        {# Local: los puntos de venta llegan en un módulo posterior. Se deja
+           el filtro visible y deshabilitado para no prometer lo que no hay. #}
+        <div class="relative" title="Disponible cuando exista el módulo de puntos de venta">
+            <label class="sr-only" for="f-local">Local</label>
+            <select id="f-local" disabled
+                    class="h-10 w-[220px] pl-4 pr-10 text-sm font-semibold bg-surface border-2
+                           border-borde rounded-input appearance-none text-texto-disabled
+                           opacity-60 cursor-not-allowed">
+                <option>Local</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto-disabled pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+
+        <button type="button" @click="abrirAlta()"
+                class="ml-auto h-10 px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90 transition-opacity">
+            {{ icono('mas', clases='w-4 h-4') }}
+            Crear nuevo
+        </button>
+    </div>
+
+    <p class="mt-4 text-sm text-texto-muted">
+        <span x-text="total"></span>
+        <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
+    </p>
+
+    {# ---------- Tarjeta con la tabla ---------- #}
+    <div class="mt-2 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Usuario</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Rol</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Último acceso</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="u in usuarios" :key="u.id">
+                        {# Sin filas alternadas: el diseño usa solo una línea
+                           separadora y eleva la fila con sombra al pasar el mouse. #}
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)] relative"
+                            :class="!u.activo && 'opacity-60'">
+
+                            <td class="px-8 py-5 align-middle">
+                                <span class="font-medium" x-text="u.username"></span>
+                                {# Estado en texto coloreado inline, como el resto del sistema. #}
+                                <span x-show="!u.activo" x-cloak
+                                      class="ml-2 text-xs font-medium text-danger">Inactivo</span>
+                            </td>
+
+                            <td class="px-4 py-5 align-middle font-medium" x-text="u.nombre"></td>
+
+                            <td class="px-4 py-5 align-middle font-medium" x-text="u.rol.nombre"></td>
+
+                            <td class="px-4 py-5 align-middle font-medium"
+                                x-text="formatearFecha(u.ultimo_acceso)"></td>
+
+                            <td class="px-8 py-5 align-middle text-right whitespace-nowrap">
+                                {% call acciones() %}
+                                    {{ accion('ver', atributos='@click="abrirDetalle(u)"') }}
+                                    {{ accion('editar', atributos='@click="abrirEdicion(u)"') }}
+
+                                    {# Papelera = desactivar. Los usuarios no se
+                                       borran: se dan de baja y quedan auditados.
+                                       Si ya está inactivo, el botón lo reactiva. #}
+                                    {{ accion('borrar',
+                                              atributos='x-show="u.activo" @click="confirmarEstado(u)"
+                                                         title="Desactivar"') }}
+                                    {{ accion('activar',
+                                              atributos='x-show="!u.activo" x-cloak
+                                                         @click="confirmarEstado(u)" title="Activar"') }}
+                                {% endcall %}
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!usuarios.length && !cargando">
+                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# ---------- Panel de detalle (botón "Ver") ---------- #}
+    <div x-show="detalle.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="detalle.abierto = false" role="dialog" aria-modal="true">
+        <div class="w-full max-w-lg bg-surface rounded-[20px] shadow-xl">
+            <div class="flex items-center justify-between px-8 py-5 border-b border-borde">
+                <h2 class="text-lg font-semibold" x-text="detalle.usuario?.nombre"></h2>
+                <button type="button" @click="detalle.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto">{{ icono('cerrar') }}</button>
+            </div>
+
+            <dl class="px-8 py-6 grid grid-cols-2 gap-x-6 gap-y-4 text-base">
+                <div>
+                    <dt class="text-sm text-texto-disabled">Usuario</dt>
+                    <dd class="font-medium" x-text="detalle.usuario?.username"></dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-texto-disabled">Rol</dt>
+                    <dd class="font-medium" x-text="detalle.usuario?.rol.nombre"></dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-texto-disabled">Email</dt>
+                    <dd class="font-medium" x-text="detalle.usuario?.email || '—'"></dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-texto-disabled">Estado</dt>
+                    <dd class="font-medium"
+                        :class="detalle.usuario?.activo ? 'text-success' : 'text-danger'"
+                        x-text="detalle.usuario?.activo ? 'Activo' : 'Inactivo'"></dd>
+                </div>
+                <div class="col-span-2">
+                    <dt class="text-sm text-texto-disabled">Último acceso</dt>
+                    <dd class="font-medium" x-text="formatearFecha(detalle.usuario?.ultimo_acceso)"></dd>
+                </div>
+            </dl>
+
+            {# Permisos e historial viven acá: el diseño de la tabla solo tiene
+               Ver / Editar / Borrar, así que no se agregan columnas extra. #}
+            <div class="flex flex-wrap justify-end gap-3 px-8 pb-6">
+                <a :href="'/usuarios/' + detalle.usuario?.id + '/permisos'"
+                   class="h-8 px-4 inline-flex items-center gap-2 rounded-input border border-borde
+                          text-base hover:border-primary hover:text-primary">
+                    {{ icono('llave') }} Permisos
+                </a>
+                <a :href="'/usuarios/' + detalle.usuario?.id + '/historial'"
+                   class="h-8 px-4 inline-flex items-center gap-2 rounded-input border border-borde
+                          text-base hover:border-primary hover:text-primary">
+                    {{ icono('reloj') }} Historial
+                </a>
+                <button type="button" @click="abrirEdicion(detalle.usuario); detalle.abierto = false"
+                        class="h-8 px-4 inline-flex items-center gap-2 rounded-input bg-primary
+                               text-white text-base font-medium hover:bg-primary-hover">
+                    {{ icono('lapiz') }} Editar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Modal de alta / edición ----------
+       Un solo modal para las dos capas del diseño ("Nuevo usuario" y
+       "Editar Usuario"): comparten estructura y estilo, y solo cambian el
+       encabezado y el estado. Duplicarlo sería repetir el formulario
+       entero (Principio 2: DRY). #}
+    <div x-show="form.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-form-usuario">
+
+        <div class="w-full max-w-[560px] my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+
+            {# --- Encabezado: nombre en Archivo Black + badge de estado --- #}
+            <div class="flex items-start justify-between px-10 pt-8 pb-2">
+                <div>
+                    <h2 id="titulo-form-usuario" class="text-lg font-black text-welcome"
+                        x-text="form.id ? (form.nombre || 'Editar usuario') : 'Nuevo usuario'"></h2>
+
+                    {# El estado solo existe cuando el usuario ya fue creado. #}
+                    <span x-show="form.id" x-cloak
+                          class="inline-flex items-center mt-3 px-4 h-6 rounded-pill text-xs
+                                 font-medium text-white"
+                          :class="form.activo ? 'bg-success' : 'bg-danger'"
+                          x-text="form.activo ? 'Activo' : 'Inactivo'"></span>
+                </div>
+
+                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-2">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardar()" class="px-10 pb-8 pt-4">
+
+                {# --- Datos del usuario: campos con subrayado --- #}
+                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="u-nombre" class="text-sm font-semibold text-texto-header">
+                            Nombre y Apellido<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="u-nombre" x-model="form.nombre" required class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="u-username" class="text-sm font-semibold text-texto-header">
+                            Usuario<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        {# El username es el identificador de login: no se cambia. #}
+                        <input id="u-username" x-model="form.username" :disabled="!!form.id"
+                               required class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="u-email" class="text-sm font-semibold text-texto-header">Mail</label>
+                        <input id="u-email" type="email" x-model="form.email" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="u-rol" class="text-sm font-semibold text-texto-header">
+                            Perfil<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        {# El perfil sí va en caja, como en el diseño. Al
+                           cambiarlo se recargan los accesos heredados. #}
+                        <div class="relative">
+                            <select id="u-rol" x-model="form.rol_id" required
+                                    @change="cargarAccesos()"
+                                    class="w-full h-10 pl-3 pr-9 text-base font-light bg-surface
+                                           border-[0.5px] border-texto-disabled rounded-input
+                                           appearance-none focus:outline-none focus:border-primary">
+                                <template x-for="r in rolesAsignables" :key="r.id">
+                                    <option :value="r.id" x-text="r.nombre"></option>
+                                </template>
+                            </select>
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                {{ icono('chevron') }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="u-password" class="text-sm font-semibold text-texto-header">
+                            Contraseña<span x-show="!form.id" class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="u-password" type="password" x-model="form.password"
+                               :required="!form.id" minlength="8" autocomplete="new-password"
+                               class="campo-linea">
+                        <span class="text-xs text-texto-disabled"
+                              x-text="form.id ? 'Dejar vacío para no cambiarla.'
+                                              : 'Mínimo 8 caracteres. Deberá cambiarla al ingresar.'"></span>
+                    </div>
+                </div>
+
+                {# --- Accesos permitidos --- #}
+                <p class="mt-8 text-sm font-semibold text-texto-header">Accesos permitidos:</p>
+
+                <p x-show="cargandoAccesos" class="mt-3 text-sm text-texto-muted">Cargando…</p>
+
+                <div x-show="!cargandoAccesos"
+                     class="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2 max-h-56 overflow-y-auto pr-1">
+                    <template x-for="a in accesos" :key="a.clave">
+                        <label class="flex items-start gap-2 text-sm font-light text-texto-header
+                                      cursor-pointer"
+                               :class="a.heredado && 'cursor-not-allowed'"
+                               :title="a.heredado ? 'Lo otorga el perfil: no se puede quitar desde acá' : ''">
+                            {# Heredado del rol: marcado y bloqueado. Los
+                               overrides solo agregan, nunca quitan. #}
+                            <input type="checkbox" class="acceso-check mt-0.5"
+                                   :checked="a.heredado || a.override"
+                                   :disabled="a.heredado"
+                                   @change="a.override = $event.target.checked">
+                            <span x-text="a.label"></span>
+                        </label>
+                    </template>
+                </div>
+
+                <p class="mt-2 text-xs text-texto-disabled">
+                    Los accesos en gris vienen del perfil elegido. Los que marques se
+                    suman solo a este usuario.
+                </p>
+
+                {# --- Pie --- #}
+                <div class="flex justify-end gap-3 mt-8">
+                    <button type="button" @click="form.abierto = false"
+                            class="h-9 px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="form.guardando"
+                            class="h-9 px-8 rounded-input bg-primary text-white text-base font-medium
+                                   hover:bg-primary-hover disabled:opacity-60"
+                            x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ---------- Confirmación de activar / desactivar ---------- #}
+    <div x-show="confirmacion.abierta" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="confirmacion.abierta = false" role="dialog" aria-modal="true">
+        <div class="w-full max-w-md bg-surface rounded-[20px] shadow-xl p-8">
+            <h2 class="text-lg font-semibold" x-text="confirmacion.titulo"></h2>
+            <p class="mt-3 text-base text-texto-muted" x-text="confirmacion.mensaje"></p>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" @click="confirmacion.abierta = false"
+                        class="h-[35px] px-5 rounded-input border border-borde
+                               hover:border-primary hover:text-primary">Cancelar</button>
+                <button type="button" @click="confirmacion.accion()"
+                        class="h-[35px] px-5 rounded-input bg-danger text-white font-medium
+                               hover:opacity-90">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/usuarios.js') }}"></script>
+{% endblock %}

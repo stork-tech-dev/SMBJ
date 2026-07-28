@@ -1,0 +1,69 @@
+{# Modal de alta / edición de proveedor. El dólar solo se edita en el alta:
+   en la edición se cambia desde la ficha, para que siempre pase por el
+   historial. #}
+{% from "components/icons.html" import icono %}
+
+<div x-show="form.abierto" x-cloak
+     class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+     @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+     role="dialog" aria-modal="true">
+    <div class="w-full max-w-[560px] my-8 bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+        <div class="flex items-center justify-between px-10 pt-8 pb-2">
+            <h2 class="text-lg font-black text-welcome"
+                x-text="form.id ? (form.razon_social || 'Editar proveedor') : 'Nuevo proveedor'"></h2>
+            <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                    class="text-texto-muted hover:text-texto -mt-2">{{ icono('cerrar', clases='w-6 h-6') }}</button>
+        </div>
+
+        <form @submit.prevent="guardar()" class="px-10 pb-8 pt-4 grid gap-x-8 gap-y-5 sm:grid-cols-2">
+            <div class="sm:col-span-2 flex flex-col gap-1">
+                <label for="pv-razon" class="text-sm font-semibold text-texto-header">
+                    Razón social<span class="text-danger ml-0.5">*</span>
+                </label>
+                <input id="pv-razon" x-model="form.razon_social" required class="campo-linea">
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <label for="pv-tel" class="text-sm font-semibold text-texto-header">Teléfono</label>
+                <input id="pv-tel" x-model="form.telefono" class="campo-linea">
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <label for="pv-email" class="text-sm font-semibold text-texto-header">Email</label>
+                <input id="pv-email" type="email" x-model="form.email" class="campo-linea">
+            </div>
+
+            <div class="sm:col-span-2 flex flex-col gap-1">
+                <label for="pv-dir" class="text-sm font-semibold text-texto-header">Dirección</label>
+                <input id="pv-dir" x-model="form.direccion" class="campo-linea">
+            </div>
+
+            {# El dólar inicial solo en el alta. #}
+            <div x-show="!form.id" class="flex flex-col gap-1">
+                <label for="pv-dolar" class="text-sm font-semibold text-texto-header">
+                    Valor del dólar<span class="text-danger ml-0.5">*</span>
+                </label>
+                <input id="pv-dolar" type="number" step="0.01" min="0.01" x-model="form.dolar_actual"
+                       :required="!form.id" class="campo-linea">
+                <span class="text-xs text-texto-disabled">Debe ser mayor a cero.</span>
+            </div>
+
+            <div class="sm:col-span-2 flex flex-col gap-1">
+                <label for="pv-notas" class="text-sm font-semibold text-texto-header">Notas</label>
+                <textarea id="pv-notas" x-model="form.notas" rows="2"
+                          class="w-full px-2 py-1 text-base font-light bg-surface border-b border-texto-disabled
+                                 focus:outline-none focus:border-primary resize-none"></textarea>
+            </div>
+
+            <div class="sm:col-span-2 flex justify-end gap-3 mt-2">
+                <button type="button" @click="form.abierto = false"
+                        class="h-9 px-5 rounded-input border border-borde text-base
+                               hover:border-primary hover:text-primary">Cancelar</button>
+                <button type="submit" :disabled="form.guardando"
+                        class="h-9 px-8 rounded-input bg-primary text-white text-base font-medium
+                               hover:bg-primary-hover disabled:opacity-60"
+                        x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
+            </div>
+        </form>
+    </div>
+</div>

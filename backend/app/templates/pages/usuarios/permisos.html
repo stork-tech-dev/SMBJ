@@ -1,0 +1,28 @@
+{# Overrides de permisos de un usuario: mismo árbol, en modo 'usuario'
+   (lo heredado del rol queda bloqueado; solo se agregan permisos). #}
+{% extends "base.html" %}
+
+{% from "components/permisos_tree.html" import arbol_permisos %}
+
+{% block contenido %}
+<nav class="text-sm text-texto-muted mb-2">
+    <a href="/usuarios" class="hover:text-primary">Usuarios</a>
+    <span class="mx-1" aria-hidden="true">/</span>
+    <span>Permisos</span>
+</nav>
+
+<h1 class="text-xl font-semibold">Permisos de {{ usuario.nombre }}</h1>
+<p class="mt-1 text-base text-texto-muted">
+    Usuario <span class="font-medium">{{ usuario.username }}</span> ·
+    rol <span class="font-medium">{{ usuario.rol.nombre }}</span>
+</p>
+
+{{ arbol_permisos(
+    url_datos='/api/v1/usuarios/' ~ usuario.id ~ '/permisos',
+    url_guardar='/api/v1/usuarios/' ~ usuario.id ~ '/permisos',
+    modo='usuario') }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/permisos.js') }}"></script>
+{% endblock %}

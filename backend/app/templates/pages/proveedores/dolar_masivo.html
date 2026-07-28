@@ -1,0 +1,160 @@
+{# Cambio masivo del dólar: selección de proveedores, modalidad, preview
+   antes de confirmar, e importación por Excel con tabla de errores. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="dolarMasivo()" x-init="cargar()">
+
+    <nav class="text-sm text-texto-muted mb-2">
+        <a href="/proveedores" class="hover:text-primary">Proveedores</a>
+        <span class="mx-1" aria-hidden="true">/</span>
+        <span>Cambio masivo del dólar</span>
+    </nav>
+    <h1 class="text-[50px] leading-none font-black text-welcome">Cambio masivo</h1>
+
+    <div class="grid gap-6 mt-8 lg:grid-cols-2">
+
+        {# ================= MODO MANUAL ================= #}
+        <section class="bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] p-8">
+            <h2 class="text-lg font-semibold">Por valor o porcentaje</h2>
+
+            {# Modalidad #}
+            <div class="flex gap-6 mt-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" value="valor" x-model="modalidad" @change="calcularPreview()"
+                           class="accent-[color:var(--color-primary)]">
+                    <span>Valor fijo</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" value="porcentaje" x-model="modalidad" @change="calcularPreview()"
+                           class="accent-[color:var(--color-primary)]">
+                    <span>Porcentaje</span>
+                </label>
+            </div>
+
+            <div class="flex items-end gap-3 mt-4">
+                <div class="flex flex-col gap-1">
+                    <label for="valor" class="text-sm font-semibold text-texto-header"
+                           x-text="modalidad === 'valor' ? 'Nuevo valor ($)' : 'Porcentaje (%)'"></label>
+                    <input id="valor" type="number" step="0.01" x-model="valor" @input.debounce.300ms="calcularPreview()"
+                           class="h-10 w-[160px] px-3 bg-surface border-2 border-borde rounded-input
+                                  focus:outline-none focus:border-primary">
+                </div>
+                <p class="text-sm text-texto-muted pb-2" x-show="modalidad === 'porcentaje'">
+                    Se aplica sobre el dólar actual de cada proveedor.
+                </p>
+            </div>
+
+            {# Selección de proveedores #}
+            <div class="flex items-center justify-between mt-6">
+                <h3 class="text-base font-semibold text-texto-header">Proveedores activos</h3>
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" x-model="todos" @change="calcularPreview()"
+                           class="accent-[color:var(--color-primary)]">
+                    Todos
+                </label>
+            </div>
+
+            <div class="mt-2 border border-borde rounded-input max-h-48 overflow-y-auto divide-y divide-borde">
+                <template x-for="p in proveedores" :key="p.id">
+                    <label class="flex items-center justify-between px-4 py-2 cursor-pointer"
+                           :class="todos && 'opacity-60'">
+                        <span class="flex items-center gap-2">
+                            <input type="checkbox" :value="p.id" x-model="seleccion"
+                                   :disabled="todos" @change="calcularPreview()"
+                                   class="accent-[color:var(--color-primary)]">
+                            <span x-text="p.razon_social"></span>
+                        </span>
+                        <span class="text-sm text-texto-muted" x-text="'$ ' + formatearDolar(p.dolar_actual)"></span>
+                    </label>
+                </template>
+                <p x-show="!proveedores.length" class="px-4 py-6 text-center text-texto-muted text-sm">
+                    No hay proveedores activos.
+                </p>
+            </div>
+
+            {# Preview #}
+            <div x-show="preview.length" x-cloak class="mt-6">
+                <h3 class="text-base font-semibold text-texto-header">Vista previa</h3>
+                <div class="mt-2 border border-borde rounded-input max-h-56 overflow-y-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead class="sticky top-0 bg-surface-alt">
+                            <tr>
+                                <th class="px-4 py-2 text-left font-semibold text-texto-header">Proveedor</th>
+                                <th class="px-4 py-2 text-right font-semibold text-texto-header">Actual</th>
+                                <th class="px-4 py-2 text-right font-semibold text-texto-header">Nuevo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="r in preview" :key="r.proveedor_id">
+                                <tr class="border-t border-borde">
+                                    <td class="px-4 py-2" x-text="r.razon_social"></td>
+                                    <td class="px-4 py-2 text-right text-texto-muted" x-text="'$ ' + formatearDolar(r.valor_actual)"></td>
+                                    <td class="px-4 py-2 text-right font-medium" x-text="'$ ' + formatearDolar(r.valor_nuevo)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <button type="button" @click="aplicar()" :disabled="!preview.length || aplicando"
+                    class="mt-6 h-10 px-8 rounded-input bg-primary text-white text-base font-medium
+                           hover:bg-primary-hover disabled:opacity-50"
+                    x-text="aplicando ? 'Aplicando…' : 'Aplicar cambio'"></button>
+        </section>
+
+        {# ================= IMPORTAR EXCEL ================= #}
+        <section class="bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] p-8">
+            <h2 class="text-lg font-semibold">Importar desde Excel</h2>
+            <p class="mt-2 text-sm text-texto-muted">
+                Archivo <code>.xlsx</code> con columnas <code>proveedor_id</code> y
+                <code>dolar_nuevo</code>. Es todo o nada: si alguna fila falla, no se
+                aplica ningún cambio.
+            </p>
+
+            <label class="mt-4 flex flex-col items-center justify-center gap-2 h-40 border-2 border-dashed
+                          border-borde rounded-input cursor-pointer hover:border-primary transition-colors"
+                   @dragover.prevent @drop.prevent="tomarArchivo($event.dataTransfer.files[0])">
+                {{ icono('box', clases='w-8 h-8 text-texto-disabled') }}
+                <span class="text-sm text-texto-muted" x-text="archivo ? archivo.name : 'Arrastrá el archivo o hacé clic'"></span>
+                <input type="file" accept=".xlsx" class="hidden" @change="tomarArchivo($event.target.files[0])">
+            </label>
+
+            <button type="button" @click="importar()" :disabled="!archivo || importando"
+                    class="mt-4 h-10 px-8 rounded-input bg-primary text-white text-base font-medium
+                           hover:bg-primary-hover disabled:opacity-50"
+                    x-text="importando ? 'Importando…' : 'Importar'"></button>
+
+            {# Errores por fila #}
+            <div x-show="errores.length" x-cloak class="mt-6">
+                <p class="text-base font-semibold text-danger">Errores encontrados (no se aplicó nada):</p>
+                <div class="mt-2 border border-danger/40 rounded-input max-h-56 overflow-y-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead class="sticky top-0 bg-surface-alt">
+                            <tr>
+                                <th class="px-4 py-2 text-left font-semibold text-texto-header w-20">Fila</th>
+                                <th class="px-4 py-2 text-left font-semibold text-texto-header">Error</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="(e, i) in errores" :key="i">
+                                <tr class="border-t border-borde">
+                                    <td class="px-4 py-2" x-text="e.fila"></td>
+                                    <td class="px-4 py-2 text-danger" x-text="e.error"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/dolar_masivo.js') }}"></script>
+{% endblock %}

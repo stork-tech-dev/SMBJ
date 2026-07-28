@@ -1,0 +1,38 @@
+{# ===========================================================================
+   Macro: badge de estado.
+
+   Uso:
+     {% from "components/badge.html" import badge %}
+     {{ badge('Activo', 'activo') }}
+     {{ badge('Pendiente', 'pendiente') }}
+
+   Variantes: activo | exito | pendiente | error | neutro | info
+   =========================================================================== #}
+
+{% macro badge(texto, variante='neutro') %}
+    {% set estilos = {
+        'activo':    'bg-accent text-white',
+        'exito':     'bg-success/15 text-success',
+        'pendiente': 'bg-danger/15 text-danger',
+        'error':     'bg-danger/15 text-danger',
+        'info':      'bg-primary/15 text-primary',
+        'neutro':    'bg-surface-alt text-texto-muted'
+    } %}
+    <span class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs font-medium whitespace-nowrap
+                 {{ estilos.get(variante, estilos['neutro']) }}">
+        {{ texto }}
+    </span>
+{% endmacro %}
+
+
+{# Estado en texto coloreado, sin caja: el patrón de las tablas del diseño. #}
+{% macro estado_texto(texto, variante='neutro') %}
+    {% set colores = {
+        'exito': 'text-success',
+        'activo': 'text-success',
+        'pendiente': 'text-danger',
+        'error': 'text-danger',
+        'neutro': 'text-texto-muted'
+    } %}
+    <span class="text-xs font-medium {{ colores.get(variante, colores['neutro']) }}">{{ texto }}</span>
+{% endmacro %}

@@ -1,0 +1,87 @@
+{# Ficha del proveedor (botón "Ver"): datos, cambio del dólar y su historial. #}
+{% from "components/icons.html" import icono %}
+
+<div x-show="ficha.abierta" x-cloak
+     class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+     @click.self="ficha.abierta = false" @keydown.escape.window="ficha.abierta = false"
+     role="dialog" aria-modal="true">
+    <div class="w-full max-w-2xl my-8 bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+        <div class="flex items-start justify-between px-10 pt-8 pb-2">
+            <div>
+                <h2 class="text-lg font-black text-welcome" x-text="ficha.proveedor?.razon_social"></h2>
+                <span class="inline-flex items-center mt-2 px-4 h-6 rounded-pill text-xs font-medium text-white"
+                      :class="ficha.proveedor && ficha.proveedor.estado === 'activo' ? 'bg-success'
+                              : (ficha.proveedor && ficha.proveedor.estado === 'inhabilitado' ? 'bg-danger' : 'bg-accent')"
+                      x-text="ficha.proveedor && etiquetaEstado(ficha.proveedor.estado)"></span>
+            </div>
+            <button type="button" @click="ficha.abierta = false" aria-label="Cerrar"
+                    class="text-texto-muted hover:text-texto -mt-2">{{ icono('cerrar', clases='w-6 h-6') }}</button>
+        </div>
+
+        <div class="px-10 pb-8 pt-4">
+            {# Datos de contacto #}
+            <dl class="grid grid-cols-2 gap-x-8 gap-y-3 text-base">
+                <div><dt class="text-sm text-texto-disabled">Teléfono</dt>
+                     <dd class="font-medium" x-text="ficha.proveedor?.telefono || '—'"></dd></div>
+                <div><dt class="text-sm text-texto-disabled">Email</dt>
+                     <dd class="font-medium" x-text="ficha.proveedor?.email || '—'"></dd></div>
+                <div class="col-span-2"><dt class="text-sm text-texto-disabled">Dirección</dt>
+                     <dd class="font-medium" x-text="ficha.proveedor?.direccion || '—'"></dd></div>
+                <div class="col-span-2" x-show="ficha.proveedor?.notas">
+                     <dt class="text-sm text-texto-disabled">Notas</dt>
+                     <dd class="font-medium" x-text="ficha.proveedor?.notas"></dd></div>
+            </dl>
+
+            {# Valor del dólar + cambio individual #}
+            <div class="mt-6 p-5 bg-surface-alt rounded-input">
+                <div class="flex items-end justify-between gap-4">
+                    <div>
+                        <p class="text-sm text-texto-disabled">Valor actual del dólar</p>
+                        <p class="text-2xl leading-tight font-black text-welcome"
+                           x-text="'$ ' + formatearDolar(ficha.proveedor?.dolar_actual)"></p>
+                    </div>
+                    <form @submit.prevent="cambiarDolar()" class="flex items-end gap-2">
+                        <div class="flex flex-col gap-1">
+                            <label for="fc-dolar" class="text-sm font-semibold text-texto-header">Nuevo valor</label>
+                            <input id="fc-dolar" type="number" step="0.01" min="0.01"
+                                   x-model="ficha.nuevoDolar" required
+                                   class="h-10 w-[130px] px-3 bg-surface border-2 border-borde rounded-input
+                                          focus:outline-none focus:border-primary">
+                        </div>
+                        <button type="submit" :disabled="ficha.guardandoDolar"
+                                class="h-10 px-5 rounded-input bg-primary text-white text-base font-medium
+                                       hover:bg-primary-hover disabled:opacity-60">Actualizar</button>
+                    </form>
+                </div>
+            </div>
+
+            {# Historial del dólar #}
+            <h3 class="mt-6 text-base font-semibold text-texto-header">Historial del dólar</h3>
+            <div class="mt-2 border border-borde rounded-input overflow-hidden max-h-64 overflow-y-auto">
+                <table class="w-full border-collapse text-sm">
+                    <thead class="sticky top-0 bg-surface-alt">
+                        <tr>
+                            <th class="px-4 py-2 text-left font-semibold text-texto-header">Fecha</th>
+                            <th class="px-4 py-2 text-right font-semibold text-texto-header">Anterior</th>
+                            <th class="px-4 py-2 text-right font-semibold text-texto-header">Nuevo</th>
+                            <th class="px-4 py-2 text-left font-semibold text-texto-header">Origen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="h in ficha.historial" :key="h.id">
+                            <tr class="border-t border-borde">
+                                <td class="px-4 py-2" x-text="formatearFecha(h.timestamp)"></td>
+                                <td class="px-4 py-2 text-right" x-text="'$ ' + formatearDolar(h.valor_anterior)"></td>
+                                <td class="px-4 py-2 text-right font-medium" x-text="'$ ' + formatearDolar(h.valor_nuevo)"></td>
+                                <td class="px-4 py-2 text-texto-muted" x-text="etiquetaOrigen(h.origen)"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="!ficha.historial.length">
+                            <td colspan="4" class="px-4 py-6 text-center text-texto-muted">Sin cambios registrados.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

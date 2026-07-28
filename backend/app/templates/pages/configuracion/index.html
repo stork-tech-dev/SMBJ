@@ -1,0 +1,36 @@
+{# Hub de Configuraciones (diseño "Configuraciones CM"): una tarjeta por
+   sección, cada una lleva a su ABM. Las secciones y su visibilidad las
+   resuelve el backend según los permisos del usuario. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<h1 class="text-[50px] leading-none font-black text-welcome">Configuraciones</h1>
+
+<div class="mt-8 max-w-2xl space-y-5">
+    {% for seccion in secciones %}
+        {# Tarjeta: borde sutil, sombra suave y chevron a la derecha, como
+           en el diseño. Toda la tarjeta es el enlace. #}
+        <a href="{{ seccion.url }}"
+           class="flex items-center justify-between gap-4 px-6 py-6 bg-surface border border-borde
+                  rounded-[10px] shadow-[0_0_15px_-6px_rgba(85,126,170,0.35)]
+                  hover:shadow-[0_0_20px_-4px_rgba(85,126,170,0.5)] hover:border-primary
+                  transition-all group">
+            <div>
+                <p class="text-lg font-semibold text-welcome group-hover:text-primary">
+                    {{ seccion.nombre }}
+                </p>
+                {% if seccion.descripcion %}
+                    <p class="mt-1 text-sm text-texto-muted">{{ seccion.descripcion }}</p>
+                {% endif %}
+            </div>
+            <span class="text-welcome group-hover:text-primary">
+                {{ icono('chevron-derecha', clases='w-6 h-6') }}
+            </span>
+        </a>
+    {% else %}
+        <p class="text-texto-muted">No hay secciones disponibles para tu perfil.</p>
+    {% endfor %}
+</div>
+{% endblock %}

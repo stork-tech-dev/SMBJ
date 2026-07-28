@@ -1,0 +1,193 @@
+{# ABM de roles. Exclusivo de la Cuenta Maestra. #}
+{% extends "base.html" %}
+
+{% from "components/botones.html" import accion, acciones %}
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="abmRoles()" x-init="cargar()">
+
+    <h1 class="text-[50px] leading-none font-black text-welcome">Roles</h1>
+
+    {# ---------- Filtros (Principio 5) ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <input type="text" x-model="filtros.nombre" @input.debounce.400ms="cargar()"
+               placeholder="Nombre" aria-label="Nombre"
+               class="h-10 w-[240px] px-4 text-sm font-semibold bg-surface border-2 border-borde
+                      rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <div class="relative">
+            <select x-model="filtros.activo" @change="cargar()" aria-label="Estado"
+                    class="h-10 w-[160px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                           rounded-input appearance-none focus:outline-none focus:border-primary"
+                    :class="filtros.activo ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Estado (todos)</option>
+                <option value="true">Activo</option>
+                <option value="false">Inactivo</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
+        </div>
+
+        <div class="relative">
+            <select x-model="filtros.es_sistema" @change="cargar()" aria-label="Tipo"
+                    class="h-10 w-[190px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                           rounded-input appearance-none focus:outline-none focus:border-primary"
+                    :class="filtros.es_sistema ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Tipo (todos)</option>
+                <option value="true">Del sistema</option>
+                <option value="false">Personalizados</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-9 px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <button type="button" @click="abrirAlta()"
+                class="ml-auto h-10 px-6 inline-flex items-center gap-2 rounded-input bg-accent
+                       text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+    </div>
+
+    <p class="mt-4 text-sm text-texto-muted">
+        <span x-text="roles.length"></span>
+        <span x-text="roles.length === 1 ? 'rol encontrado' : 'roles encontrados'"></span>
+    </p>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-2 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Descripción</th>
+                        <th class="px-4 pt-8 pb-4 text-center text-base font-semibold text-texto-disabled">Usuarios</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="r in roles" :key="r.id">
+                        <tr class="border-t border-borde transition-shadow hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                            :class="!r.activo && 'opacity-60'">
+                            <td class="px-8 py-5 align-middle">
+                                <span class="font-medium" x-text="r.nombre"></span>
+                                {# Badge "Sistema": estos roles no se borran ni se renombran. #}
+                                <span x-show="r.es_sistema"
+                                      class="ml-2 inline-flex items-center px-3 py-0.5 rounded-pill
+                                             text-xs font-medium bg-accent text-white">Sistema</span>
+                            </td>
+                            <td class="px-4 py-5 align-middle" x-text="r.descripcion || '—'"></td>
+                            <td class="px-4 py-5 align-middle text-center font-medium" x-text="r.cantidad_usuarios"></td>
+                            <td class="px-4 py-5 align-middle">
+                                <span class="text-xs font-medium"
+                                      :class="r.activo ? 'text-success' : 'text-danger'"
+                                      x-text="r.activo ? 'Activo' : 'Inactivo'"></span>
+                            </td>
+                            <td class="px-8 py-5 align-middle text-right whitespace-nowrap">
+                                {# Mismos botones que el resto de las tablas; solo
+                                   cambian las etiquetas, que acá son distintas. #}
+                                {% call acciones() %}
+                                    {{ accion('ver', texto='Permisos', enlace=true,
+                                              atributos=':href="\'/roles/\' + r.id + \'/permisos\'"') }}
+                                    {{ accion('editar', atributos='@click="abrirEdicion(r)"') }}
+                                    {# Baja/alta de rol: solo ícono, igual que en
+                                       /usuarios. El title lo aclara en el hover. #}
+                                    {{ accion('borrar',
+                                              atributos='x-show="r.activo" @click="confirmarEstado(r)"
+                                                         title="Desactivar"') }}
+                                    {{ accion('activar',
+                                              atributos='x-show="!r.activo" x-cloak
+                                                         @click="confirmarEstado(r)" title="Activar"') }}
+                                    {# Eliminar es distinto de desactivar (borra el
+                                       rol): conserva su etiqueta para no confundirse
+                                       con la papelera de baja. Los roles del sistema
+                                       no se eliminan. #}
+                                    {{ accion('borrar', texto='Eliminar',
+                                              atributos='x-show="!r.es_sistema" @click="confirmarBaja(r)"') }}
+                                {% endcall %}
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="!roles.length && !cargando">
+                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# ---------- Modal de alta / edición ---------- #}
+    <div x-show="form.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="form.abierto = false" role="dialog" aria-modal="true">
+        <div class="w-full max-w-lg bg-surface border border-borde rounded-input shadow-xl">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-borde">
+                <h2 class="text-lg font-semibold" x-text="form.id ? 'Editar rol' : 'Nuevo rol'"></h2>
+                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto text-lg leading-none">&times;</button>
+            </div>
+
+            <form @submit.prevent="guardar()" class="px-6 py-5 grid gap-4">
+                <div class="flex flex-col gap-1">
+                    <label for="r-nombre" class="text-base font-medium">
+                        Nombre<span class="text-danger ml-0.5">*</span>
+                    </label>
+                    {# En roles del sistema el nombre no se edita: es la clave
+                       con la que el código los identifica. #}
+                    <input id="r-nombre" x-model="form.nombre" required :disabled="form.es_sistema"
+                           class="h-10 px-3 bg-surface border border-borde rounded-input
+                                  disabled:bg-surface-alt disabled:text-texto-disabled">
+                    <span x-show="form.es_sistema" class="text-sm text-texto-muted">
+                        Los roles del sistema no se pueden renombrar.
+                    </span>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label for="r-desc" class="text-base font-medium">Descripción</label>
+                    <input id="r-desc" x-model="form.descripcion"
+                           class="h-10 px-3 bg-surface border border-borde rounded-input">
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" @click="form.abierto = false"
+                            class="h-[35px] px-5 rounded-input border border-borde
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="form.guardando"
+                            class="h-[35px] px-5 rounded-input bg-primary text-white font-medium
+                                   hover:bg-primary-hover disabled:opacity-60"
+                            x-text="form.guardando ? 'Guardando…' : 'Guardar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ---------- Confirmación ---------- #}
+    <div x-show="confirmacion.abierta" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="confirmacion.abierta = false" role="dialog" aria-modal="true">
+        <div class="w-full max-w-md bg-surface border border-borde rounded-input shadow-xl p-6">
+            <h2 class="text-lg font-semibold" x-text="confirmacion.titulo"></h2>
+            <p class="mt-3 text-base text-texto-muted" x-text="confirmacion.mensaje"></p>
+            {# Advertencia extra si el rol tiene usuarios asociados. #}
+            <p x-show="confirmacion.advertencia" x-cloak
+               class="mt-3 text-base text-danger" x-text="confirmacion.advertencia"></p>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" @click="confirmacion.abierta = false"
+                        class="h-[35px] px-5 rounded-input border border-borde
+                               hover:border-primary hover:text-primary">Cancelar</button>
+                <button type="button" @click="confirmacion.accion()"
+                        class="h-[35px] px-5 rounded-input bg-danger text-white font-medium
+                               hover:opacity-90">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/roles.js') }}"></script>
+{% endblock %}

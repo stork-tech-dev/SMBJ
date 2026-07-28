@@ -1,0 +1,145 @@
+{# Pantalla de login. El JWT vuelve en una cookie HttpOnly seteada por
+   POST /api/v1/auth/login, así que HTMX lo manda solo en cada request. #}
+{% extends "auth/base_auth.html" %}
+
+{% block titulo_auth %}Ingresar{% endblock %}
+
+{% block formulario_auth %}
+<div x-data="pantallaLogin()">
+
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">Ingresar</h1>
+        <button type="button" @click="alternar()"
+                :aria-label="dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+                class="h-10 w-10 grid place-items-center rounded-input border border-borde
+                       text-texto-muted hover:text-primary hover:border-primary">
+            <span x-show="!dark" aria-hidden="true">☾</span>
+            <span x-show="dark" x-cloak aria-hidden="true">☀</span>
+        </button>
+    </div>
+
+    <form class="mt-8 space-y-5" @submit.prevent="ingresar()">
+        <div class="flex flex-col gap-1">
+            <label for="username" class="text-base font-medium">Usuario</label>
+            <input id="username" x-model="username" type="text" required autofocus
+                   autocomplete="username"
+                   class="w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+                          focus:outline-none focus:border-primary">
+        </div>
+
+        <div class="flex flex-col gap-1">
+            <label for="password" class="text-base font-medium">Contraseña</label>
+            <input id="password" x-model="password" type="password" required
+                   autocomplete="current-password"
+                   class="w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+                          focus:outline-none focus:border-primary">
+        </div>
+
+        <button type="submit" :disabled="enviando"
+                class="w-full h-[35px] rounded-input bg-primary text-white text-base font-medium
+                       hover:bg-primary-hover disabled:opacity-60 flex items-center justify-center gap-2">
+            {# Spinner mientras se valida. #}
+            <svg x-show="enviando" x-cloak class="animate-spin h-4 w-4" viewBox="0 0 24 24"
+                 fill="none" aria-hidden="true">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span x-text="enviando ? 'Ingresando…' : 'Continuar'">Continuar</span>
+        </button>
+
+        <p class="text-center">
+            <button type="button" @click="olvide = !olvide"
+                    class="text-sm text-primary hover:underline">
+                ¿Olvidaste tu contraseña?
+            </button>
+        </p>
+    </form>
+
+    {# ---------- Recuperación de contraseña ----------
+       Solo llega el mail si el usuario tiene email cargado; la respuesta
+       de la API es siempre la misma, para no revelar qué usuarios existen. #}
+    <form x-show="olvide" x-cloak class="mt-6 pt-6 border-t border-borde space-y-4"
+          @submit.prevent="recuperar()">
+        <p class="text-sm text-texto-muted">
+            Ingresá tu usuario. Si tiene un email cargado, te enviamos las instrucciones.
+        </p>
+        <div class="flex flex-col gap-1">
+            <label for="username-reset" class="text-base font-medium">Usuario</label>
+            <input id="username-reset" x-model="usernameReset" type="text"
+                   class="w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+                          focus:outline-none focus:border-primary">
+        </div>
+        <button type="submit" :disabled="recuperando"
+                class="w-full h-[35px] rounded-input border border-borde text-base font-medium
+                       hover:border-primary hover:text-primary disabled:opacity-60"
+                x-text="recuperando ? 'Enviando…' : 'Enviar instrucciones'"></button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts_auth %}
+<script>
+function pantallaLogin() {
+    return {
+        // Reutiliza el estado de tema de app.js para el toggle claro/oscuro.
+        ...temaApp(),
+
+        username: '',
+        password: '',
+        enviando: false,
+
+        olvide: false,
+        usernameReset: '',
+        recuperando: false,
+
+        async ingresar() {
+            this.enviando = true;
+            try {
+                const resp = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        username: this.username,
+                        password: this.password,
+                    }),
+                });
+
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo iniciar sesión');
+                }
+
+                const datos = await resp.json();
+                // Primer ingreso: el cambio de contraseña es obligatorio.
+                window.location.href = datos.usuario.debe_cambiar_password
+                    ? '/cambiar-password'
+                    : '/';
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.enviando = false;
+            }
+        },
+
+        async recuperar() {
+            this.recuperando = true;
+            try {
+                const resp = await fetch('/api/v1/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: this.usernameReset }),
+                });
+                const datos = await resp.json();
+                window.toast(datos.mensaje, 'info', 8000);
+                this.olvide = false;
+            } catch (e) {
+                window.toast('No se pudo procesar el pedido', 'error');
+            } finally {
+                this.recuperando = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

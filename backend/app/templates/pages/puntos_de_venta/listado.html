@@ -1,0 +1,179 @@
+{# ABM de puntos de venta. Datos desde /api/v1/puntos-de-venta. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones, volver %}
+
+{% block contenido %}
+<div x-data="abmPuntos()" x-init="cargar()">
+
+    {{ volver('/configuracion', 'Configuraciones') }}
+    <h1 class="mt-2 text-[50px] leading-none font-black text-welcome">Puntos de venta</h1>
+
+    {# ---------- Filtros ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <input type="text" x-model="filtros.nombre" @input.debounce.300ms="cargar()"
+               placeholder="Nombre" aria-label="Nombre"
+               class="h-10 w-[240px] px-4 text-sm font-semibold bg-surface border-2 border-borde
+                      rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <div class="relative">
+            <select x-model="filtros.tipo" @change="cargar()" aria-label="Tipo"
+                    class="h-10 w-[180px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                           rounded-input appearance-none focus:outline-none focus:border-primary"
+                    :class="filtros.tipo ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Tipo (todos)</option>
+                <option value="cd">Centro de Distribución</option>
+                <option value="local">Local</option>
+                <option value="online">Online</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
+        </div>
+
+        <div class="relative">
+            <select x-model="filtros.activo" @change="cargar()" aria-label="Activo"
+                    class="h-10 w-[160px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                           rounded-input appearance-none focus:outline-none focus:border-primary"
+                    :class="filtros.activo ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Estado (todos)</option>
+                <option value="true">Activo</option>
+                <option value="false">Inactivo</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-9 px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <button type="button" @click="abrirAlta()"
+                class="ml-auto h-10 px-6 inline-flex items-center gap-2 rounded-input bg-accent
+                       text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+    </div>
+
+    <p class="mt-4 text-sm text-texto-muted">
+        <span x-text="puntos.length"></span>
+        <span x-text="puntos.length === 1 ? 'punto de venta' : 'puntos de venta'"></span>
+    </p>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-2 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Tipo</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="p in puntos" :key="p.id">
+                        <tr class="border-t border-borde transition-shadow hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                            :class="!p.activo && 'opacity-60'">
+                            <td class="px-8 py-5 align-middle font-medium" x-text="p.nombre"></td>
+                            <td class="px-4 py-5 align-middle">
+                                <span class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs font-medium"
+                                      :class="badgeTipo(p.tipo)" x-text="etiquetaTipo(p.tipo)"></span>
+                            </td>
+                            <td class="px-4 py-5 align-middle font-medium" x-text="p.codigo_confirmacion || '—'"></td>
+                            <td class="px-4 py-5 align-middle">
+                                <span class="text-xs font-medium" :class="p.activo ? 'text-success' : 'text-danger'"
+                                      x-text="p.activo ? 'Activo' : 'Inactivo'"></span>
+                            </td>
+                            <td class="px-8 py-5 align-middle text-right whitespace-nowrap">
+                                {% call acciones() %}
+                                    {{ accion('editar', atributos='@click="abrirEdicion(p)"') }}
+                                    {{ accion('borrar',
+                                              atributos='x-show="p.activo" @click="pedirBaja(p)" title="Desactivar"') }}
+                                    {{ accion('activar',
+                                              atributos='x-show="!p.activo" x-cloak @click="cambiarEstado(p, true, false)" title="Activar"') }}
+                                {% endcall %}
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="!puntos.length && !cargando">
+                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# ---------- Modal alta / edición ---------- #}
+    <div x-show="form.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         role="dialog" aria-modal="true">
+        <div class="w-full max-w-md bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-center justify-between px-8 pt-7 pb-2">
+                <h2 class="text-lg font-black text-welcome" x-text="form.id ? 'Editar punto de venta' : 'Nuevo punto de venta'"></h2>
+                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">{{ icono('cerrar', clases='w-6 h-6') }}</button>
+            </div>
+            <form @submit.prevent="guardar()" class="px-8 pb-8 pt-4 grid gap-5">
+                <div class="flex flex-col gap-1">
+                    <label for="pdv-nombre" class="text-sm font-semibold text-texto-header">
+                        Nombre<span class="text-danger ml-0.5">*</span></label>
+                    <input id="pdv-nombre" x-model="form.nombre" required class="campo-linea">
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label for="pdv-tipo" class="text-sm font-semibold text-texto-header">
+                        Tipo<span class="text-danger ml-0.5">*</span></label>
+                    <div class="relative">
+                        <select id="pdv-tipo" x-model="form.tipo" required
+                                class="w-full h-10 pl-3 pr-9 text-base font-light bg-surface border-[0.5px]
+                                       border-texto-disabled rounded-input appearance-none focus:outline-none focus:border-primary">
+                            <option value="cd">Centro de Distribución</option>
+                            <option value="local">Local</option>
+                            <option value="online">Online</option>
+                        </select>
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
+                    </div>
+                </div>
+                {# El código de confirmación solo se muestra para locales. #}
+                <div class="flex flex-col gap-1" x-show="form.tipo === 'local'" x-cloak>
+                    <label for="pdv-codigo" class="text-sm font-semibold text-texto-header">Código de confirmación</label>
+                    <input id="pdv-codigo" x-model="form.codigo_confirmacion" maxlength="4" minlength="4"
+                           inputmode="numeric" placeholder="4 dígitos" class="campo-linea">
+                    <span class="text-xs text-texto-disabled">Para confirmar la recepción de envíos del CD.</span>
+                </div>
+                <div class="flex justify-end gap-3 mt-2">
+                    <button type="button" @click="form.abierto = false"
+                            class="h-9 px-5 rounded-input border border-borde hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="form.guardando"
+                            class="h-9 px-8 rounded-input bg-primary text-white font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ---------- Confirmación de baja ---------- #}
+    <div x-show="baja.abierta" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="baja.abierta = false" role="dialog" aria-modal="true">
+        <div class="w-full max-w-md bg-surface rounded-[10px] shadow-xl p-8">
+            <h2 class="text-lg font-semibold">Desactivar punto de venta</h2>
+            <p class="mt-3 text-base text-texto-muted">
+                ¿Desactivar <span class="font-medium" x-text="baja.punto?.nombre"></span>?
+            </p>
+            <p x-show="baja.advertencia" x-cloak class="mt-3 text-sm text-danger" x-text="baja.advertencia"></p>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" @click="baja.abierta = false"
+                        class="h-9 px-5 rounded-input border border-borde hover:border-primary hover:text-primary">Cancelar</button>
+                <button type="button" @click="confirmarBaja()"
+                        class="h-9 px-5 rounded-input bg-danger text-white font-medium hover:opacity-90"
+                        x-text="baja.advertencia ? 'Desactivar igualmente' : 'Confirmar'"></button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/puntos_de_venta.js') }}"></script>
+{% endblock %}

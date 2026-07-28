@@ -1,0 +1,87 @@
+{# ===========================================================================
+   Macro: botones de acción de las tablas.
+
+   Son los tres botones del diseño (capa "Usuarios CM" → "Grupo 50"):
+
+     BtnVer     → fondo #557eaa, ícono de ojo + texto
+     BtnEditar  → fondo #0073e3, ícono de lápiz + texto
+     BtnBorrar  → sin fondo, ícono de papelera en rojo
+
+   El texto es parametrizable, porque no todas las pantallas usan los
+   mismos verbos: en /roles el botón "ver" dice "Permisos" y el de borrar
+   dice "Desactivar". La forma y el color se mantienen para que la acción
+   se reconozca igual en todo el sistema (Principio 2: DRY).
+
+   Uso:
+     {% from "components/botones.html" import accion %}
+
+     {{ accion('ver', href='/roles/1/permisos', texto='Permisos') }}
+     {{ accion('editar', atributos='@click="abrirEdicion(u)"') }}
+     {{ accion('borrar', texto='Desactivar', atributos='@click="baja(u)"') }}
+
+   `href` genera un <a>; sin `href` genera un <button type="button">.
+   Cuando la URL la arma Alpine en tiempo de ejecución (listados dinámicos),
+   se usa `enlace=true` y se pasa el binding en `atributos`:
+
+     {{ accion('ver', texto='Permisos', enlace=true,
+               atributos=':href="\'/roles/\' + r.id + \'/permisos\'"') }}
+
+   `atributos` se inyecta tal cual (para @click, :disabled, x-show…).
+   =========================================================================== #}
+
+{% from "components/icons.html" import icono %}
+
+{% macro accion(variante, texto=None, href=None, atributos='', icono_nombre=None, enlace=false) %}
+    {%- set config = {
+        'ver':     {'clases': 'bg-accent text-white hover:opacity-90',
+                    'icono': 'ojo',       'texto': 'Ver'},
+        'editar':  {'clases': 'bg-primary text-white hover:bg-primary-hover',
+                    'icono': 'lapiz',     'texto': 'Editar'},
+        'borrar':  {'clases': 'text-danger hover:opacity-70',
+                    'icono': 'papelera',  'texto': None},
+        'activar': {'clases': 'text-success hover:opacity-70',
+                    'icono': 'check',     'texto': None}
+    }.get(variante, {'clases': '', 'icono': None, 'texto': None}) -%}
+
+    {%- set etiqueta = texto if texto is not none else config.texto -%}
+    {%- set simbolo = icono_nombre or config.icono -%}
+
+    {# Borrar y activar no llevan fondo: son íconos, con texto opcional. #}
+    {%- set sin_fondo = variante in ('borrar', 'activar') -%}
+    {%- set forma = 'p-1' if (sin_fondo and not etiqueta) else 'h-8 px-4 rounded-input' -%}
+
+    {%- if href or enlace -%}
+        <a {% if href %}href="{{ href }}"{% endif %}
+           class="inline-flex items-center gap-1.5 text-sm font-medium whitespace-nowrap
+                  {{ forma }} {{ config.clases }}"
+           {{ atributos|safe }}>
+            {{ icono(simbolo, clases='w-[22px] h-[22px]') }}{% if etiqueta %}<span>{{ etiqueta }}</span>{% endif %}
+        </a>
+    {%- else -%}
+        <button type="button"
+                class="inline-flex items-center gap-1.5 text-sm font-medium whitespace-nowrap
+                       {{ forma }} {{ config.clases }}"
+                {% if not etiqueta %}aria-label="{{ variante|capitalize }}"{% endif %}
+                {{ atributos|safe }}>
+            {{ icono(simbolo, clases='w-[22px] h-[22px]') }}{% if etiqueta %}<span>{{ etiqueta }}</span>{% endif %}
+        </button>
+    {%- endif -%}
+{% endmacro %}
+
+
+{# Contenedor de la columna de acciones: separación y alineación estándar. #}
+{% macro acciones() %}
+    <div class="inline-flex items-center gap-3">{{ caller() }}</div>
+{% endmacro %}
+
+
+{# Enlace "volver": flecha + texto, para las sub-páginas que cuelgan de un
+   hub (ej. las secciones dentro de Configuraciones). #}
+{% macro volver(url, texto='Volver') %}
+    <a href="{{ url }}"
+       class="inline-flex items-center gap-2 text-sm font-semibold text-texto-muted
+              hover:text-primary transition-colors">
+        {{ icono('flecha-izquierda', clases='w-4 h-4') }}
+        <span>{{ texto }}</span>
+    </a>
+{% endmacro %}

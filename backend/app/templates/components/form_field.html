@@ -1,0 +1,103 @@
+{# ===========================================================================
+   Macros: campos de formulario.
+
+   Uso:
+     {% from "components/form_field.html" import campo, campo_select, campo_rango %}
+     {{ campo('nombre', 'Nombre', requerido=true) }}
+     {{ campo_select('rol_id', 'Rol', opciones=[{'value': 1, 'label': 'Dueño'}]) }}
+     {{ campo_rango('precio', 'Precio', tipo='number') }}
+   =========================================================================== #}
+
+{% set _clases_input = 'w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+                        text-texto focus:outline-none focus:border-primary disabled:bg-surface-alt
+                        disabled:text-texto-disabled' %}
+
+
+{% macro campo(nombre, label, tipo='text', valor='', placeholder='', requerido=false,
+               deshabilitado=false, ayuda='', error='', atributos='') %}
+    <div class="flex flex-col gap-1">
+        <label for="{{ nombre }}" class="text-base font-medium text-texto">
+            {{ label }}{% if requerido %}<span class="text-danger ml-0.5" aria-hidden="true">*</span>{% endif %}
+        </label>
+        <input id="{{ nombre }}"
+               name="{{ nombre }}"
+               type="{{ tipo }}"
+               value="{{ valor }}"
+               placeholder="{{ placeholder }}"
+               {% if requerido %}required{% endif %}
+               {% if deshabilitado %}disabled{% endif %}
+               {% if error %}aria-invalid="true" aria-describedby="{{ nombre }}-error"{% endif %}
+               class="{{ _clases_input }} {% if error %}border-danger{% endif %}"
+               {{ atributos|safe }}>
+        {% if ayuda and not error %}
+            <span class="text-sm text-texto-muted">{{ ayuda }}</span>
+        {% endif %}
+        {% if error %}
+            <span id="{{ nombre }}-error" class="text-sm text-danger">{{ error }}</span>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+
+{% macro campo_select(nombre, label, opciones=[], valor='', requerido=false,
+                      vacio='Todos', deshabilitado=false, atributos='') %}
+    <div class="flex flex-col gap-1">
+        <label for="{{ nombre }}" class="text-base font-medium text-texto">
+            {{ label }}{% if requerido %}<span class="text-danger ml-0.5" aria-hidden="true">*</span>{% endif %}
+        </label>
+        <select id="{{ nombre }}"
+                name="{{ nombre }}"
+                {% if requerido %}required{% endif %}
+                {% if deshabilitado %}disabled{% endif %}
+                class="{{ _clases_input }}"
+                {{ atributos|safe }}>
+            {% if vacio %}<option value="">{{ vacio }}</option>{% endif %}
+            {% for op in opciones %}
+                <option value="{{ op.value }}" {% if valor|string == op.value|string %}selected{% endif %}>
+                    {{ op.label }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+{% endmacro %}
+
+
+{# Selector booleano estándar de los filtros (Principio 5). #}
+{% macro campo_booleano(nombre, label, valor='', atributos='') %}
+    {{ campo_select(nombre, label,
+                    opciones=[{'value': 'true', 'label': 'Sí'}, {'value': 'false', 'label': 'No'}],
+                    valor=valor, vacio='Todos', atributos=atributos) }}
+{% endmacro %}
+
+
+{# Rango desde/hasta para NUMERIC y DATE (Principio 5). #}
+{% macro campo_rango(nombre, label, tipo='number', desde='', hasta='', atributos='') %}
+    <div class="flex flex-col gap-1">
+        <span class="text-base font-medium text-texto">{{ label }}</span>
+        <div class="flex items-center gap-2">
+            <input id="{{ nombre }}_desde" name="{{ nombre }}_desde" type="{{ tipo }}"
+                   value="{{ desde }}" placeholder="Desde" aria-label="{{ label }} desde"
+                   class="{{ _clases_input }}" {{ atributos|safe }}>
+            <span class="text-texto-disabled" aria-hidden="true">–</span>
+            <input id="{{ nombre }}_hasta" name="{{ nombre }}_hasta" type="{{ tipo }}"
+                   value="{{ hasta }}" placeholder="Hasta" aria-label="{{ label }} hasta"
+                   class="{{ _clases_input }}" {{ atributos|safe }}>
+        </div>
+    </div>
+{% endmacro %}
+
+
+{# Botones del design system, para no repetir la combinación de clases. #}
+{% macro boton(texto, tipo='button', variante='primario', atributos='') %}
+    {% set estilos = {
+        'primario':   'bg-primary text-white hover:bg-primary-hover',
+        'secundario': 'bg-transparent text-texto border border-borde hover:border-primary hover:text-primary',
+        'peligro':    'bg-danger text-white hover:opacity-90'
+    } %}
+    <button type="{{ tipo }}"
+            class="h-[35px] px-5 rounded-input text-base font-medium transition-colors
+                   {{ estilos.get(variante, estilos['primario']) }}"
+            {{ atributos|safe }}>
+        {{ texto }}
+    </button>
+{% endmacro %}

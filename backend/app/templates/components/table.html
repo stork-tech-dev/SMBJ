@@ -1,0 +1,133 @@
+{# ===========================================================================
+   Macros: tabla de listado con filtros, paginación y acciones por fila.
+
+   Uso:
+     {% from "components/table.html" import tabla, barra_filtros, paginacion %}
+
+     {% call barra_filtros(url_crear='/productos/nuevo') %}
+        ... campos de filtro ...
+     {% endcall %}
+
+     {{ tabla(
+          columnas=[{'key': 'nombre', 'label': 'Nombre'},
+                    {'key': 'precio', 'label': 'Precio', 'align': 'right'}],
+          filas=productos,
+          acciones=['ver', 'editar', 'borrar'],
+          url_base='/productos',
+          total=total) }}
+
+   Las filas son diccionarios (o modelos con acceso por atributo). El
+   formato de cada valor lo resuelve el llamador: la API devuelve datos
+   crudos (Principio 1).
+   =========================================================================== #}
+
+{% from "components/botones.html" import accion, acciones as fila_acciones %}
+
+
+{% macro barra_filtros(url_crear=None, texto_crear='+ Crear nuevo', url_limpiar=None) %}
+    <div class="flex flex-wrap items-end gap-4 mb-6">
+        <div class="flex flex-wrap items-end gap-4 flex-1 min-w-0">
+            {{ caller() }}
+        </div>
+        <div class="flex items-end gap-2">
+            <a href="{{ url_limpiar|default('', true) or '?' }}"
+               class="h-[35px] px-4 grid place-items-center rounded-input text-sm
+                      text-texto-muted border border-borde hover:border-primary hover:text-primary">
+                Limpiar filtros
+            </a>
+            {% if url_crear %}
+                <a href="{{ url_crear }}"
+                   class="h-[35px] px-5 grid place-items-center rounded-input bg-primary text-white
+                          text-base font-medium hover:bg-primary-hover">
+                    {{ texto_crear }}
+                </a>
+            {% endif %}
+        </div>
+    </div>
+{% endmacro %}
+
+
+{% macro tabla(columnas, filas, acciones=[], url_base='', total=None, vacio='Sin resultados.') %}
+    {% if total is not none %}
+        <p class="mb-2 text-sm text-texto-muted">
+            {{ total }} registro{{ '' if total == 1 else 's' }} encontrado{{ '' if total == 1 else 's' }}
+        </p>
+    {% endif %}
+
+    {# overflow-x-auto: la tabla scrollea sola en tablet, la página nunca. #}
+    <div class="overflow-x-auto border border-borde rounded-input">
+        <table class="w-full border-collapse text-base">
+            <thead>
+                <tr class="bg-surface-alt">
+                    {% for col in columnas %}
+                        <th scope="col"
+                            class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-texto-header
+                                   border-r border-borde last:border-r-0
+                                   text-{{ col.align|default('left') }}">
+                            {{ col.label }}
+                        </th>
+                    {% endfor %}
+                    {% if acciones %}
+                        <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide
+                                               text-texto-header text-right">Acciones</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in filas %}
+                    {# Filas alternadas: blanco / gris, según el diseño. #}
+                    <tr class="border-t border-borde {{ 'bg-surface' if loop.index0 % 2 == 0 else 'bg-surface-alt' }}">
+                        {% for col in columnas %}
+                            <td class="px-4 py-3 border-r border-borde last:border-r-0
+                                       text-{{ col.align|default('left') }} text-texto">
+                                {{ fila[col.key] if fila[col.key] is not none else '—' }}
+                            </td>
+                        {% endfor %}
+                        {% if acciones %}
+                            <td class="px-4 py-3 text-right whitespace-nowrap">
+                                {# Los mismos botones del diseño que usan todas
+                                   las tablas (ver components/botones.html). #}
+                                {% call fila_acciones() %}
+                                    {% if 'ver' in acciones %}
+                                        {{ accion('ver', href=url_base ~ '/' ~ fila['id']) }}
+                                    {% endif %}
+                                    {% if 'editar' in acciones %}
+                                        {{ accion('editar', href=url_base ~ '/' ~ fila['id'] ~ '/editar') }}
+                                    {% endif %}
+                                    {% if 'borrar' in acciones %}
+                                        {# Abre el modal de confirmación global (ver modal.html). #}
+                                        {{ accion('borrar', atributos="@click=\"$dispatch('confirmar', {
+                                                    titulo: 'Eliminar registro',
+                                                    mensaje: '¿Confirmás la eliminación? La acción queda auditada.',
+                                                    url: '" ~ url_base ~ "/" ~ fila['id'] ~ "'
+                                                })\"") }}
+                                    {% endif %}
+                                {% endcall %}
+                            </td>
+                        {% endif %}
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="{{ columnas|length + (1 if acciones else 0) }}"
+                            class="px-4 py-10 text-center text-texto-muted">{{ vacio }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endmacro %}
+
+
+{% macro paginacion(pagina, total_paginas, url_base='?') %}
+    {% if total_paginas > 1 %}
+        <nav class="flex items-center justify-end gap-2 mt-4" aria-label="Paginación">
+            <a href="{{ url_base }}pagina={{ pagina - 1 }}"
+               class="h-9 px-3 grid place-items-center rounded-input border border-borde text-sm
+                      {{ 'pointer-events-none opacity-40' if pagina <= 1 }}">Anterior</a>
+            <span class="text-sm text-texto-muted">Página {{ pagina }} de {{ total_paginas }}</span>
+            <a href="{{ url_base }}pagina={{ pagina + 1 }}"
+               class="h-9 px-3 grid place-items-center rounded-input border border-borde text-sm
+                      {{ 'pointer-events-none opacity-40' if pagina >= total_paginas }}">Siguiente</a>
+        </nav>
+    {% endif %}
+{% endmacro %}

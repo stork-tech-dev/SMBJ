@@ -1,0 +1,22 @@
+{# Ítem de navegación del sidebar. Recibe `item` y `ruta_activa` del contexto.
+   Prefijo _ : es un parcial interno de base.html, no un macro público.
+
+   El ítem activo lleva la clase `.nav-activo` (definida en custom.css): se
+   funde con el fondo del área de contenido, con esquinas cóncavas en la
+   unión. `-mr-4` cancela el padding del <nav> para que llegue justo al
+   borde del sidebar y no quede una franja azul entre medio. #}
+{% from "components/icons.html" import icono %}
+{% set activo = ruta_activa is defined and ruta_activa == item.url %}
+<a href="{{ item.url }}"
+   {% if activo %}aria-current="page"{% endif %}
+   class="flex items-center gap-3 pl-5 pr-4 py-3.5 text-lg font-semibold transition-colors
+          {% if activo %}
+              nav-activo -mr-4
+          {% else %}
+              rounded-[20px] text-sidebar-text hover:bg-white/10
+          {% endif %}">
+    {# Ícono SVG (currentColor): se ve consistente en cualquier sistema,
+       a diferencia de los emoji, que renderizan distinto en cada uno. #}
+    {{ icono(item.icono, clases='w-[22px] h-[22px]') }}
+    <span class="truncate">{{ item.nombre }}</span>
+</a>

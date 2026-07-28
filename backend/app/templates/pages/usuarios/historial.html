@@ -1,0 +1,162 @@
+{# Historial de accesos de un usuario. Solo lectura: la tabla es
+   append-only y no tiene endpoints de edición ni borrado. #}
+{% extends "base.html" %}
+
+{% block contenido %}
+<div x-data="historialAccesos({{ usuario.id }})" x-init="cargar()">
+
+    <nav class="text-sm text-texto-muted mb-2">
+        <a href="/usuarios" class="hover:text-primary">Usuarios</a>
+        <span class="mx-1" aria-hidden="true">/</span>
+        <span>Historial</span>
+    </nav>
+
+    <h1 class="text-xl font-semibold">Historial de accesos de {{ usuario.nombre }}</h1>
+
+    {# ---------- Filtros ---------- #}
+    <div class="flex flex-wrap items-end gap-4 mt-6">
+        <div class="flex flex-col gap-1">
+            <span class="text-base font-medium">Fecha</span>
+            <div class="flex items-center gap-2">
+                <input type="date" x-model="filtros.desde" @change="cargar()" aria-label="Desde"
+                       class="h-10 px-3 bg-surface-alt border border-borde rounded-input">
+                <span class="text-texto-disabled" aria-hidden="true">–</span>
+                <input type="date" x-model="filtros.hasta" @change="cargar()" aria-label="Hasta"
+                       class="h-10 px-3 bg-surface-alt border border-borde rounded-input">
+            </div>
+        </div>
+        <div class="flex flex-col gap-1">
+            <label for="f-resultado" class="text-base font-medium">Resultado</label>
+            <select id="f-resultado" x-model="filtros.resultado" @change="cargar()"
+                    class="h-10 px-3 bg-surface-alt border border-borde rounded-input">
+                <option value="">Todos</option>
+                <option value="exitoso">Exitoso</option>
+                <option value="fallido">Fallido</option>
+            </select>
+        </div>
+        <button type="button" @click="limpiar()"
+                class="h-[35px] px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">
+            Limpiar filtros
+        </button>
+    </div>
+
+    <p class="mt-4 text-sm text-texto-muted">
+        <span x-text="total"></span>
+        <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
+    </p>
+
+    <div class="overflow-x-auto border border-borde rounded-input mt-2">
+        <table class="w-full border-collapse text-base">
+            <thead>
+                <tr class="bg-surface-alt">
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-texto-header">Fecha y hora</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-texto-header">IP</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-texto-header">Resultado</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-texto-header">Detalle</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="(a, i) in accesos" :key="a.id">
+                    <tr class="border-t border-borde" :class="i % 2 === 0 ? 'bg-surface' : 'bg-surface-alt'">
+                        {# La API devuelve el timestamp crudo: el formato es
+                           responsabilidad del frontend (Principio 1). #}
+                        <td class="px-4 py-3" x-text="formatearFecha(a.timestamp)"></td>
+                        <td class="px-4 py-3" x-text="a.ip_origen || '—'"></td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs font-medium"
+                                  :class="a.resultado === 'exitoso'
+                                          ? 'bg-success/15 text-success'
+                                          : 'bg-danger/15 text-danger'"
+                                  x-text="a.resultado === 'exitoso' ? 'Exitoso' : 'Fallido'"></span>
+                        </td>
+                        <td class="px-4 py-3" x-text="a.detalle || '—'"></td>
+                    </tr>
+                </template>
+                <tr x-show="!accesos.length && !cargando">
+                    <td colspan="4" class="px-4 py-10 text-center text-texto-muted">Sin accesos registrados.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {# ---------- Paginación ---------- #}
+    <nav x-show="totalPaginas > 1" x-cloak class="flex items-center justify-end gap-2 mt-4"
+         aria-label="Paginación">
+        <button type="button" @click="irA(pagina - 1)" :disabled="pagina <= 1"
+                class="h-9 px-3 rounded-input border border-borde text-sm disabled:opacity-40">
+            Anterior
+        </button>
+        <span class="text-sm text-texto-muted">
+            Página <span x-text="pagina"></span> de <span x-text="totalPaginas"></span>
+        </span>
+        <button type="button" @click="irA(pagina + 1)" :disabled="pagina >= totalPaginas"
+                class="h-9 px-3 rounded-input border border-borde text-sm disabled:opacity-40">
+            Siguiente
+        </button>
+    </nav>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function historialAccesos(usuarioId) {
+    return {
+        accesos: [],
+        total: 0,
+        pagina: 1,
+        tamano: 50,
+        cargando: false,
+        filtros: { desde: '', hasta: '', resultado: '' },
+
+        get totalPaginas() {
+            return Math.max(1, Math.ceil(this.total / this.tamano));
+        },
+
+        async cargar() {
+            this.cargando = true;
+            try {
+                const params = new URLSearchParams({ pagina: this.pagina, tamano: this.tamano });
+                for (const [clave, valor] of Object.entries(this.filtros)) {
+                    if (valor !== '') params.set(clave, valor);
+                }
+
+                const resp = await fetch(
+                    `/api/v1/usuarios/${usuarioId}/historial?` + params,
+                    { credentials: 'same-origin' }
+                );
+                if (!resp.ok) throw new Error('No se pudo cargar el historial');
+
+                const datos = await resp.json();
+                this.accesos = datos.resultados;
+                this.total = datos.total;
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        irA(pagina) {
+            this.pagina = pagina;
+            this.cargar();
+        },
+
+        limpiar() {
+            this.filtros = { desde: '', hasta: '', resultado: '' };
+            this.pagina = 1;
+            this.cargar();
+        },
+
+        formatearFecha(iso) {
+            if (!iso) return '—';
+            const f = new Date(iso);
+            return f.toLocaleString('es-AR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+            });
+        },
+    };
+}
+</script>
+{% endblock %}

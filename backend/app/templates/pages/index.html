@@ -1,0 +1,105 @@
+{# Dashboard vacío. Sirve además como página de verificación de que los
+   macros del design system renderizan correctamente. #}
+{% extends "base.html" %}
+
+{% from "components/badge.html" import badge, estado_texto %}
+{% from "components/table.html" import tabla, barra_filtros %}
+{% from "components/form_field.html" import campo, campo_select, campo_rango, campo_booleano, boton %}
+{% from "components/modal.html" import modal_confirmacion %}
+
+{% block contenido %}
+
+<h1 class="text-2xl font-black text-welcome leading-tight">Bienvenido</h1>
+<p class="mt-2 text-base text-texto-muted">
+    Infraestructura base operativa. Los módulos de negocio se agregan sobre esta estructura.
+</p>
+
+{# ---------- Tarjetas de estado ---------- #}
+<section class="grid gap-4 mt-8 sm:grid-cols-2 lg:grid-cols-3">
+    {% set tarjetas = [
+        {'titulo': 'API', 'valor': '/api/v1', 'detalle': 'Contrato principal del sistema'},
+        {'titulo': 'Documentación', 'valor': '/docs', 'detalle': 'Swagger UI'},
+        {'titulo': 'Healthcheck', 'valor': '/api/v1/health', 'detalle': 'Estado del servicio'}
+    ] %}
+    {% for t in tarjetas %}
+        <article class="p-5 bg-surface border border-borde rounded-input">
+            <p class="text-xs uppercase tracking-wide text-texto-header">{{ t.titulo }}</p>
+            <p class="mt-1 text-lg font-semibold text-texto">{{ t.valor }}</p>
+            <p class="mt-1 text-sm text-texto-muted">{{ t.detalle }}</p>
+        </article>
+    {% endfor %}
+</section>
+
+{# ---------- Estado de la API en vivo, vía HTMX ---------- #}
+<section class="mt-8">
+    <div class="flex items-center gap-3">
+        <h2 class="text-lg font-semibold text-texto">Estado del servicio</h2>
+        <button type="button"
+                class="text-sm text-primary hover:underline"
+                hx-get="/api/v1/health/db"
+                hx-target="#estado-api"
+                hx-swap="innerHTML"
+                hx-trigger="click, load">
+            Actualizar
+        </button>
+        <span class="htmx-indicator text-sm text-texto-muted">consultando…</span>
+    </div>
+    <pre id="estado-api"
+         class="mt-2 p-4 bg-surface-alt border border-borde rounded-input text-sm
+                text-texto-muted overflow-x-auto"></pre>
+</section>
+
+{# ---------- Demostración de los macros del design system ---------- #}
+<section class="mt-10">
+    <h2 class="text-lg font-semibold text-texto mb-4">Componentes</h2>
+
+    {% call barra_filtros(url_crear='#') %}
+        {{ campo('busqueda', 'Nombre', placeholder='Buscar…') }}
+        {{ campo_select('estado', 'Estado', opciones=[
+            {'value': 'pendiente', 'label': 'Pendiente'},
+            {'value': 'autorizado', 'label': 'Autorizado'}
+        ]) }}
+        {{ campo_booleano('activo', 'Activo') }}
+        {{ campo_rango('fecha', 'Fecha', tipo='date') }}
+    {% endcall %}
+
+    {% set filas_demo = [
+        {'id': 1, 'nombre': 'Registro de ejemplo', 'estado': 'Autorizado', 'variante': 'exito'},
+        {'id': 2, 'nombre': 'Otro registro', 'estado': 'Pendiente', 'variante': 'pendiente'}
+    ] %}
+
+    {# El estado se pre-renderiza como HTML: la tabla solo muestra valores. #}
+    {% set filas = [] %}
+    {% for f in filas_demo %}
+        {% set _ = filas.append({
+            'id': f.id,
+            'nombre': f.nombre,
+            'estado': estado_texto(f.estado, f.variante)
+        }) %}
+    {% endfor %}
+
+    {{ tabla(
+        columnas=[
+            {'key': 'nombre', 'label': 'Nombre'},
+            {'key': 'estado', 'label': 'Estado'}
+        ],
+        filas=filas,
+        acciones=['ver', 'editar', 'borrar'],
+        url_base='#',
+        total=filas|length) }}
+
+    <div class="flex flex-wrap items-center gap-3 mt-6">
+        {{ badge('Activo', 'activo') }}
+        {{ badge('Autorizado', 'exito') }}
+        {{ badge('Pendiente', 'pendiente') }}
+        {{ boton('Toast de éxito', variante='primario',
+                 atributos='onclick="window.toast(\'Acción completada\', \'exito\')"') }}
+        {{ boton('Toast de error', variante='secundario',
+                 atributos='onclick="window.toast(\'Algo salió mal\', \'error\')"') }}
+    </div>
+</section>
+
+{# Modal de confirmación global: lo usan los botones "Borrar" de la tabla. #}
+{{ modal_confirmacion() }}
+
+{% endblock %}

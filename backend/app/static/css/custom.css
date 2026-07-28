@@ -1,0 +1,266 @@
+/* ==========================================================================
+   Soleil / Mallorca — tokens y estilos complementarios a Tailwind
+
+   Todos los colores del design system viven acá como CSS variables. El
+   modo oscuro se resuelve invirtiendo estas variables bajo `.dark`, sin
+   duplicar una sola clase en los templates (Principio 2: DRY).
+
+   Nunca escribir un color literal en un template: usar las clases de
+   Tailwind mapeadas a estas variables en la config de base.html.
+   ========================================================================== */
+
+:root {
+    /* --- Marca --- */
+    --color-primary: #0073e3;          /* azul primario: sidebar y botones */
+    --color-primary-hover: #005cb8;
+    --color-accent: #557eaa;           /* badges de estado activo / usuario */
+    --color-welcome: #5f8ab4;          /* título "Bienvenido" */
+
+    /* --- Superficies --- */
+    --color-bg: #ffffff;               /* fondo general */
+    --color-surface: #ffffff;          /* tarjetas y filas impares */
+    --color-surface-alt: #f0f0f0;      /* inputs y filas alternadas */
+    --color-border: #f0f0f0;
+
+    /* --- Texto --- */
+    --color-text: #000000;
+    --color-text-muted: #353737;
+    --color-text-disabled: #bcbec0;    /* placeholders */
+    --color-text-header: #737c7c;      /* headers de tabla */
+    --color-text-invert: #ffffff;
+
+    /* --- Estados --- */
+    --color-danger: #f60509;           /* pendiente / error */
+    --color-success: #00bf29;          /* autorizado / éxito */
+
+    /* --- Sidebar --- */
+    --color-sidebar-bg: #0073e3;
+    --color-sidebar-text: #ffffff;
+    --color-sidebar-active: rgba(255, 255, 255, 0.18);
+
+    /* --- Geometría --- */
+    --radius-input: 5px;
+    --radius-pill: 15px;
+    --radius-search: 25px;
+    --sidebar-width: 290px;
+    --header-height: 95px;
+    --layout-max: 1440px;
+}
+
+/* Modo oscuro: mismas variables, otros valores. Nada más cambia. */
+.dark {
+    --color-primary: #2a8cf0;
+    --color-primary-hover: #4ba0f5;
+    --color-accent: #6d95c0;
+    --color-welcome: #8ab2d8;
+
+    --color-bg: #14181d;
+    --color-surface: #1c2128;
+    --color-surface-alt: #262c35;
+    --color-border: #2f3640;
+
+    --color-text: #f2f4f7;
+    --color-text-muted: #b9c0c9;
+    --color-text-disabled: #6b727d;
+    --color-text-header: #98a1ad;
+    --color-text-invert: #14181d;
+
+    --color-danger: #ff5c5f;
+    --color-success: #34d95a;
+
+    --color-sidebar-bg: #10243a;
+    --color-sidebar-text: #e9f1fa;
+    --color-sidebar-active: rgba(255, 255, 255, 0.12);
+}
+
+/* --- Tipografía base del design system --- */
+html {
+    font-family: 'Archivo', system-ui, -apple-system, sans-serif;
+    font-variation-settings: 'wdth' 100;
+}
+
+body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    /* Sin transición sobre `all`: evita animar layout al togglear el tema. */
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ==========================================================================
+   Ítem activo del sidebar
+
+   En el diseño, la opción seleccionada no es una píldora suelta sobre el
+   azul: es una lengüeta que se FUNDE con el fondo del área de contenido.
+   Su lado derecho no existe —es el mismo blanco del panel— y en el
+   encuentro hay dos esquinas cóncavas que redondean la unión.
+
+   Se resuelve con dos pseudo-elementos enmascarados con un radial-gradient:
+   cada uno pinta un cuadradito del color del fondo al que se le recorta un
+   cuarto de círculo, que es exactamente la curva cóncava.
+
+   Todo sale de --color-bg, así que en modo oscuro se funde con el fondo
+   oscuro sin una sola regla extra.
+   ========================================================================== */
+
+.nav-activo {
+    --nav-radio: 30px;      /* redondeo del lado izquierdo */
+    --nav-concavo: 12px;    /* radio de las curvas cóncavas */
+
+    position: relative;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    border-radius: var(--nav-radio) 0 0 var(--nav-radio);
+}
+
+.nav-activo::before,
+.nav-activo::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    width: var(--nav-concavo);
+    height: var(--nav-concavo);
+    background-color: var(--color-bg);
+    pointer-events: none;
+}
+
+/* Curva de arriba: círculo centrado en la esquina superior izquierda. */
+.nav-activo::before {
+    top: calc(var(--nav-concavo) * -1);
+    -webkit-mask: radial-gradient(circle var(--nav-concavo) at 0 0, #0000 98%, #000 100%);
+            mask: radial-gradient(circle var(--nav-concavo) at 0 0, #0000 98%, #000 100%);
+}
+
+/* Curva de abajo: mismo círculo, centrado en la esquina inferior izquierda. */
+.nav-activo::after {
+    bottom: calc(var(--nav-concavo) * -1);
+    -webkit-mask: radial-gradient(circle var(--nav-concavo) at 0 100%, #0000 98%, #000 100%);
+            mask: radial-gradient(circle var(--nav-concavo) at 0 100%, #0000 98%, #000 100%);
+}
+
+/* ==========================================================================
+   Formulario de usuario (diseño de Figma "Nuevo usuario" / "Editar Usuario")
+   ========================================================================== */
+
+/* Campo con subrayado en lugar de caja: el estilo de los datos editables
+   del formulario de usuario. */
+.campo-linea {
+    width: 100%;
+    height: 34px;
+    padding: 0 2px;
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--color-text);
+    background-color: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--color-text-disabled);
+    border-radius: 0;
+}
+
+.campo-linea:focus {
+    outline: none;
+    border-bottom-color: var(--color-primary);
+}
+
+.campo-linea:disabled {
+    color: var(--color-text-disabled);
+    border-bottom-style: dashed;
+}
+
+/* Casillero de "Accesos permitidos": el diseño lo dibuja como un círculo
+   con punto interior. Se mantiene <input type="checkbox"> por accesibilidad
+   y semántica (son opciones múltiples) y solo se cambia su apariencia. */
+.acceso-check {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 1px solid #8f9090;
+    border-radius: 50px;
+    background-color: transparent;
+    display: grid;
+    place-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.acceso-check::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50px;
+    transform: scale(0);
+    transition: transform 0.12s ease-in-out;
+    background-color: var(--color-primary);
+}
+
+.acceso-check:checked::before {
+    transform: scale(1);
+}
+
+/* Heredado del rol: se ve marcado pero en gris y no se puede desmarcar,
+   porque lo concede el rol y los overrides solo suman. */
+.acceso-check:disabled {
+    cursor: not-allowed;
+    border-color: #8f9090;
+}
+
+.acceso-check:disabled::before {
+    background-color: #8f9090;
+}
+
+.acceso-check:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* Alpine.js: oculta los elementos con x-cloak hasta que termina de montar,
+   así no se ve el HTML sin inicializar durante la carga. */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Placeholders con el color del design system. */
+::placeholder {
+    color: var(--color-text-disabled);
+    opacity: 1;
+}
+
+/* Barra de scroll discreta y coherente con el tema. */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 5px;
+}
+
+/* Indicador de carga de HTMX: visible solo mientras hay request en vuelo. */
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+/* Foco visible y consistente en todo el sistema (accesibilidad). */
+:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* Impresión: sin sidebar ni header, solo el contenido. */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+}

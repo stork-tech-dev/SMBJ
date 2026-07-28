@@ -1,0 +1,119 @@
+{# ===========================================================================
+   Macro: árbol colapsable de permisos.
+
+   Se usa igual en la pantalla de permisos de un rol y en la de overrides
+   de un usuario (Principio 2: DRY). La diferencia la marca `modo`:
+
+     modo='rol'      → todos los checkboxes son editables
+     modo='usuario'  → lo heredado del rol se muestra en gris y bloqueado;
+                       solo se pueden AGREGAR overrides, nunca quitar
+
+   Uso:
+     {% from "components/permisos_tree.html" import arbol_permisos %}
+     {{ arbol_permisos(url_guardar='/api/v1/roles/3/permisos', modo='rol') }}
+
+   El árbol se carga por fetch desde la API: la página no lo pre-renderiza.
+   =========================================================================== #}
+
+{% macro arbol_permisos(url_datos, url_guardar, modo='rol') %}
+<div x-data="arbolPermisos('{{ url_datos }}', '{{ url_guardar }}', '{{ modo }}')"
+     x-init="cargar()"
+     class="mt-6">
+
+    {# ---------- Barra de acciones ---------- #}
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+        <button type="button" @click="expandirTodo(true)"
+                class="text-sm text-primary hover:underline">Expandir todo</button>
+        <span class="text-texto-disabled" aria-hidden="true">·</span>
+        <button type="button" @click="expandirTodo(false)"
+                class="text-sm text-primary hover:underline">Colapsar todo</button>
+
+        <span x-show="cargando" class="text-sm text-texto-muted">Cargando…</span>
+
+        <div class="ml-auto flex items-center gap-3">
+            <span x-show="sucio" x-cloak class="text-sm text-danger">Hay cambios sin guardar</span>
+            {# Guardado explícito, con confirmación: nunca autoguardado. #}
+            <button type="button"
+                    @click="confirmarGuardado()"
+                    :disabled="!sucio || guardando"
+                    class="h-[35px] px-5 rounded-input bg-primary text-white text-base font-medium
+                           hover:bg-primary-hover disabled:opacity-50">
+                <span x-text="guardando ? 'Guardando…' : 'Guardar permisos'"></span>
+            </button>
+        </div>
+    </div>
+
+    {% if modo == 'usuario' %}
+        <p class="mb-4 text-sm text-texto-muted">
+            En gris, lo que el usuario hereda de su rol: no se edita desde acá.
+            En azul, los permisos individuales que se le agregan. Los overrides
+            solo suman: nunca quitan un permiso del rol.
+        </p>
+    {% endif %}
+
+    {# ---------- Tabla del árbol ---------- #}
+    <div class="overflow-x-auto border border-borde rounded-input">
+        <table class="w-full border-collapse text-base">
+            <thead>
+                <tr class="bg-surface-alt">
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
+                               text-texto-header">Módulo</th>
+                    <template x-for="accion in acciones" :key="accion">
+                        <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide
+                                   text-texto-header w-28" x-text="etiquetas[accion]"></th>
+                    </template>
+                </tr>
+            </thead>
+            {# El árbol se aplana en `filas` (módulos + recursos visibles):
+               un solo x-for, HTML válido y sin tbody anidados. #}
+            <tbody>
+                <template x-for="fila in filas" :key="fila.clave">
+                    <tr class="border-t border-borde"
+                        :class="fila.tipo === 'modulo' ? 'bg-surface-alt' : 'bg-surface'">
+
+                        <td class="px-4 py-3" :class="fila.tipo === 'recurso' && 'pl-12 py-2'">
+                            {# Módulo: fila expandible. #}
+                            <button x-show="fila.tipo === 'modulo'"
+                                    type="button"
+                                    @click="alternar(fila.nodo)"
+                                    :aria-expanded="abierto(fila.nodo)"
+                                    :disabled="!fila.nodo.recursos.length"
+                                    class="flex items-center gap-2 text-left">
+                                <span class="w-4 text-texto-muted" aria-hidden="true"
+                                      x-text="fila.nodo.recursos.length
+                                              ? (abierto(fila.nodo) ? '▼' : '▶') : ''"></span>
+                                <span class="font-medium" x-text="fila.nodo.label"></span>
+                                <span x-show="fila.nodo.recursos.length"
+                                      class="text-xs text-texto-muted"
+                                      x-text="'(' + fila.nodo.recursos.length + ')'"></span>
+                            </button>
+
+                            {# Recurso: hoja del árbol. #}
+                            <span x-show="fila.tipo === 'recurso'" class="text-sm">
+                                <span class="text-texto-muted mr-1" aria-hidden="true">└</span>
+                                <span x-text="fila.nodo.label"></span>
+                            </span>
+                        </td>
+
+                        <template x-for="accion in acciones" :key="accion">
+                            <td class="px-4 py-3 text-center">
+                                {# null = la acción no aplica a este recurso: se muestra "—". #}
+                                <span x-show="fila.nodo['puede_' + accion] === null"
+                                      class="text-texto-disabled">—</span>
+                                <input x-show="fila.nodo['puede_' + accion] !== null"
+                                       type="checkbox"
+                                       class="w-4 h-4 accent-[color:var(--color-primary)]
+                                              disabled:opacity-60"
+                                       :checked="marcado(fila.nodo, accion)"
+                                       :disabled="bloqueado(fila.nodo, accion)"
+                                       :title="bloqueado(fila.nodo, accion) ? 'Heredado del rol' : ''"
+                                       @change="cambiar(fila.nodo, accion, $event.target.checked, fila.padre)">
+                            </td>
+                        </template>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endmacro %}

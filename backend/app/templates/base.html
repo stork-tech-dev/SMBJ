@@ -1,0 +1,216 @@
+{# ===========================================================================
+   Layout principal: sidebar + header + área de contenido.
+
+   Toda página extiende este archivo y define el bloque `contenido`.
+   No duplicar sidebar ni header en ninguna página (Principio 2: DRY).
+   =========================================================================== #}
+<!DOCTYPE html>
+<html lang="es"
+      x-data="temaApp()"
+      x-init="aplicar()"
+      :class="{ 'dark': dark }">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block titulo %}{{ titulo|default('Inicio') }} · {{ APP_NAME }}{% endblock %}</title>
+
+    {# Evita el flash de tema claro antes de que Alpine monte. #}
+    <script>
+        if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600;900&display=swap"
+          rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Los colores apuntan a las CSS variables de custom.css: el modo
+        // oscuro se resuelve ahí y ningún template repite un hex.
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--color-primary)',
+                        'primary-hover': 'var(--color-primary-hover)',
+                        accent: 'var(--color-accent)',
+                        welcome: 'var(--color-welcome)',
+                        bg: 'var(--color-bg)',
+                        surface: 'var(--color-surface)',
+                        'surface-alt': 'var(--color-surface-alt)',
+                        borde: 'var(--color-border)',
+                        texto: 'var(--color-text)',
+                        'texto-muted': 'var(--color-text-muted)',
+                        'texto-disabled': 'var(--color-text-disabled)',
+                        'texto-header': 'var(--color-text-header)',
+                        'texto-invert': 'var(--color-text-invert)',
+                        danger: 'var(--color-danger)',
+                        success: 'var(--color-success)',
+                        'sidebar-bg': 'var(--color-sidebar-bg)',
+                        'sidebar-text': 'var(--color-sidebar-text)',
+                    },
+                    fontFamily: {
+                        sans: ['Archivo', 'system-ui', 'sans-serif'],
+                    },
+                    // Escala tipográfica del design system (Figma).
+                    fontSize: {
+                        xs: '14px',
+                        sm: '15px',
+                        base: '18px',
+                        lg: '22px',
+                        xl: '30px',
+                        '2xl': '60px',
+                    },
+                    borderRadius: {
+                        input: '5px',
+                        pill: '15px',
+                        search: '25px',
+                    },
+                    spacing: {
+                        sidebar: '290px',
+                        header: '95px',
+                    },
+                    maxWidth: {
+                        layout: '1440px',
+                    },
+                },
+            },
+        };
+    </script>
+
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/custom.css') }}">
+
+    <script src="https://unpkg.com/htmx.org@2.0/dist/htmx.min.js"></script>
+    {# app.js va antes que Alpine y con defer: define temaApp() para el
+       x-data del <html> y corre con el DOM ya disponible. #}
+    <script src="{{ url_for('static', path='/js/app.js') }}" defer></script>
+    <script src="https://unpkg.com/alpinejs@3.x/dist/cdn.min.js" defer></script>
+
+    {# FingerprintJS: identifica el dispositivo cuando no hay cookie.
+       Se carga como módulo ESM desde el CDN oficial. El visitorId se guarda
+       en window.__deviceFingerprint y se manda como header X-Device-Fingerprint
+       en los requests de HTMX; además dispara la identificación llamando a
+       /dispositivos/me una vez, para dar de alta o recuperar el dispositivo. #}
+    <script type="module">
+        import FingerprintJS from 'https://openfpcdn.io/fingerprintjs/v4';
+        try {
+            const fp = await FingerprintJS.load();
+            const { visitorId } = await fp.get();
+            window.__deviceFingerprint = visitorId;
+            // Alta/recuperación del dispositivo con el fingerprint disponible.
+            fetch('/api/v1/dispositivos/me', {
+                credentials: 'same-origin',
+                headers: { 'X-Device-Fingerprint': visitorId },
+            }).catch(() => {});
+        } catch (e) {
+            /* Si el CDN no carga, la identificación por cookie sigue andando. */
+        }
+    </script>
+
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body class="bg-bg text-texto text-base font-light antialiased">
+
+{% from "components/toast.html" import contenedor_toasts %}
+{% from "components/marca.html" import marca %}
+
+{# El contenedor NO lleva mx-auto: el sidebar tiene que quedar pegado al
+   borde izquierdo de la pantalla. El ancho del diseño (1440px) se respeta
+   limitando el área de contenido, no centrando todo el layout. #}
+<div class="flex min-h-screen">
+
+    {# ================= SIDEBAR ================= #}
+    <aside class="no-print hidden md:flex md:flex-col w-sidebar shrink-0 bg-sidebar-bg text-sidebar-text">
+        <div class="h-header flex items-center px-8 shrink-0">
+            <a href="/" class="text-white" aria-label="Inicio">
+                {{ marca(letra_empresa|default('S'), clases='h-12') }}
+            </a>
+        </div>
+
+        {# Sin overflow: recortaría las esquinas cóncavas del ítem activo y la
+           lengüeta que se extiende hasta el borde del sidebar. #}
+        <nav class="flex-1 px-4 py-4 space-y-2">
+            {% for item in menu %}
+                {% include "components/_sidebar_item.html" %}
+            {% endfor %}
+        </nav>
+
+        {# Ítems anclados al pie del sidebar. #}
+        <nav class="px-4 py-4 space-y-2 border-t border-white/15">
+            {% for item in menu_pie|default([]) %}
+                {% include "components/_sidebar_item.html" %}
+            {% endfor %}
+        </nav>
+    </aside>
+
+    {# ================= COLUMNA PRINCIPAL ================= #}
+    <div class="flex-1 min-w-0 flex flex-col">
+
+        {# ---------------- HEADER ---------------- #}
+        <header class="no-print h-header shrink-0 flex items-center justify-end gap-4 w-full
+                       pl-9 lg:pl-[60px] pr-9 lg:pr-[60px] border-b border-borde">
+
+            {# Buscador global. hx-* queda listo para el módulo que lo implemente. #}
+            <div class="w-full max-w-md">
+                <label for="buscador-global" class="sr-only">Buscar</label>
+                <input id="buscador-global"
+                       type="search"
+                       placeholder="Buscar…"
+                       class="w-full h-10 px-5 text-sm bg-surface border border-borde rounded-search
+                              text-texto focus:outline-none focus:border-primary">
+            </div>
+
+            {# Toggle de modo claro/oscuro: sin recargar la página. #}
+            <button type="button"
+                    @click="alternar()"
+                    :aria-label="dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+                    class="h-10 w-10 grid place-items-center rounded-input border border-borde
+                           text-texto-muted hover:text-primary hover:border-primary transition-colors">
+                <span x-show="!dark" aria-hidden="true">☾</span>
+                <span x-show="dark" x-cloak aria-hidden="true">☀</span>
+            </button>
+
+            {# Badge del usuario logueado, con menú de sesión. #}
+            <div class="relative" x-data="{ menu: false }" @click.outside="menu = false">
+                <button type="button" @click="menu = !menu" :aria-expanded="menu"
+                        class="flex items-center gap-2 px-5 h-10 rounded-pill bg-accent text-white">
+                    <span class="text-sm font-medium truncate max-w-[12rem]">
+                        {{ usuario_actual.nombre|default('Invitado') }}
+                    </span>
+                    <span class="text-xs" aria-hidden="true">▾</span>
+                </button>
+
+                <div x-show="menu" x-cloak
+                     class="absolute right-0 mt-2 w-56 bg-surface border border-borde
+                            rounded-input shadow-lg z-40 py-2">
+                    <p class="px-4 py-1 text-sm text-texto-muted">
+                        Rol: {{ usuario_actual.rol.nombre|default('—') }}
+                    </p>
+                    <a href="/cambiar-password"
+                       class="block px-4 py-2 text-base hover:bg-surface-alt">Cambiar contraseña</a>
+                    <button type="button" @click="cerrarSesion()"
+                            class="w-full text-left px-4 py-2 text-base text-danger
+                                   hover:bg-surface-alt">Cerrar sesión</button>
+                </div>
+            </div>
+        </header>
+
+        {# ---------------- CONTENIDO ---------------- #}
+        <main id="contenido" class="flex-1 w-full pl-9 lg:pl-[60px] pr-9 lg:pr-[60px] py-8">
+            {% block contenido %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+{# Contenedor global de notificaciones: cualquier página dispara toasts
+   con window.toast(mensaje, tipo) desde app.js. #}
+{{ contenedor_toasts() }}
+
+{% block scripts %}{% endblock %}
+</body>
+</html>
