@@ -3,6 +3,11 @@
 # No hay servicio "frontend": FastAPI sirve el HTML con Jinja2 en el mismo
 # proceso. Sin build process, sin nginx, sin node_modules.
 
+# Nombre del proyecto de Compose fijado explícitamente. Sin esto, Compose lo
+# deriva del nombre de la carpeta, y renombrar el directorio haría que el
+# volumen pase a llamarse distinto y la base apareciera vacía.
+name: soleil
+
 services:
   db:
     image: postgres:15

@@ -24,3 +24,5 @@ Thumbs.db
 /backend/app/reports/output/
 *.pdf
 *.xlsx
+
+prompts/
