@@ -53,16 +53,6 @@
 <section class="mt-10">
     <h2 class="text-lg font-semibold text-texto mb-4">Componentes</h2>
 
-    {% call barra_filtros(url_crear='#') %}
-        {{ campo('busqueda', 'Nombre', placeholder='Buscar…') }}
-        {{ campo_select('estado', 'Estado', opciones=[
-            {'value': 'pendiente', 'label': 'Pendiente'},
-            {'value': 'autorizado', 'label': 'Autorizado'}
-        ]) }}
-        {{ campo_booleano('activo', 'Activo') }}
-        {{ campo_rango('fecha', 'Fecha', tipo='date') }}
-    {% endcall %}
-
     {% set filas_demo = [
         {'id': 1, 'nombre': 'Registro de ejemplo', 'estado': 'Autorizado', 'variante': 'exito'},
         {'id': 2, 'nombre': 'Otro registro', 'estado': 'Pendiente', 'variante': 'pendiente'}
@@ -78,6 +68,18 @@
         }) %}
     {% endfor %}
 
+    {# Las filas se arman antes de la barra: el total se muestra ahí, al lado
+       del botón "Limpiar filtros". #}
+    {% call barra_filtros(url_crear='#', total=filas|length) %}
+        {{ campo('busqueda', 'Nombre', placeholder='Buscar…') }}
+        {{ campo_select('estado', 'Estado', opciones=[
+            {'value': 'pendiente', 'label': 'Pendiente'},
+            {'value': 'autorizado', 'label': 'Autorizado'}
+        ]) }}
+        {{ campo_booleano('activo', 'Activo') }}
+        {{ campo_rango('fecha', 'Fecha', tipo='date') }}
+    {% endcall %}
+
     {{ tabla(
         columnas=[
             {'key': 'nombre', 'label': 'Nombre'},
@@ -85,8 +87,7 @@
         ],
         filas=filas,
         acciones=['ver', 'editar', 'borrar'],
-        url_base='#',
-        total=filas|length) }}
+        url_base='#') }}
 
     <div class="flex flex-wrap items-center gap-3 mt-6">
         {{ badge('Activo', 'activo') }}

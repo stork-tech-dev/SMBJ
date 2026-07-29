@@ -26,6 +26,7 @@ from app.schemas.usuarios import (
     ClaveEspecialResultado,
     ClaveEspecialValidar,
     HistorialAccesoResponse,
+    LocalResumen,
     UsuarioCrear,
     UsuarioEditar,
     UsuarioEstado,
@@ -56,6 +57,7 @@ def listar(
     username: str | None = Query(default=None),
     email: str | None = Query(default=None),
     rol_id: int | None = Query(default=None),
+    local_asignado_id: int | None = Query(default=None),
     activo: bool | None = Query(default=None),
     pagina: int = Query(default=1, ge=1),
     tamano: int = Query(default=50, ge=1, le=200),
@@ -69,6 +71,7 @@ def listar(
         username=username,
         email=email,
         rol_id=rol_id,
+        local_asignado_id=local_asignado_id,
         activo=activo,
         pagina=pagina,
         tamano=tamano,
@@ -85,6 +88,25 @@ def roles_asignables(
 ):
     """Alimenta el selector de rol del formulario de alta/edición."""
     return servicio_usuarios.roles_asignables(db, autor)
+
+
+@router.get(
+    "/locales-asignables",
+    response_model=list[LocalResumen],
+    summary="Locales que se pueden asignar",
+)
+def locales_asignables(
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.USUARIOS, "ver")),
+):
+    """
+    Alimenta el selector "Local Asignado" del formulario.
+
+    Existe acá, y no se reusa GET /puntos-de-venta, porque ese endpoint
+    exige permiso de CONFIGURACION: quien gestiona usuarios no tiene por
+    qué tenerlo, y se quedaría sin opciones en el desplegable.
+    """
+    return servicio_usuarios.locales_asignables(db)
 
 
 @router.get(
@@ -189,6 +211,9 @@ def crear(
             password=datos.password,
             rol_id=datos.rol_id,
             email=datos.email,
+            fecha_nacimiento=datos.fecha_nacimiento,
+            celular=datos.celular,
+            local_asignado_id=datos.local_asignado_id,
             ip_origen=ip_de_request(request),
         )
     except servicio_usuarios.SinPermiso as exc:
@@ -219,6 +244,14 @@ def editar(
             email=datos.email,
             rol_id=datos.rol_id,
             password=datos.password,
+            fecha_nacimiento=datos.fecha_nacimiento,
+            celular=datos.celular,
+            local_asignado_id=datos.local_asignado_id,
+            # Distinguen "no lo mandaron" de "lo mandaron vacío": los tres
+            # campos son opcionales y se tienen que poder borrar.
+            editar_fecha_nacimiento="fecha_nacimiento" in datos.model_fields_set,
+            editar_celular="celular" in datos.model_fields_set,
+            editar_local="local_asignado_id" in datos.model_fields_set,
             ip_origen=ip_de_request(request),
         )
     except servicio_usuarios.SinPermiso as exc:

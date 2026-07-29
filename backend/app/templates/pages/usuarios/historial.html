@@ -39,14 +39,14 @@
                        hover:border-primary hover:text-primary">
             Limpiar filtros
         </button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
+        </p>
     </div>
 
-    <p class="mt-4 text-sm text-texto-muted">
-        <span x-text="total"></span>
-        <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
-    </p>
-
-    <div class="overflow-x-auto border border-borde rounded-input mt-2">
+    <div class="overflow-x-auto border border-borde rounded-input mt-6">
         <table class="w-full border-collapse text-base">
             <thead>
                 <tr class="bg-surface-alt">

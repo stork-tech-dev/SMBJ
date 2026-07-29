@@ -4,7 +4,11 @@
    Uso:
      {% from "components/table.html" import tabla, barra_filtros, paginacion %}
 
-     {% call barra_filtros(url_crear='/productos/nuevo') %}
+     El total de resultados lo muestra barra_filtros, al lado del botón
+     "Limpiar filtros" — no encima de la tabla:
+
+     {% call barra_filtros(url_crear='/productos/nuevo', total=total,
+                           singular='producto', plural='productos') %}
         ... campos de filtro ...
      {% endcall %}
 
@@ -13,8 +17,7 @@
                     {'key': 'precio', 'label': 'Precio', 'align': 'right'}],
           filas=productos,
           acciones=['ver', 'editar', 'borrar'],
-          url_base='/productos',
-          total=total) }}
+          url_base='/productos') }}
 
    Las filas son diccionarios (o modelos con acceso por atributo). El
    formato de cada valor lo resuelve el llamador: la API devuelve datos
@@ -24,17 +27,25 @@
 {% from "components/botones.html" import accion, acciones as fila_acciones %}
 
 
-{% macro barra_filtros(url_crear=None, texto_crear='+ Crear nuevo', url_limpiar=None) %}
+{% macro barra_filtros(url_crear=None, texto_crear='+ Crear nuevo', url_limpiar=None,
+                       total=None, singular='registro', plural='registros') %}
     <div class="flex flex-wrap items-end gap-4 mb-6">
         <div class="flex flex-wrap items-end gap-4 flex-1 min-w-0">
             {{ caller() }}
         </div>
-        <div class="flex items-end gap-2">
+        <div class="flex items-end gap-4">
             <a href="{{ url_limpiar|default('', true) or '?' }}"
                class="h-[35px] px-4 grid place-items-center rounded-input text-sm
                       text-texto-muted border border-borde hover:border-primary hover:text-primary">
                 Limpiar filtros
             </a>
+            {# El total va pegado a "Limpiar filtros", no arriba de la tabla. #}
+            {% if total is not none %}
+                <p class="h-[35px] grid place-items-center text-sm text-texto-muted whitespace-nowrap">
+                    {{ total }} {{ singular if total == 1 else plural }}
+                    encontrado{{ '' if total == 1 else 's' }}
+                </p>
+            {% endif %}
             {% if url_crear %}
                 <a href="{{ url_crear }}"
                    class="h-[35px] px-5 grid place-items-center rounded-input bg-primary text-white
@@ -47,13 +58,7 @@
 {% endmacro %}
 
 
-{% macro tabla(columnas, filas, acciones=[], url_base='', total=None, vacio='Sin resultados.') %}
-    {% if total is not none %}
-        <p class="mb-2 text-sm text-texto-muted">
-            {{ total }} registro{{ '' if total == 1 else 's' }} encontrado{{ '' if total == 1 else 's' }}
-        </p>
-    {% endif %}
-
+{% macro tabla(columnas, filas, acciones=[], url_base='', vacio='Sin resultados.') %}
     {# overflow-x-auto: la tabla scrollea sola en tablet, la página nunca. #}
     <div class="overflow-x-auto border border-borde rounded-input">
         <table class="w-full border-collapse text-base">

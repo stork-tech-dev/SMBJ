@@ -1,5 +1,7 @@
 """Tests de las reglas de negocio de usuarios y del árbol de permisos."""
 
+from datetime import date
+
 import pytest
 
 from app.core.permisos import (
@@ -283,3 +285,287 @@ def test_recurso_de_otro_modulo_es_rechazado(db, crear_usuario, roles):
             [{"modulo": Modulo.VENTAS.value, "recurso": Recurso.REPORTE_STOCK.value}],
             autor.id,
         )
+
+
+# ============================================================================
+# DATOS PERSONALES: fecha de nacimiento, celular y local asignado
+# ============================================================================
+
+
+@pytest.fixture
+def local(db, crear_usuario):
+    """Un local activo, que es lo único asignable a un usuario."""
+    from app.models.punto_de_venta import TipoPuntoVenta
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm_local", ROL_CUENTA_MAESTRA)
+    return servicio_puntos.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "1234")
+
+
+def test_alta_guarda_los_datos_personales(db, crear_usuario, roles, local):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+
+    usuario = servicio_usuarios.crear_usuario(
+        db,
+        autor,
+        username="leandra",
+        nombre="Leandra Carvallo",
+        password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id,
+        fecha_nacimiento=date(1995, 10, 6),
+        celular="+3512108190",
+        local_asignado_id=local.id,
+    )
+
+    assert usuario.fecha_nacimiento == date(1995, 10, 6)
+    assert usuario.celular == "+3512108190"
+    assert usuario.local_asignado_id == local.id
+    # La relación resuelve el nombre sin una query extra (lazy="joined").
+    assert usuario.local_asignado.nombre == "Patio Olmos"
+
+
+def test_los_tres_campos_son_opcionales(db, crear_usuario, roles):
+    """El alta sin ninguno de los tres sigue funcionando."""
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+
+    usuario = servicio_usuarios.crear_usuario(
+        db, autor, username="pepe", nombre="Pepe", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id,
+    )
+
+    assert usuario.fecha_nacimiento is None
+    assert usuario.celular is None
+    assert usuario.local_asignado_id is None
+
+
+@pytest.mark.parametrize(
+    "entrada,esperado",
+    [
+        ("+3512108190", "+3512108190"),   # prefijo internacional del diseño
+        ("351 210-8190", "3512108190"),   # separadores: se descartan
+        ("(351) 2108190", "3512108190"),
+        ("0351210819", "0351210819"),     # el cero inicial se conserva
+    ],
+)
+def test_celular_normaliza_separadores(entrada, esperado):
+    from app.schemas.usuarios import UsuarioCrear
+
+    datos = UsuarioCrear(
+        username="usu", nombre="X", password="Test1234!", rol_id=1, celular=entrada
+    )
+    assert datos.celular == esperado
+
+
+@pytest.mark.parametrize("invalido", ["11-A-22", "no tiene", "+", "12345"])
+def test_celular_rechaza_lo_que_no_es_numero(invalido):
+    from pydantic import ValidationError
+
+    from app.schemas.usuarios import UsuarioCrear
+
+    with pytest.raises(ValidationError):
+        UsuarioCrear(
+            username="usu", nombre="X", password="Test1234!", rol_id=1, celular=invalido
+        )
+
+
+def test_local_asignado_debe_ser_un_local(db, crear_usuario, roles):
+    """Un CD o una tienda online no son asignables: el campo es 'local'."""
+    from app.models.punto_de_venta import TipoPuntoVenta
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    cd = servicio_puntos.crear_punto(db, autor, "CD Central", TipoPuntoVenta.CD)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="tipo local"):
+        servicio_usuarios.crear_usuario(
+            db, autor, username="usu", nombre="X", password="Test1234!",
+            rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=cd.id,
+        )
+
+
+def test_local_asignado_debe_estar_activo(db, crear_usuario, roles, local):
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    servicio_puntos.cambiar_estado(db, autor, local.id, activo=False)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="inactivo"):
+        servicio_usuarios.crear_usuario(
+            db, autor, username="usu", nombre="X", password="Test1234!",
+            rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+        )
+
+
+def test_local_asignado_inexistente_es_rechazado(db, crear_usuario, roles):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="no existe"):
+        servicio_usuarios.crear_usuario(
+            db, autor, username="usu", nombre="X", password="Test1234!",
+            rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=999999,
+        )
+
+
+def test_editar_sin_mandar_los_campos_no_los_borra(client, db, crear_usuario, roles, local, login):
+    """
+    El caso que motiva el sentinel: un PUT que solo cambia el nombre no
+    puede vaciar la fecha, el celular ni el local.
+    """
+    autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    objetivo = servicio_usuarios.crear_usuario(
+        db, autor, username="leandra", nombre="Leandra", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, fecha_nacimiento=date(1995, 10, 6),
+        celular="3512108190", local_asignado_id=local.id,
+    )
+    db.commit()
+
+    headers = login("admin")
+    resp = client.put(
+        f"/api/v1/usuarios/{objetivo.id}", json={"nombre": "Leandra C."}, headers=headers
+    )
+    assert resp.status_code == 200
+
+    cuerpo = resp.json()
+    assert cuerpo["nombre"] == "Leandra C."
+    assert cuerpo["fecha_nacimiento"] == "1995-10-06"
+    assert cuerpo["celular"] == "3512108190"
+    assert cuerpo["local_asignado_id"] == local.id
+
+
+def test_editar_mandando_null_si_los_vacia(client, db, crear_usuario, roles, local, login):
+    """La otra mitad del sentinel: mandarlos en null sí los borra."""
+    autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    objetivo = servicio_usuarios.crear_usuario(
+        db, autor, username="leandra", nombre="Leandra", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, fecha_nacimiento=date(1995, 10, 6),
+        celular="3512108190", local_asignado_id=local.id,
+    )
+    db.commit()
+
+    headers = login("admin")
+    resp = client.put(
+        f"/api/v1/usuarios/{objetivo.id}",
+        json={"fecha_nacimiento": None, "celular": None, "local_asignado_id": None},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    cuerpo = resp.json()
+    assert cuerpo["fecha_nacimiento"] is None
+    assert cuerpo["celular"] is None
+    assert cuerpo["local_asignado_id"] is None
+
+
+def test_respuesta_no_expone_el_codigo_del_local(client, db, crear_usuario, roles, local, login):
+    """
+    El local viaja anidado, pero sin `codigo_confirmacion`: es el código
+    con el que un local confirma envíos y no pinta en usuarios.
+    """
+    autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    servicio_usuarios.crear_usuario(
+        db, autor, username="leandra", nombre="Leandra", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+    db.commit()
+
+    resp = client.get("/api/v1/usuarios", headers=login("admin"))
+    assert resp.status_code == 200
+    assert "1234" not in resp.text
+    assert "codigo_confirmacion" not in resp.text
+
+    fila = next(u for u in resp.json()["resultados"] if u["username"] == "leandra")
+    assert fila["local_asignado"] == {"id": local.id, "nombre": "Patio Olmos"}
+
+
+def test_locales_asignables_no_exige_permiso_de_configuracion(
+    client, crear_usuario, roles, dar_permiso, login, local
+):
+    """
+    El selector se alimenta del endpoint del propio módulo: un supervisor
+    con permiso solo sobre usuarios tiene que ver los locales.
+    """
+    crear_usuario("sup", ROL_SUPERVISOR)
+    dar_permiso(rol_id=roles[ROL_SUPERVISOR].id, modulo=Modulo.USUARIOS, ver=True)
+
+    resp = client.get("/api/v1/usuarios/locales-asignables", headers=login("sup"))
+    assert resp.status_code == 200
+    assert [l["nombre"] for l in resp.json()] == ["Patio Olmos"]
+
+
+def test_listado_filtra_por_local_asignado(db, crear_usuario, roles, local):
+    """
+    El filtro "Local" de la tabla: se resuelve en el backend, nunca sobre
+    datos ya cargados en el frontend (Principio 5).
+    """
+    from app.models.punto_de_venta import TipoPuntoVenta
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    otro = servicio_puntos.crear_punto(db, autor, "Paseo del Jockey", TipoPuntoVenta.LOCAL)
+
+    servicio_usuarios.crear_usuario(
+        db, autor, username="anaolmos", nombre="Ana", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+    servicio_usuarios.crear_usuario(
+        db, autor, username="bebajockey", nombre="Beba", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=otro.id,
+    )
+    servicio_usuarios.crear_usuario(
+        db, autor, username="sinlocal", nombre="Sin Local", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id,
+    )
+
+    del_local, total = servicio_usuarios.listar_usuarios(db, local_asignado_id=local.id)
+    assert total == 1
+    assert del_local[0].username == "anaolmos"
+
+    del_otro, total = servicio_usuarios.listar_usuarios(db, local_asignado_id=otro.id)
+    assert total == 1
+    assert del_otro[0].username == "bebajockey"
+
+    # Sin filtro entran todos, incluido el que no tiene local asignado.
+    todos, _ = servicio_usuarios.listar_usuarios(db)
+    usernames = {u.username for u in todos}
+    assert {"anaolmos", "bebajockey", "sinlocal"} <= usernames
+
+
+def test_filtro_de_local_se_combina_con_el_de_rol(db, crear_usuario, roles, local):
+    """Los filtros se acumulan: local + rol, no uno u otro."""
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+
+    servicio_usuarios.crear_usuario(
+        db, autor, username="vendedora", nombre="Vendedora", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+    servicio_usuarios.crear_usuario(
+        db, autor, username="supervisora", nombre="Supervisora", password="Test1234!",
+        rol_id=roles[ROL_SUPERVISOR].id, local_asignado_id=local.id,
+    )
+
+    resultados, total = servicio_usuarios.listar_usuarios(
+        db, local_asignado_id=local.id, rol_id=roles[ROL_VENDEDOR].id
+    )
+    assert total == 1
+    assert resultados[0].username == "vendedora"
+
+
+def test_filtro_de_local_por_la_api(client, db, crear_usuario, roles, local, login):
+    autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    servicio_usuarios.crear_usuario(
+        db, autor, username="anaolmos", nombre="Ana", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+    servicio_usuarios.crear_usuario(
+        db, autor, username="sinlocal", nombre="Sin Local", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id,
+    )
+    db.commit()
+
+    headers = login("admin")
+    resp = client.get(f"/api/v1/usuarios?local_asignado_id={local.id}", headers=headers)
+
+    assert resp.status_code == 200
+    cuerpo = resp.json()
+    assert cuerpo["total"] == 1
+    assert cuerpo["resultados"][0]["username"] == "anaolmos"

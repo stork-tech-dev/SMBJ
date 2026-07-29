@@ -1,13 +1,14 @@
 {# ABM de roles. Exclusivo de la Cuenta Maestra. #}
 {% extends "base.html" %}
 
-{% from "components/botones.html" import accion, acciones %}
+{% from "components/botones.html" import accion, acciones, volver %}
 {% from "components/icons.html" import icono %}
 
 {% block contenido %}
 <div x-data="abmRoles()" x-init="cargar()">
 
-    <h1 class="text-[50px] leading-none font-black text-welcome">Roles</h1>
+    {{ volver('/configuracion', 'Configuraciones') }}
+    <h1 class="mt-2 text-[50px] leading-none font-black text-welcome">Roles</h1>
 
     {# ---------- Filtros (Principio 5) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
@@ -44,6 +45,11 @@
                 class="h-9 px-4 rounded-input text-sm text-texto-muted border border-borde
                        hover:border-primary hover:text-primary">Limpiar filtros</button>
 
+        <p class="text-sm text-texto-muted">
+            <span x-text="roles.length"></span>
+            <span x-text="roles.length === 1 ? 'rol encontrado' : 'roles encontrados'"></span>
+        </p>
+
         <button type="button" @click="abrirAlta()"
                 class="ml-auto h-10 px-6 inline-flex items-center gap-2 rounded-input bg-accent
                        text-white text-sm font-semibold hover:opacity-90">
@@ -51,13 +57,8 @@
         </button>
     </div>
 
-    <p class="mt-4 text-sm text-texto-muted">
-        <span x-text="roles.length"></span>
-        <span x-text="roles.length === 1 ? 'rol encontrado' : 'roles encontrados'"></span>
-    </p>
-
     {# ---------- Tabla ---------- #}
-    <div class="mt-2 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
+    <div class="mt-6 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full border-collapse text-base">
                 <thead>
@@ -75,10 +76,6 @@
                             :class="!r.activo && 'opacity-60'">
                             <td class="px-8 py-5 align-middle">
                                 <span class="font-medium" x-text="r.nombre"></span>
-                                {# Badge "Sistema": estos roles no se borran ni se renombran. #}
-                                <span x-show="r.es_sistema"
-                                      class="ml-2 inline-flex items-center px-3 py-0.5 rounded-pill
-                                             text-xs font-medium bg-accent text-white">Sistema</span>
                             </td>
                             <td class="px-4 py-5 align-middle" x-text="r.descripcion || '—'"></td>
                             <td class="px-4 py-5 align-middle text-center font-medium" x-text="r.cantidad_usuarios"></td>
@@ -189,5 +186,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='/js/roles.js') }}"></script>
+<script src="{{ estatico('/js/roles.js') }}"></script>
 {% endblock %}

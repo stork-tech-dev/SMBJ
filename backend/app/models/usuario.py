@@ -1,16 +1,17 @@
 """Modelos de `usuarios` y `historial_accesos`."""
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.permiso import UsuarioPermiso
+    from app.models.punto_de_venta import PuntoDeVenta
     from app.models.rol import Rol
 
 
@@ -30,6 +31,27 @@ class Usuario(Base):
         BigInteger, ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    # --- Datos personales (opcionales, capas "Nuevo/Editar Usuario") ---
+
+    # Fecha sin hora: no interesa el momento, solo el día. El formato
+    # dd/mm/yyyy es de presentación y vive en el frontend (Principio 1).
+    fecha_nacimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Teléfono como texto y no como número: conserva ceros a la izquierda,
+    # admite el prefijo internacional del diseño y nunca se usa para hacer
+    # cuentas. Guardarlo como entero obligaría a migrar la columna.
+    celular: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Local donde opera el usuario. ondelete SET NULL: si se elimina el
+    # punto de venta el usuario sobrevive y solo queda sin asignación,
+    # a diferencia del rol, que es obligatorio y usa RESTRICT.
+    local_asignado_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("puntos_de_venta.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # NULL para todos excepto la Cuenta Maestra.
     # NUNCA se expone en un schema Pydantic de respuesta: solo se valida
@@ -52,6 +74,10 @@ class Usuario(Base):
     # lazy="joined": el rol se necesita en casi toda validación de permisos,
     # traerlo en la misma query evita el N+1 en los listados.
     rol: Mapped["Rol"] = relationship(back_populates="usuarios", lazy="joined")
+
+    # lazy="joined" por el mismo motivo que el rol: el listado muestra el
+    # local de cada usuario y sin esto habría un N+1 por fila.
+    local_asignado: Mapped["PuntoDeVenta | None"] = relationship(lazy="joined")
     permisos: Mapped[list["UsuarioPermiso"]] = relationship(
         back_populates="usuario", cascade="all, delete-orphan"
     )

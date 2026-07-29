@@ -32,12 +32,11 @@ router = APIRouter(include_in_schema=False)
 # Estructura del sidebar. Vive acá y no en el template para que agregar
 # un módulo sea una línea de Python y no tocar HTML (Principio 2).
 # `modulo` es el permiso que se necesita para ver el ítem; None = siempre.
-# `modulos` (plural) hace visible el ítem si el usuario puede ver CUALQUIERA
-# de esos módulos: lo usa "Configuraciones", que agrupa varias secciones.
+# `solo_maestra` lo restringe a la Cuenta Maestra.
+# `hub_configuracion` marca el ítem que agrupa CONFIGURACION_SECCIONES: se
+# muestra si el usuario puede ver al menos una de esas secciones.
 MENU_SIDEBAR = [
     {"nombre": "Home", "url": "/", "icono": "home", "modulo": None},
-    {"nombre": "Usuarios", "url": "/usuarios", "icono": "users", "modulo": Modulo.USUARIOS},
-    {"nombre": "Roles", "url": "/roles", "icono": "shield", "modulo": None, "solo_maestra": True},
     {"nombre": "Proveedores", "url": "/proveedores", "icono": "truck", "modulo": Modulo.PROVEEDORES},
     {"nombre": "Productos", "url": "/productos", "icono": "box", "modulo": Modulo.PRODUCTOS},
     {"nombre": "Ventas", "url": "/ventas", "icono": "cart", "modulo": Modulo.VENTAS},
@@ -47,8 +46,12 @@ MENU_SIDEBAR = [
         "nombre": "Configuraciones",
         "url": "/configuracion",
         "icono": "settings",
-        # Hub de secciones: visible si puede ver alguna de ellas.
-        "modulos": [Modulo.CONFIGURACION, Modulo.DISPOSITIVOS],
+        "modulo": None,
+        # Hub de secciones: visible si el usuario puede ver alguna de las
+        # de CONFIGURACION_SECCIONES. Se deriva de esa lista en vez de
+        # repetir acá los módulos, para que agregar una sección no obligue
+        # a acordarse de tocar también el sidebar (Principio 2).
+        "hub_configuracion": True,
     },
 ]
 
@@ -60,6 +63,19 @@ MENU_SIDEBAR_PIE = [
 # Configuraciones (diseño "Configuraciones CM"). Agregar una sección nueva
 # es una línea acá; cada una se muestra solo si el usuario tiene su permiso.
 CONFIGURACION_SECCIONES = [
+    {
+        "nombre": "Usuarios",
+        "descripcion": "Altas, permisos e historial de accesos",
+        "url": "/usuarios",
+        "modulo": Modulo.USUARIOS,
+    },
+    {
+        "nombre": "Roles",
+        "descripcion": "Perfiles de permisos y su alcance por módulo",
+        "url": "/roles",
+        "modulo": None,
+        "solo_maestra": True,
+    },
     {
         "nombre": "Puntos de venta",
         "descripcion": "Locales, Centro de Distribución y tiendas online",
@@ -108,38 +124,47 @@ def requiere_sesion(usuario=Depends(usuario_de_pagina)):
     return usuario
 
 
+def _es_maestra(usuario) -> bool:
+    return usuario.rol is not None and usuario.rol.nombre == ROL_CUENTA_MAESTRA
+
+
+def _visible(db: Session, usuario, item: dict, es_maestra: bool) -> bool:
+    """
+    Regla de visibilidad única para los ítems del sidebar y para las
+    tarjetas de Configuraciones (Principio 2: una sola tabla de verdades).
+
+    Sin esto, mover un ítem al hub le cambiaría silenciosamente las reglas
+    de acceso: las tarjetas se filtraban solo por módulo e ignoraban
+    `solo_maestra`, que es lo que protege a Roles.
+    """
+    if item.get("solo_maestra"):
+        return es_maestra
+    # Hub de Configuraciones: visible si alguna de sus secciones lo es.
+    if item.get("hub_configuracion"):
+        return any(
+            _visible(db, usuario, s, es_maestra) for s in CONFIGURACION_SECCIONES
+        )
+    if item.get("modulo") is None:
+        return True
+    return resolver_permiso(db, usuario.id, item["modulo"], "ver")
+
+
 def menu_visible(db: Session, usuario) -> tuple[list, list]:
     """
     Filtra el sidebar según lo que el usuario puede ver. Usa la misma
     `resolver_permiso` que la API: no hay una segunda tabla de verdades.
     """
-    es_maestra = usuario.rol is not None and usuario.rol.nombre == ROL_CUENTA_MAESTRA
-
-    def _visible(item) -> bool:
-        if item.get("solo_maestra"):
-            return es_maestra
-        # `modulos` (plural): visible si puede ver cualquiera de ellos.
-        if item.get("modulos"):
-            return any(
-                resolver_permiso(db, usuario.id, m, "ver") for m in item["modulos"]
-            )
-        if item["modulo"] is None:
-            return True
-        return resolver_permiso(db, usuario.id, item["modulo"], "ver")
-
+    es_maestra = _es_maestra(usuario)
     return (
-        [i for i in MENU_SIDEBAR if _visible(i)],
-        [i for i in MENU_SIDEBAR_PIE if _visible(i)],
+        [i for i in MENU_SIDEBAR if _visible(db, usuario, i, es_maestra)],
+        [i for i in MENU_SIDEBAR_PIE if _visible(db, usuario, i, es_maestra)],
     )
 
 
 def secciones_configuracion(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Configuraciones visibles para el usuario."""
-    return [
-        s
-        for s in CONFIGURACION_SECCIONES
-        if resolver_permiso(db, usuario.id, s["modulo"], "ver")
-    ]
+    es_maestra = _es_maestra(usuario)
+    return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]
 
 
 def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
@@ -225,7 +250,7 @@ async def usuarios(
     return templates.TemplateResponse(
         request,
         "pages/usuarios/listado.html",
-        contexto_base(request, db, usuario, titulo="Usuarios", ruta_activa="/usuarios"),
+        contexto_base(request, db, usuario, titulo="Usuarios", ruta_activa="/configuracion"),
     )
 
 
@@ -247,7 +272,7 @@ async def usuario_permisos(
         contexto_base(
             request, db, usuario,
             titulo=f"Permisos de {objetivo.nombre}",
-            ruta_activa="/usuarios",
+            ruta_activa="/configuracion",
             usuario=objetivo,
         ),
     )
@@ -271,7 +296,7 @@ async def usuario_historial(
         contexto_base(
             request, db, usuario,
             titulo=f"Historial de {objetivo.nombre}",
-            ruta_activa="/usuarios",
+            ruta_activa="/configuracion",
             usuario=objetivo,
         ),
     )
@@ -284,7 +309,7 @@ async def roles(
     return templates.TemplateResponse(
         request,
         "pages/roles/listado.html",
-        contexto_base(request, db, usuario, titulo="Roles", ruta_activa="/roles"),
+        contexto_base(request, db, usuario, titulo="Roles", ruta_activa="/configuracion"),
     )
 
 
@@ -306,7 +331,7 @@ async def rol_permisos(
         contexto_base(
             request, db, usuario,
             titulo=f"Permisos de {rol.nombre}",
-            ruta_activa="/roles",
+            ruta_activa="/configuracion",
             rol=rol,
         ),
     )

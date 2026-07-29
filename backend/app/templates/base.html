@@ -82,12 +82,12 @@
         };
     </script>
 
-    <link rel="stylesheet" href="{{ url_for('static', path='/css/custom.css') }}">
+    <link rel="stylesheet" href="{{ estatico('/css/custom.css') }}">
 
     <script src="https://unpkg.com/htmx.org@2.0/dist/htmx.min.js"></script>
     {# app.js va antes que Alpine y con defer: define temaApp() para el
        x-data del <html> y corre con el DOM ya disponible. #}
-    <script src="{{ url_for('static', path='/js/app.js') }}" defer></script>
+    <script src="{{ estatico('/js/app.js') }}" defer></script>
     <script src="https://unpkg.com/alpinejs@3.x/dist/cdn.min.js" defer></script>
 
     {# FingerprintJS: identifica el dispositivo cuando no hay cookie.

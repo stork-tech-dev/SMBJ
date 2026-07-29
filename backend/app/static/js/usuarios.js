@@ -6,17 +6,26 @@
    (Principios 1 y 5): acá no se filtra nada sobre datos ya cargados.
    ========================================================================== */
 
+/* Abreviaturas de mes fijas y no `toLocaleDateString('es-AR', {month:'short'})`:
+   ese resultado depende del locale del navegador (un Chrome en inglés daría
+   "Oct", y algunas implementaciones agregan punto: "oct."). Con la constante
+   la columna se ve igual en cualquier navegador. */
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+               'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
 function abmUsuarios() {
     return {
         usuarios: [],
         roles: [],
         rolesAsignables: [],
+        // Locales activos para el selector "Local Asignado".
+        localesAsignables: [],
         total: 0,
         cargando: false,
 
         // Los tres filtros del diseño de Figma. El backend acepta además
         // username, email y activo: se pueden reactivar sin tocar la API.
-        filtros: { nombre: '', rol_id: '' },
+        filtros: { nombre: '', rol_id: '', local_asignado_id: '' },
 
         detalle: { abierto: false, usuario: null },
 
@@ -30,6 +39,9 @@ function abmUsuarios() {
             rol_id: '',
             password: '',
             activo: true,
+            fecha_nacimiento: '',
+            celular: '',
+            local_asignado_id: '',
         },
 
         // Sección "Accesos permitidos": catálogo plano de permisos, con lo
@@ -74,8 +86,23 @@ function abmUsuarios() {
             this.roles = this.rolesAsignables;
         },
 
+        /**
+         * Locales del selector "Local Asignado".
+         *
+         * Usa el endpoint del propio módulo y no /puntos-de-venta, que
+         * exige permiso de configuración: quien gestiona usuarios no
+         * tiene por qué tenerlo.
+         */
+        async cargarLocales() {
+            const resp = await fetch('/api/v1/usuarios/locales-asignables', {
+                credentials: 'same-origin',
+            });
+            if (!resp.ok) return;
+            this.localesAsignables = await resp.json();
+        },
+
         limpiar() {
-            this.filtros = { nombre: '', rol_id: '' };
+            this.filtros = { nombre: '', rol_id: '', local_asignado_id: '' };
             this.cargar();
         },
 
@@ -95,6 +122,36 @@ function abmUsuarios() {
             });
         },
 
+        /**
+         * Fecha sin hora en dd/mm/yyyy, como en el diseño ("06/10/1995").
+         *
+         * La API manda "1995-10-06" (Principio 1: datos crudos). Se parte
+         * el string en lugar de usar new Date(): esa fecha se interpreta
+         * como UTC y en Argentina (UTC-3) mostraría el día anterior.
+         */
+        formatearFechaCorta(iso) {
+            if (!iso) return '—';
+            const [anio, mes, dia] = iso.split('-');
+            return `${dia}/${mes}/${anio}`;
+        },
+
+        /**
+         * Cumpleaños en dd-mmm ("06-oct"), para la columna del listado.
+         *
+         * Sin el año a propósito: en la tabla el dato sirve como
+         * recordatorio de cumpleaños, no como fecha de nacimiento. El
+         * año completo se ve en el panel "Ver".
+         *
+         * Parte el string por el mismo motivo que formatearFechaCorta:
+         * new Date("1995-10-06") se interpreta como UTC y en Argentina
+         * mostraría el día anterior.
+         */
+        formatearCumple(iso) {
+            if (!iso) return '—';
+            const [, mes, dia] = iso.split('-');
+            return `${dia}-${MESES[Number(mes) - 1]}`;
+        },
+
         /* --- Alta y edición --- */
 
         abrirAlta() {
@@ -103,6 +160,7 @@ function abmUsuarios() {
                 nombre: '', username: '', email: '',
                 rol_id: this.rolesAsignables[0]?.id || '', password: '',
                 activo: true,
+                fecha_nacimiento: '', celular: '', local_asignado_id: '',
             };
             this.cargarAccesos();
         },
@@ -117,6 +175,11 @@ function abmUsuarios() {
                 rol_id: usuario.rol_id,
                 password: '',
                 activo: usuario.activo,
+                // input type="date" espera ISO (yyyy-mm-dd), que es
+                // justo lo que devuelve la API.
+                fecha_nacimiento: usuario.fecha_nacimiento || '',
+                celular: usuario.celular || '',
+                local_asignado_id: usuario.local_asignado_id || '',
             };
             this.cargarAccesos();
         },
@@ -191,6 +254,14 @@ function abmUsuarios() {
                     nombre: this.form.nombre,
                     email: this.form.email || null,
                     rol_id: Number(this.form.rol_id),
+                    // Los tres campos personales viajan siempre, también
+                    // en null: así el backend distingue "vaciar el campo"
+                    // de "no lo mandaron" y se pueden borrar desde el form.
+                    fecha_nacimiento: this.form.fecha_nacimiento || null,
+                    celular: this.form.celular || null,
+                    local_asignado_id: this.form.local_asignado_id
+                        ? Number(this.form.local_asignado_id)
+                        : null,
                 };
                 if (esAlta) cuerpo.username = this.form.username;
                 // En edición, contraseña vacía = no cambiarla.

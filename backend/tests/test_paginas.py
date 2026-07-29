@@ -6,7 +6,7 @@ que la navegación respete la sesión: un error de template solo aparece al
 pedir la página, y sin estos tests se descubriría recién en el navegador.
 """
 
-from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR, Modulo
+from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO, ROL_VENDEDOR, Modulo
 
 PAGINAS_CON_SESION = ["/", "/usuarios", "/roles"]
 
@@ -108,6 +108,8 @@ def test_sidebar_se_filtra_por_permisos(client, crear_usuario, roles, dar_permis
     # Sin permiso sobre usuarios ni acceso a roles (exclusivo Cuenta Maestra).
     assert 'href="/usuarios"' not in resp.text
     assert 'href="/roles"' not in resp.text
+    # Y sin ninguna sección visible, tampoco aparece el hub que las agrupa.
+    assert 'href="/configuracion"' not in resp.text
 
 
 def test_item_activo_del_sidebar_en_cada_pagina(client, crear_usuario, roles):
@@ -121,13 +123,13 @@ def test_item_activo_del_sidebar_en_cada_pagina(client, crear_usuario, roles):
 
     rutas = {
         "/": "/",
-        "/usuarios": "/usuarios",
-        "/roles": "/roles",
-        f"/usuarios/{admin.id}/permisos": "/usuarios",
-        f"/usuarios/{admin.id}/historial": "/usuarios",
-        f"/roles/{roles[ROL_VENDEDOR].id}/permisos": "/roles",
         # Las secciones de configuración mantienen "Configuraciones" activo.
         "/configuracion": "/configuracion",
+        "/usuarios": "/configuracion",
+        "/roles": "/configuracion",
+        f"/usuarios/{admin.id}/permisos": "/configuracion",
+        f"/usuarios/{admin.id}/historial": "/configuracion",
+        f"/roles/{roles[ROL_VENDEDOR].id}/permisos": "/configuracion",
         "/puntos-de-venta": "/configuracion",
         "/dispositivos": "/configuracion",
     }
@@ -171,23 +173,52 @@ def test_paginas_de_puntos_y_dispositivos_se_renderizan(client, crear_usuario):
 
 def test_hub_de_configuraciones(client, crear_usuario):
     """
-    La Cuenta Maestra ve las tarjetas de Puntos de venta y Dispositivos
-    dentro de Configuraciones, y ya no como ítems sueltos del sidebar.
+    La Cuenta Maestra ve las cuatro secciones dentro de Configuraciones,
+    y ninguna de ellas como ítem suelto del sidebar.
     """
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
     resp = client.get("/configuracion")
     assert resp.status_code == 200
-    assert 'href="/puntos-de-venta"' in resp.text
-    assert 'href="/dispositivos"' in resp.text
+    for url in ("/usuarios", "/roles", "/puntos-de-venta", "/dispositivos"):
+        assert f'href="{url}"' in resp.text, url
 
     # En el sidebar (contexto de cualquier página) no están como top-level.
     home = client.get("/")
     aside = home.text.split("<aside")[1].split("</aside>")[0]
-    assert "Puntos de venta" not in aside
-    assert ">Dispositivos<" not in aside
+    for texto in ("Usuarios", "Roles", "Puntos de venta", ">Dispositivos<"):
+        assert texto not in aside, texto
     assert "Configuraciones" in aside
+
+
+def test_orden_de_las_secciones_de_configuracion(client, crear_usuario):
+    """El orden de las tarjetas es el definido con el cliente."""
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    html = client.get("/configuracion").text
+    posiciones = [
+        html.index(f'href="{u}"')
+        for u in ("/usuarios", "/roles", "/puntos-de-venta", "/dispositivos")
+    ]
+    assert posiciones == sorted(posiciones), "las secciones no están en orden"
+
+
+def test_roles_sigue_siendo_exclusivo_de_cuenta_maestra(client, crear_usuario, roles, dar_permiso):
+    """
+    Roles pasó de ítem del sidebar a tarjeta del hub: la restricción a
+    Cuenta Maestra tiene que viajar con él, no quedarse en el sidebar.
+    """
+    crear_usuario("dueno", ROL_DUENO)
+    dar_permiso(rol_id=roles[ROL_DUENO].id, modulo=Modulo.USUARIOS, ver=True)
+    client.post("/api/v1/auth/login", json={"username": "dueno", "password": "Test1234!"})
+
+    resp = client.get("/configuracion")
+    assert resp.status_code == 200
+    # Ve Usuarios (tiene el permiso) pero no Roles (no es Cuenta Maestra).
+    assert 'href="/usuarios"' in resp.text
+    assert 'href="/roles"' not in resp.text
 
 
 def test_hub_config_filtra_por_permiso(client, crear_usuario, roles, dar_permiso):
@@ -210,3 +241,79 @@ def test_pagina_de_usuario_inexistente_da_404(client, crear_usuario):
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
     assert client.get("/usuarios/999999/permisos").status_code == 404
+
+
+def test_los_estaticos_llevan_version_en_la_url(client, crear_usuario):
+    """
+    Regresión: StaticFiles no manda `Cache-Control`, así que sin un `?v=`
+    en la URL el navegador se queda con el .js viejo y la pantalla corre
+    código de otra versión (el bug del selector de local vacío).
+    """
+    import re
+
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    html = client.get("/usuarios").text
+
+    estaticos = re.findall(r'(?:src|href)="(/static/[^"]+)"', html)
+    assert estaticos, "la página no incluye ningún estático"
+    sin_version = [u for u in estaticos if "?v=" not in u]
+    assert not sin_version, f"estáticos sin versión: {sin_version}"
+
+
+def test_la_version_del_estatico_cambia_al_editarlo():
+    """La versión sale del mtime: si el archivo cambia, la URL cambia."""
+    import os
+
+    from app.core.templates import estatico
+
+    antes = estatico("/js/usuarios.js")
+    assert "?v=" in antes
+
+    ruta = os.path.join(os.path.dirname(__file__), "..", "app", "static", "js", "usuarios.js")
+    original = os.stat(ruta)
+    try:
+        os.utime(ruta, (original.st_atime, original.st_mtime + 10))
+        assert estatico("/js/usuarios.js") != antes
+    finally:
+        os.utime(ruta, (original.st_atime, original.st_mtime))
+
+    assert estatico("/js/usuarios.js") == antes
+
+
+def test_estatico_inexistente_no_rompe_el_render():
+    """Un path equivocado devuelve la URL sin versión, no una excepción."""
+    from app.core.templates import estatico
+
+    assert estatico("/js/no-existe.js") == "/static/js/no-existe.js"
+
+
+def test_tabla_de_usuarios_tiene_la_columna_cumpleanos(client, crear_usuario):
+    """La columna sale de `fecha_nacimiento`, formateada en el frontend."""
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    html = client.get("/usuarios").text
+    assert ">Cumpleaños</th>" in html
+    assert "formatearCumple(u.fecha_nacimiento)" in html
+
+
+def test_el_colspan_de_la_fila_vacia_acompana_a_las_columnas(client, crear_usuario):
+    """
+    Al agregar una columna es fácil olvidarse del colspan de "Sin
+    resultados." y que la fila vacía quede corrida. Este test lo ata a la
+    cantidad real de <th>.
+    """
+    import re
+
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    html = client.get("/usuarios").text
+    tabla = html.split("<thead>")[1]
+
+    columnas = len(re.findall(r"<th\b", tabla.split("</thead>")[0]))
+    colspan = int(re.search(r'colspan="(\d+)"', tabla).group(1))
+
+    assert colspan == columnas, f"{columnas} columnas pero colspan={colspan}"

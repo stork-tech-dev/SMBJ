@@ -3,13 +3,14 @@
 {% extends "base.html" %}
 
 {% from "components/icons.html" import icono %}
-{% from "components/botones.html" import accion, acciones %}
+{% from "components/botones.html" import accion, acciones, volver %}
 
 {% block contenido %}
-<div x-data="abmUsuarios()" x-init="cargar(); cargarRoles()">
+<div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarLocales()">
 
+    {{ volver('/configuracion', 'Configuraciones') }}
     {# Título: Archivo Black 50px en azul grisáceo, según el diseño. #}
-    <h1 class="text-[50px] leading-none font-black text-welcome">Usuarios</h1>
+    <h1 class="mt-2 text-[50px] leading-none font-black text-welcome">Usuarios</h1>
 
     {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
@@ -39,20 +40,30 @@
             </span>
         </div>
 
-        {# Local: los puntos de venta llegan en un módulo posterior. Se deja
-           el filtro visible y deshabilitado para no prometer lo que no hay. #}
-        <div class="relative" title="Disponible cuando exista el módulo de puntos de venta">
+        {# Local: mismas opciones que el selector del formulario, que ya
+           están cargadas en memoria. Filtra por `local_asignado_id`, y el
+           filtrado lo resuelve el backend (Principio 5). #}
+        <div class="relative">
             <label class="sr-only" for="f-local">Local</label>
-            <select id="f-local" disabled
+            <select id="f-local" x-model="filtros.local_asignado_id" @change="cargar()"
                     class="h-10 w-[220px] pl-4 pr-10 text-sm font-semibold bg-surface border-2
-                           border-borde rounded-input appearance-none text-texto-disabled
-                           opacity-60 cursor-not-allowed">
-                <option>Local</option>
+                           border-borde rounded-input appearance-none focus:outline-none
+                           focus:border-primary"
+                    :class="filtros.local_asignado_id ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Local</option>
+                <template x-for="l in localesAsignables" :key="l.id">
+                    <option :value="l.id" x-text="l.nombre" class="text-texto"></option>
+                </template>
             </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto-disabled pointer-events-none">
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
                 {{ icono('chevron') }}
             </span>
         </div>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
+        </p>
 
         <button type="button" @click="abrirAlta()"
                 class="ml-auto h-10 px-6 inline-flex items-center gap-2 rounded-input
@@ -62,13 +73,8 @@
         </button>
     </div>
 
-    <p class="mt-4 text-sm text-texto-muted">
-        <span x-text="total"></span>
-        <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
-    </p>
-
     {# ---------- Tarjeta con la tabla ---------- #}
-    <div class="mt-2 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
+    <div class="mt-6 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full border-collapse text-base">
                 <thead>
@@ -76,6 +82,8 @@
                         <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Usuario</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Rol</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Celular</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Cumpleaños</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Último acceso</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
@@ -98,6 +106,12 @@
                             <td class="px-4 py-5 align-middle font-medium" x-text="u.nombre"></td>
 
                             <td class="px-4 py-5 align-middle font-medium" x-text="u.rol.nombre"></td>
+
+                            <td class="px-4 py-5 align-middle font-medium whitespace-nowrap"
+                                x-text="u.celular || '—'"></td>
+
+                            <td class="px-4 py-5 align-middle font-medium whitespace-nowrap"
+                                x-text="formatearCumple(u.fecha_nacimiento)"></td>
 
                             <td class="px-4 py-5 align-middle font-medium"
                                 x-text="formatearFecha(u.ultimo_acceso)"></td>
@@ -122,7 +136,7 @@
                     </template>
 
                     <tr x-show="!usuarios.length && !cargando">
-                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
                     </tr>
                 </tbody>
             </table>
@@ -158,6 +172,20 @@
                     <dd class="font-medium"
                         :class="detalle.usuario?.activo ? 'text-success' : 'text-danger'"
                         x-text="detalle.usuario?.activo ? 'Activo' : 'Inactivo'"></dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-texto-disabled">Nro. Cel.</dt>
+                    <dd class="font-medium" x-text="detalle.usuario?.celular || '—'"></dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-texto-disabled">Fecha de Nacimiento</dt>
+                    <dd class="font-medium"
+                        x-text="formatearFechaCorta(detalle.usuario?.fecha_nacimiento)"></dd>
+                </div>
+                <div class="col-span-2">
+                    <dt class="text-sm text-texto-disabled">Local Asignado</dt>
+                    <dd class="font-medium"
+                        x-text="detalle.usuario?.local_asignado?.nombre || '—'"></dd>
                 </div>
                 <div class="col-span-2">
                     <dt class="text-sm text-texto-disabled">Último acceso</dt>
@@ -241,9 +269,15 @@
                                required class="campo-linea">
                     </div>
 
+                    {# "Nro. Cel." en la columna derecha, como en el diseño.
+                       inputmode="tel" abre el teclado numérico en tablet; el
+                       formato lo valida el backend. #}
                     <div class="flex flex-col gap-1">
-                        <label for="u-email" class="text-sm font-semibold text-texto-header">Mail</label>
-                        <input id="u-email" type="email" x-model="form.email" class="campo-linea">
+                        <label for="u-celular" class="text-sm font-semibold text-texto-header">
+                            Nro. Cel.
+                        </label>
+                        <input id="u-celular" type="tel" inputmode="tel" x-model="form.celular"
+                               placeholder="+3512108190" class="campo-linea">
                     </div>
 
                     <div class="flex flex-col gap-1">
@@ -266,6 +300,45 @@
                                 {{ icono('chevron') }}
                             </span>
                         </div>
+                    </div>
+
+                    {# "Local Asignado" al lado de Perfil y en caja: el diseño
+                       los muestra como la única dupla de selects. #}
+                    <div class="flex flex-col gap-1">
+                        <label for="u-local" class="text-sm font-semibold text-texto-header">
+                            Local Asignado
+                        </label>
+                        <div class="relative">
+                            <select id="u-local" x-model="form.local_asignado_id"
+                                    class="w-full h-10 pl-3 pr-9 text-base font-light bg-surface
+                                           border-[0.5px] border-texto-disabled rounded-input
+                                           appearance-none focus:outline-none focus:border-primary"
+                                    :class="form.local_asignado_id ? 'text-texto' : 'text-texto-disabled'">
+                                <option value="">Seleccionar</option>
+                                <template x-for="l in localesAsignables" :key="l.id">
+                                    <option :value="l.id" x-text="l.nombre" class="text-texto"></option>
+                                </template>
+                            </select>
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                {{ icono('chevron') }}
+                            </span>
+                        </div>
+                    </div>
+
+                    {# Dupla "Fecha de Nacimiento" / "Mail" del diseño.
+                       type="date" muestra dd/mm/yyyy con el locale es-AR y
+                       aporta el calendario nativo; viaja como ISO. #}
+                    <div class="flex flex-col gap-1">
+                        <label for="u-nacimiento" class="text-sm font-semibold text-texto-header">
+                            Fecha de Nacimiento
+                        </label>
+                        <input id="u-nacimiento" type="date" x-model="form.fecha_nacimiento"
+                               class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="u-email" class="text-sm font-semibold text-texto-header">Mail</label>
+                        <input id="u-email" type="email" x-model="form.email" class="campo-linea">
                     </div>
 
                     <div class="flex flex-col gap-1">
@@ -317,7 +390,10 @@
                     <button type="submit" :disabled="form.guardando"
                             class="h-9 px-8 rounded-input bg-primary text-white text-base font-medium
                                    hover:bg-primary-hover disabled:opacity-60"
-                            x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                            {# El diseño rotula "Crear" en el alta y "Finalizar"
+                               en la edición. #}
+                            x-text="form.guardando ? 'Guardando…'
+                                                   : (form.id ? 'Finalizar' : 'Crear')"></button>
                 </div>
             </form>
         </div>
@@ -344,5 +420,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='/js/usuarios.js') }}"></script>
+<script src="{{ estatico('/js/usuarios.js') }}"></script>
 {% endblock %}

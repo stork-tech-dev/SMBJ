@@ -46,6 +46,11 @@
                 class="h-9 px-4 rounded-input text-sm text-texto-muted border border-borde
                        hover:border-primary hover:text-primary">Limpiar filtros</button>
 
+        <p class="text-sm text-texto-muted">
+            <span x-text="puntos.length"></span>
+            <span x-text="puntos.length === 1 ? 'punto de venta' : 'puntos de venta'"></span>
+        </p>
+
         <button type="button" @click="abrirAlta()"
                 class="ml-auto h-10 px-6 inline-flex items-center gap-2 rounded-input bg-accent
                        text-white text-sm font-semibold hover:opacity-90">
@@ -53,13 +58,8 @@
         </button>
     </div>
 
-    <p class="mt-4 text-sm text-texto-muted">
-        <span x-text="puntos.length"></span>
-        <span x-text="puntos.length === 1 ? 'punto de venta' : 'puntos de venta'"></span>
-    </p>
-
     {# ---------- Tabla ---------- #}
-    <div class="mt-2 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
+    <div class="mt-6 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full border-collapse text-base">
                 <thead>
@@ -175,5 +175,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='/js/puntos_de_venta.js') }}"></script>
+<script src="{{ estatico('/js/puntos_de_venta.js') }}"></script>
 {% endblock %}

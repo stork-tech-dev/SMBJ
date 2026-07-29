@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_SUPERVISOR, ROL_VENDEDOR
 from app.core.utils import ahora_db, normalizar_texto
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.rol import Rol
 from app.models.usuario import HistorialAcceso, Usuario
 from app.services.auth import hash_password, revocar_sesiones_de_usuario
@@ -57,6 +58,39 @@ def validar_puede_gestionar(autor: Usuario, objetivo_rol: Rol) -> None:
         raise SinPermiso("Un supervisor solo puede gestionar usuarios con rol vendedor")
 
 
+def _validar_local_asignado(db: Session, local_id: int | None) -> int | None:
+    """
+    El local asignado debe ser un punto de venta de tipo 'local' y activo.
+
+    La regla vive acá y no en el schema porque necesita la base: vale
+    igual desde la API, desde un script o desde cualquier otro cliente.
+    """
+    if local_id is None:
+        return None
+
+    local = db.get(PuntoDeVenta, local_id)
+    if local is None:
+        raise ReglaDeNegocio("El local asignado no existe")
+    if local.tipo != TipoPuntoVenta.LOCAL:
+        raise ReglaDeNegocio("Solo se puede asignar un punto de venta de tipo local")
+    if not local.activo:
+        raise ReglaDeNegocio("No se puede asignar un local inactivo")
+    return local.id
+
+
+def locales_asignables(db: Session) -> list[PuntoDeVenta]:
+    """
+    Locales que se pueden asignar a un usuario. Alimenta el selector
+    "Local Asignado" del formulario.
+
+    Delega en el service de puntos de venta en lugar de repetir la query
+    (Principio 2): es la misma lista que usa la asignación de dispositivos.
+    """
+    from app.services.puntos_de_venta import locales_activos
+
+    return locales_activos(db)
+
+
 def roles_asignables(db: Session, autor: Usuario) -> list[Rol]:
     """
     Roles que el usuario logueado puede asignar. Alimenta el selector del
@@ -86,6 +120,7 @@ def listar_usuarios(
     username: str | None = None,
     email: str | None = None,
     rol_id: int | None = None,
+    local_asignado_id: int | None = None,
     activo: bool | None = None,
     pagina: int = 1,
     tamano: int = 50,
@@ -104,6 +139,8 @@ def listar_usuarios(
         consulta = consulta.where(Usuario.email.ilike(f"%{email}%"))
     if rol_id is not None:
         consulta = consulta.where(Usuario.rol_id == rol_id)
+    if local_asignado_id is not None:
+        consulta = consulta.where(Usuario.local_asignado_id == local_asignado_id)
     if activo is not None:
         consulta = consulta.where(Usuario.activo.is_(activo))
 
@@ -130,6 +167,9 @@ def crear_usuario(
     password: str,
     rol_id: int,
     email: str | None = None,
+    fecha_nacimiento: date | None = None,
+    celular: str | None = None,
+    local_asignado_id: int | None = None,
     ip_origen: str | None = None,
 ) -> Usuario:
     """Alta de usuario, con todas las reglas de negocio aplicadas."""
@@ -162,6 +202,8 @@ def crear_usuario(
     ).scalar_one_or_none():
         raise ReglaDeNegocio(f"Ya existe un usuario con el email '{email_limpio}'")
 
+    local_id = _validar_local_asignado(db, local_asignado_id)
+
     usuario = Usuario(
         username=username_limpio,
         email=email_limpio,
@@ -169,6 +211,9 @@ def crear_usuario(
         nombre=normalizar_texto(nombre) or username_limpio,
         rol_id=rol.id,
         activo=True,
+        fecha_nacimiento=fecha_nacimiento,
+        celular=celular,
+        local_asignado_id=local_id,
         created_at=ahora_db(),
         updated_at=ahora_db(),
         ultimo_acceso=None,  # obliga a cambiar la contraseña en el primer login
@@ -196,9 +241,21 @@ def editar_usuario(
     email: str | None = None,
     rol_id: int | None = None,
     password: str | None = None,
+    fecha_nacimiento: date | None = None,
+    celular: str | None = None,
+    local_asignado_id: int | None = None,
+    editar_fecha_nacimiento: bool = False,
+    editar_celular: bool = False,
+    editar_local: bool = False,
     ip_origen: str | None = None,
 ) -> Usuario:
-    """Edición de usuario. Cambiar la contraseña revoca sus sesiones."""
+    """
+    Edición de usuario. Cambiar la contraseña revoca sus sesiones.
+
+    Los tres campos personales son opcionales y deben poder vaciarse, así
+    que su flag `editar_*` distingue "no lo mandaron" de "lo mandaron en
+    NULL" — la misma convención que `asignar_local` en dispositivos.
+    """
     usuario = obtener_usuario(db, usuario_id)
     validar_puede_gestionar(autor, usuario.rol)
     antes = snapshot(usuario)
@@ -228,6 +285,15 @@ def editar_usuario(
             if duplicado:
                 raise ReglaDeNegocio(f"Ya existe un usuario con el email '{email_limpio}'")
         usuario.email = email_limpio
+
+    if editar_fecha_nacimiento:
+        usuario.fecha_nacimiento = fecha_nacimiento
+
+    if editar_celular:
+        usuario.celular = celular
+
+    if editar_local:
+        usuario.local_asignado_id = _validar_local_asignado(db, local_asignado_id)
 
     if password:
         usuario.password_hash = hash_password(password)
