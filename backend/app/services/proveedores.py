@@ -43,7 +43,7 @@ def obtener_proveedor(db: Session, proveedor_id: int) -> Proveedor:
 
 def listar_proveedores(
     db: Session,
-    razon_social: str | None = None,
+    nombre: str | None = None,
     email: str | None = None,
     telefono: str | None = None,
     estado: str | None = None,
@@ -56,8 +56,8 @@ def listar_proveedores(
     """
     consulta = select(Proveedor)
 
-    if razon_social:
-        consulta = consulta.where(Proveedor.razon_social.ilike(f"%{razon_social}%"))
+    if nombre:
+        consulta = consulta.where(Proveedor.nombre.ilike(f"%{nombre}%"))
     if email:
         consulta = consulta.where(Proveedor.email.ilike(f"%{email}%"))
     if telefono:
@@ -69,7 +69,7 @@ def listar_proveedores(
     if dolar_hasta is not None:
         consulta = consulta.where(Proveedor.dolar_actual <= dolar_hasta)
 
-    consulta = consulta.order_by(Proveedor.razon_social)
+    consulta = consulta.order_by(Proveedor.nombre)
     return list(db.execute(consulta).scalars().all())
 
 
@@ -126,8 +126,9 @@ def _validar_dolar(valor: Decimal) -> Decimal:
 def crear_proveedor(
     db: Session,
     autor: Usuario,
-    razon_social: str,
+    nombre: str,
     dolar_actual: Decimal,
+    contacto: str | None = None,
     direccion: str | None = None,
     telefono: str | None = None,
     email: str | None = None,
@@ -135,14 +136,15 @@ def crear_proveedor(
     ip_origen: str | None = None,
 ) -> Proveedor:
     """Alta de proveedor. Registra el dólar inicial también en el historial."""
-    razon = normalizar_texto(razon_social)
-    if not razon:
-        raise ReglaDeNegocio("La razón social es obligatoria")
+    nombre_limpio = normalizar_texto(nombre)
+    if not nombre_limpio:
+        raise ReglaDeNegocio("El nombre es obligatorio")
 
     dolar = _validar_dolar(dolar_actual)
 
     proveedor = Proveedor(
-        razon_social=razon,
+        nombre=nombre_limpio,
+        contacto=normalizar_texto(contacto),
         direccion=normalizar_texto(direccion),
         telefono=normalizar_texto(telefono),
         email=normalizar_texto(email),
@@ -184,7 +186,8 @@ def editar_proveedor(
     db: Session,
     autor: Usuario,
     proveedor_id: int,
-    razon_social: str | None = None,
+    nombre: str | None = None,
+    contacto: str | None = None,
     direccion: str | None = None,
     telefono: str | None = None,
     email: str | None = None,
@@ -198,11 +201,13 @@ def editar_proveedor(
     proveedor = obtener_proveedor(db, proveedor_id)
     antes = snapshot(proveedor)
 
-    if razon_social is not None:
-        razon = normalizar_texto(razon_social)
-        if not razon:
-            raise ReglaDeNegocio("La razón social es obligatoria")
-        proveedor.razon_social = razon
+    if nombre is not None:
+        nombre_limpio = normalizar_texto(nombre)
+        if not nombre_limpio:
+            raise ReglaDeNegocio("El nombre es obligatorio")
+        proveedor.nombre = nombre_limpio
+    if contacto is not None:
+        proveedor.contacto = normalizar_texto(contacto)
     if direccion is not None:
         proveedor.direccion = normalizar_texto(direccion)
     if telefono is not None:
@@ -382,7 +387,7 @@ def preview_masivo(
     return [
         {
             "proveedor_id": p.id,
-            "razon_social": p.razon_social,
+            "nombre": p.nombre,
             "valor_actual": p.dolar_actual,
             "valor_nuevo": _calcular_masivo(p, modalidad, valor),
         }
@@ -395,7 +400,7 @@ def _proveedores_masivo(db: Session, proveedor_ids: list[int] | None) -> list[Pr
     consulta = select(Proveedor).where(Proveedor.estado == EstadoProveedor.ACTIVO)
     if proveedor_ids:
         consulta = consulta.where(Proveedor.id.in_(proveedor_ids))
-    return list(db.execute(consulta.order_by(Proveedor.razon_social)).scalars().all())
+    return list(db.execute(consulta.order_by(Proveedor.nombre)).scalars().all())
 
 
 def cambio_masivo(
@@ -432,7 +437,7 @@ def cambio_masivo(
         resultado.append(
             {
                 "proveedor_id": proveedor.id,
-                "razon_social": proveedor.razon_social,
+                "nombre": proveedor.nombre,
                 "valor_nuevo": valor_nuevo,
             }
         )

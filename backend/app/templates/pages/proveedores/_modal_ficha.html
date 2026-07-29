@@ -8,7 +8,7 @@
     <div class="w-full max-w-2xl my-8 bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
         <div class="flex items-start justify-between px-10 pt-8 pb-2">
             <div>
-                <h2 class="text-lg font-black text-welcome" x-text="ficha.proveedor?.razon_social"></h2>
+                <h2 class="text-lg font-black text-welcome" x-text="ficha.proveedor?.nombre"></h2>
                 <span class="inline-flex items-center mt-2 px-4 h-6 rounded-pill text-xs font-medium text-white"
                       :class="ficha.proveedor && ficha.proveedor.estado === 'activo' ? 'bg-success'
                               : (ficha.proveedor && ficha.proveedor.estado === 'inhabilitado' ? 'bg-danger' : 'bg-accent')"
@@ -21,6 +21,8 @@
         <div class="px-10 pb-8 pt-4">
             {# Datos de contacto #}
             <dl class="grid grid-cols-2 gap-x-8 gap-y-3 text-base">
+                <div class="col-span-2"><dt class="text-sm text-texto-disabled">Contacto</dt>
+                     <dd class="font-medium" x-text="ficha.proveedor?.contacto || '—'"></dd></div>
                 <div><dt class="text-sm text-texto-disabled">Teléfono</dt>
                      <dd class="font-medium" x-text="ficha.proveedor?.telefono || '—'"></dd></div>
                 <div><dt class="text-sm text-texto-disabled">Email</dt>

@@ -20,8 +20,8 @@
 
     {# ---------- Filtros en tiempo real (tabla chica) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
-        <input type="text" x-model="filtros.razon_social" @input.debounce.300ms="cargar()"
-               placeholder="Razón social" aria-label="Razón social"
+        <input type="text" x-model="filtros.nombre" @input.debounce.300ms="cargar()"
+               placeholder="Nombre" aria-label="Nombre"
                class="h-control w-full sm:w-[15rem] px-4 text-sm font-semibold bg-surface border-2 border-borde
                       rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
 
@@ -75,7 +75,7 @@
             <table class="w-full border-collapse text-base">
                 <thead>
                     <tr>
-                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Razón social</th>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Contacto</th>
                         <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Dólar</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
@@ -87,7 +87,7 @@
                         <tr class="border-t border-borde transition-shadow
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="p.estado !== 'activo' && 'opacity-60'">
-                            <td class="px-8 py-5 align-middle font-medium" x-text="p.razon_social"></td>
+                            <td class="px-8 py-5 align-middle font-medium" x-text="p.nombre"></td>
                             <td class="px-4 py-5 align-middle">
                                 <p class="leading-5" x-text="p.email || '—'"></p>
                                 <p class="text-xs font-light leading-5 text-texto-muted"

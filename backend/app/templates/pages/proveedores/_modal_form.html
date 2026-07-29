@@ -10,17 +10,24 @@
     <div class="w-full max-w-full sm:w-[35rem] my-8 bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
         <div class="flex items-center justify-between px-10 pt-8 pb-2">
             <h2 class="text-lg font-black text-welcome"
-                x-text="form.id ? (form.razon_social || 'Editar proveedor') : 'Nuevo proveedor'"></h2>
+                x-text="form.id ? (form.nombre || 'Editar proveedor') : 'Nuevo proveedor'"></h2>
             <button type="button" @click="form.abierto = false" aria-label="Cerrar"
                     class="text-texto-muted hover:text-texto -mt-2">{{ icono('cerrar', clases='w-6 h-6') }}</button>
         </div>
 
         <form @submit.prevent="guardar()" class="px-10 pb-8 pt-4 grid gap-x-8 gap-y-5 sm:grid-cols-2">
             <div class="sm:col-span-2 flex flex-col gap-1">
-                <label for="pv-razon" class="text-sm font-semibold text-texto-header">
-                    Razón social<span class="text-danger ml-0.5">*</span>
+                <label for="pv-nombre" class="text-sm font-semibold text-texto-header">
+                    Nombre<span class="text-danger ml-0.5">*</span>
                 </label>
-                <input id="pv-razon" x-model="form.razon_social" required class="campo-linea">
+                <input id="pv-nombre" x-model="form.nombre" required class="campo-linea">
+            </div>
+
+            {# Persona de contacto. Va antes de teléfono y email porque son
+               sus datos: quién es, y después cómo ubicarlo. #}
+            <div class="sm:col-span-2 flex flex-col gap-1">
+                <label for="pv-contacto" class="text-sm font-semibold text-texto-header">Contacto</label>
+                <input id="pv-contacto" x-model="form.contacto" maxlength="200" class="campo-linea">
             </div>
 
             <div class="flex flex-col gap-1">

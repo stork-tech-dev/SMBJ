@@ -27,7 +27,7 @@ def autor(crear_usuario):
 @pytest.fixture
 def proveedor(db, autor):
     return servicio.crear_proveedor(
-        db, autor, razon_social="Distribuidora Norte", dolar_actual=Decimal("1000")
+        db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000")
     )
 
 
@@ -45,7 +45,7 @@ def test_alta_registra_dolar_inicial_en_historial(db, proveedor):
 def test_dolar_no_puede_ser_cero_ni_negativo(db, autor):
     for valor in (Decimal("0"), Decimal("-5")):
         with pytest.raises(ReglaDeNegocio, match="mayor a cero"):
-            servicio.crear_proveedor(db, autor, razon_social="X", dolar_actual=valor)
+            servicio.crear_proveedor(db, autor, nombre="X", dolar_actual=valor)
 
 
 def test_baja_es_logica(db, autor, proveedor):
@@ -110,8 +110,8 @@ def test_cambio_individual_historiza_y_audita(db, autor, proveedor):
 
 
 def test_masivo_porcentaje_por_proveedor(db, autor):
-    p1 = servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
-    p2 = servicio.crear_proveedor(db, autor, razon_social="B", dolar_actual=Decimal("1500"))
+    p1 = servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
+    p2 = servicio.crear_proveedor(db, autor, nombre="B", dolar_actual=Decimal("1500"))
 
     servicio.cambio_masivo(db, autor, None, "porcentaje", Decimal("10"))
 
@@ -121,8 +121,8 @@ def test_masivo_porcentaje_por_proveedor(db, autor):
 
 
 def test_masivo_valor_fijo(db, autor):
-    p1 = servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
-    p2 = servicio.crear_proveedor(db, autor, razon_social="B", dolar_actual=Decimal("1500"))
+    p1 = servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
+    p2 = servicio.crear_proveedor(db, autor, nombre="B", dolar_actual=Decimal("1500"))
 
     servicio.cambio_masivo(db, autor, None, "valor", Decimal("2000"))
 
@@ -133,8 +133,8 @@ def test_masivo_valor_fijo(db, autor):
 def test_masivo_genera_un_registro_por_proveedor(db, autor):
     from sqlalchemy import func, select
 
-    p1 = servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
-    p2 = servicio.crear_proveedor(db, autor, razon_social="B", dolar_actual=Decimal("1500"))
+    p1 = servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
+    p2 = servicio.crear_proveedor(db, autor, nombre="B", dolar_actual=Decimal("1500"))
 
     servicio.cambio_masivo(db, autor, [p1.id, p2.id], "valor", Decimal("2000"))
 
@@ -144,8 +144,8 @@ def test_masivo_genera_un_registro_por_proveedor(db, autor):
 
 
 def test_masivo_solo_afecta_activos(db, autor):
-    activo = servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
-    inactivo = servicio.crear_proveedor(db, autor, razon_social="B", dolar_actual=Decimal("1000"))
+    activo = servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
+    inactivo = servicio.crear_proveedor(db, autor, nombre="B", dolar_actual=Decimal("1000"))
     servicio.cambiar_estado(db, autor, inactivo.id, EstadoProveedor.DESACTIVADO)
 
     servicio.cambio_masivo(db, autor, None, "valor", Decimal("2000"))
@@ -178,8 +178,8 @@ def _xlsx(filas: list[tuple]) -> bytes:
 
 
 def test_excel_aplica_si_todo_es_valido(db, autor):
-    p1 = servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
-    p2 = servicio.crear_proveedor(db, autor, razon_social="B", dolar_actual=Decimal("1000"))
+    p1 = servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
+    p2 = servicio.crear_proveedor(db, autor, nombre="B", dolar_actual=Decimal("1000"))
 
     resultado = servicio.importar_dolar(db, autor, _xlsx([(p1.id, 1200), (p2.id, 1300)]))
 
@@ -191,7 +191,7 @@ def test_excel_aplica_si_todo_es_valido(db, autor):
 
 def test_excel_es_todo_o_nada(db, autor):
     """Una fila mala aborta la importación completa: criterio de aceptación."""
-    p1 = servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
+    p1 = servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
 
     resultado = servicio.importar_dolar(
         db, autor, _xlsx([(p1.id, 1200), (999999, 1300)])
@@ -205,7 +205,7 @@ def test_excel_es_todo_o_nada(db, autor):
 
 
 def test_excel_reporta_valores_invalidos(db, autor):
-    p1 = servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
+    p1 = servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
 
     resultado = servicio.importar_dolar(
         db, autor, _xlsx([(p1.id, -5), ("no-num", 100), (None, 100)])
@@ -233,15 +233,15 @@ def test_excel_sin_columnas_correctas(db, autor):
 
 
 def test_listado_filtra_por_estado(client, crear_usuario, login, db, autor):
-    servicio.crear_proveedor(db, autor, razon_social="Activo SA", dolar_actual=Decimal("1000"))
-    inact = servicio.crear_proveedor(db, autor, razon_social="Baja SA", dolar_actual=Decimal("1000"))
+    servicio.crear_proveedor(db, autor, nombre="Activo SA", dolar_actual=Decimal("1000"))
+    inact = servicio.crear_proveedor(db, autor, nombre="Baja SA", dolar_actual=Decimal("1000"))
     servicio.cambiar_estado(db, autor, inact.id, EstadoProveedor.DESACTIVADO)
 
     headers = login("admin")
     resp = client.get("/api/v1/proveedores?estado=activo", headers=headers)
 
     assert resp.status_code == 200
-    assert [p["razon_social"] for p in resp.json()] == ["Activo SA"]
+    assert [p["nombre"] for p in resp.json()] == ["Activo SA"]
 
 
 def test_sin_permiso_no_lista(client, crear_usuario, login):
@@ -272,7 +272,7 @@ def test_masivo_con_el_recurso_puntual(client, crear_usuario, roles, dar_permiso
     """El recurso dolar.cambio_masivo habilita el masivo aunque falte editar general."""
     from app.core.permisos import ROL_VENDEDOR
 
-    servicio.crear_proveedor(db, autor, razon_social="A", dolar_actual=Decimal("1000"))
+    servicio.crear_proveedor(db, autor, nombre="A", dolar_actual=Decimal("1000"))
     juan = crear_usuario("juan", ROL_VENDEDOR)
     dar_permiso(
         rol_id=roles[ROL_VENDEDOR].id,
@@ -287,3 +287,70 @@ def test_masivo_con_el_recurso_puntual(client, crear_usuario, roles, dar_permiso
         headers=login("juan"),
     )
     assert resp.status_code == 200
+
+
+# ============================================================================
+# NOMBRE (ex razon_social) Y CONTACTO
+# ============================================================================
+
+
+def test_el_contacto_es_opcional(db, autor):
+    """Un proveedor se puede dar de alta sin persona de contacto."""
+    p = servicio.crear_proveedor(
+        db, autor, nombre="Sin Contacto SA", dolar_actual=Decimal("1000")
+    )
+    assert p.contacto is None
+
+
+def test_el_contacto_se_guarda_y_se_edita(db, autor):
+    p = servicio.crear_proveedor(
+        db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
+        contacto="Leandra Carvallo",
+    )
+    assert p.contacto == "Leandra Carvallo"
+
+    servicio.editar_proveedor(db, autor, p.id, contacto="Ana Gómez")
+    assert p.contacto == "Ana Gómez"
+
+
+def test_el_contacto_viaja_en_la_api(client, db, autor, login, dar_permiso, roles):
+    servicio.crear_proveedor(
+        db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
+        contacto="Leandra Carvallo",
+    )
+    db.commit()
+
+    resp = client.get("/api/v1/proveedores", headers=login("admin"))
+    assert resp.status_code == 200
+
+    fila = resp.json()[0]
+    assert fila["nombre"] == "Distribuidora Norte"
+    assert fila["contacto"] == "Leandra Carvallo"
+    # El nombre viejo no debe seguir apareciendo en el contrato.
+    assert "razon_social" not in fila
+
+
+def test_el_filtro_de_nombre_sigue_funcionando(db, autor):
+    """El rename no puede haberse llevado puesto el filtro del Principio 5."""
+    servicio.crear_proveedor(db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"))
+    servicio.crear_proveedor(db, autor, nombre="Mayorista Sur", dolar_actual=Decimal("1000"))
+
+    # ILIKE: insensible a mayúsculas, como el resto de los filtros de texto.
+    encontrados = servicio.listar_proveedores(db, nombre="norte")
+    assert [p.nombre for p in encontrados] == ["Distribuidora Norte"]
+
+
+def test_no_quedan_referencias_a_razon_social():
+    """
+    El rename tiene que ser total: una referencia suelta en un template o
+    en el JS falla en silencio (Alpine renderiza vacío, no da error).
+    """
+    import pathlib
+
+    app = pathlib.Path(__file__).parent.parent / "app"
+    con_referencias = [
+        str(p.relative_to(app))
+        for p in list(app.rglob("*.py")) + list(app.rglob("*.html")) + list(app.rglob("*.js"))
+        if "razon_social" in p.read_text()
+    ]
+    assert not con_referencias, con_referencias

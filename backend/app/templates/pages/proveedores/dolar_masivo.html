@@ -65,7 +65,7 @@
                             <input type="checkbox" :value="p.id" x-model="seleccion"
                                    :disabled="todos" @change="calcularPreview()"
                                    class="accent-[color:var(--color-primary)]">
-                            <span x-text="p.razon_social"></span>
+                            <span x-text="p.nombre"></span>
                         </span>
                         <span class="text-sm text-texto-muted" x-text="'$ ' + formatearDolar(p.dolar_actual)"></span>
                     </label>
@@ -90,7 +90,7 @@
                         <tbody>
                             <template x-for="r in preview" :key="r.proveedor_id">
                                 <tr class="border-t border-borde">
-                                    <td class="px-4 py-2" x-text="r.razon_social"></td>
+                                    <td class="px-4 py-2" x-text="r.nombre"></td>
                                     <td class="px-4 py-2 text-right text-texto-muted" x-text="'$ ' + formatearDolar(r.valor_actual)"></td>
                                     <td class="px-4 py-2 text-right font-medium" x-text="'$ ' + formatearDolar(r.valor_nuevo)"></td>
                                 </tr>

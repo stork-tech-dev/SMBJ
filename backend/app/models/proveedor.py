@@ -64,7 +64,12 @@ class Proveedor(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
-    razon_social: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    nombre: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+
+    # Persona de contacto dentro del proveedor. Opcional: al dar de alta
+    # suele conocerse la empresa antes que a quién dirigirse.
+    contacto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     direccion: Mapped[str | None] = mapped_column(String(255), nullable=True)
     telefono: Mapped[str | None] = mapped_column(String(50), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -102,7 +107,7 @@ class Proveedor(Base):
         return self.estado == EstadoProveedor.ACTIVO
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
-        return f"<Proveedor {self.id} {self.razon_social} ({self.estado.value})>"
+        return f"<Proveedor {self.id} {self.nombre} ({self.estado.value})>"
 
 
 class ProveedorDolarHistorial(Base):

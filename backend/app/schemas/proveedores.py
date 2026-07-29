@@ -7,8 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProveedorCrear(BaseModel):
-    razon_social: str = Field(min_length=1, max_length=200)
+    nombre: str = Field(min_length=1, max_length=200)
     dolar_actual: Decimal = Field(gt=0, description="Valor del dólar, mayor a cero")
+    contacto: str | None = Field(default=None, max_length=200)
     direccion: str | None = Field(default=None, max_length=255)
     telefono: str | None = Field(default=None, max_length=50)
     email: str | None = Field(default=None, max_length=255)
@@ -18,7 +19,8 @@ class ProveedorCrear(BaseModel):
 class ProveedorEditar(BaseModel):
     """Todo opcional. El dólar NO se toca acá: tiene su propio endpoint."""
 
-    razon_social: str | None = Field(default=None, min_length=1, max_length=200)
+    nombre: str | None = Field(default=None, min_length=1, max_length=200)
+    contacto: str | None = Field(default=None, max_length=200)
     direccion: str | None = Field(default=None, max_length=255)
     telefono: str | None = Field(default=None, max_length=50)
     email: str | None = Field(default=None, max_length=255)
@@ -35,7 +37,8 @@ class ProveedorResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    razon_social: str
+    nombre: str
+    contacto: str | None
     direccion: str | None
     telefono: str | None
     email: str | None
@@ -71,14 +74,14 @@ class CambioMasivoRequest(BaseModel):
 
 class CambioMasivoPreviewItem(BaseModel):
     proveedor_id: int
-    razon_social: str
+    nombre: str
     valor_actual: Decimal
     valor_nuevo: Decimal
 
 
 class CambioMasivoResultItem(BaseModel):
     proveedor_id: int
-    razon_social: str
+    nombre: str
     valor_nuevo: Decimal
 
 

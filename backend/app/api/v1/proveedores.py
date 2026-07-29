@@ -128,7 +128,7 @@ async def importar_dolar(
 
 @router.get("", response_model=list[ProveedorResponse], summary="Listado de proveedores")
 def listar(
-    razon_social: str | None = Query(default=None),
+    nombre: str | None = Query(default=None),
     email: str | None = Query(default=None),
     telefono: str | None = Query(default=None),
     estado: str | None = Query(default=None, pattern="^(activo|desactivado|inhabilitado)$"),
@@ -139,7 +139,7 @@ def listar(
 ):
     return servicio.listar_proveedores(
         db,
-        razon_social=razon_social,
+        nombre=nombre,
         email=email,
         telefono=telefono,
         estado=estado,
@@ -173,7 +173,8 @@ def crear(
         proveedor = servicio.crear_proveedor(
             db,
             autor,
-            razon_social=datos.razon_social,
+            nombre=datos.nombre,
+            contacto=datos.contacto,
             dolar_actual=datos.dolar_actual,
             direccion=datos.direccion,
             telefono=datos.telefono,
@@ -201,7 +202,8 @@ def editar(
             db,
             autor,
             proveedor_id,
-            razon_social=datos.razon_social,
+            nombre=datos.nombre,
+            contacto=datos.contacto,
             direccion=datos.direccion,
             telefono=datos.telefono,
             email=datos.email,

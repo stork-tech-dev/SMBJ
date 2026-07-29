@@ -9,11 +9,11 @@ function abmProveedores() {
     return {
         proveedores: [],
         cargando: false,
-        filtros: { razon_social: '', estado: '', dolar_desde: '', dolar_hasta: '' },
+        filtros: { nombre: '', estado: '', dolar_desde: '', dolar_hasta: '' },
 
         form: {
             abierto: false, guardando: false, id: null,
-            razon_social: '', telefono: '', email: '', direccion: '', notas: '',
+            nombre: '', contacto: '', telefono: '', email: '', direccion: '', notas: '',
             dolar_actual: '',
         },
 
@@ -71,7 +71,7 @@ function abmProveedores() {
         },
 
         limpiar() {
-            this.filtros = { razon_social: '', estado: '', dolar_desde: '', dolar_hasta: '' };
+            this.filtros = { nombre: '', estado: '', dolar_desde: '', dolar_hasta: '' };
             this.cargar();
         },
 
@@ -80,7 +80,7 @@ function abmProveedores() {
         abrirAlta() {
             this.form = {
                 abierto: true, guardando: false, id: null,
-                razon_social: '', telefono: '', email: '', direccion: '', notas: '',
+                nombre: '', contacto: '', telefono: '', email: '', direccion: '', notas: '',
                 dolar_actual: '',
             };
         },
@@ -88,7 +88,7 @@ function abmProveedores() {
         abrirEdicion(p) {
             this.form = {
                 abierto: true, guardando: false, id: p.id,
-                razon_social: p.razon_social, telefono: p.telefono || '',
+                nombre: p.nombre, contacto: p.contacto || '', telefono: p.telefono || '',
                 email: p.email || '', direccion: p.direccion || '', notas: p.notas || '',
                 dolar_actual: p.dolar_actual,
             };
@@ -99,7 +99,8 @@ function abmProveedores() {
             try {
                 const alta = !this.form.id;
                 const cuerpo = {
-                    razon_social: this.form.razon_social,
+                    nombre: this.form.nombre,
+                    contacto: this.form.contacto || null,
                     telefono: this.form.telefono || null,
                     email: this.form.email || null,
                     direccion: this.form.direccion || null,
