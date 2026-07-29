@@ -35,20 +35,20 @@
         </div>
         <div class="flex items-end gap-4">
             <a href="{{ url_limpiar|default('', true) or '?' }}"
-               class="h-[35px] px-4 grid place-items-center rounded-input text-sm
+               class="h-boton px-4 grid place-items-center rounded-input text-sm
                       text-texto-muted border border-borde hover:border-primary hover:text-primary">
                 Limpiar filtros
             </a>
             {# El total va pegado a "Limpiar filtros", no arriba de la tabla. #}
             {% if total is not none %}
-                <p class="h-[35px] grid place-items-center text-sm text-texto-muted whitespace-nowrap">
+                <p class="h-boton grid place-items-center text-sm text-texto-muted whitespace-nowrap">
                     {{ total }} {{ singular if total == 1 else plural }}
                     encontrado{{ '' if total == 1 else 's' }}
                 </p>
             {% endif %}
             {% if url_crear %}
                 <a href="{{ url_crear }}"
-                   class="h-[35px] px-5 grid place-items-center rounded-input bg-primary text-white
+                   class="h-boton px-5 grid place-items-center rounded-input bg-primary text-white
                           text-base font-medium hover:bg-primary-hover">
                     {{ texto_crear }}
                 </a>
@@ -127,11 +127,11 @@
     {% if total_paginas > 1 %}
         <nav class="flex items-center justify-end gap-2 mt-4" aria-label="Paginación">
             <a href="{{ url_base }}pagina={{ pagina - 1 }}"
-               class="h-9 px-3 grid place-items-center rounded-input border border-borde text-sm
+               class="h-boton px-3 grid place-items-center rounded-input border border-borde text-sm
                       {{ 'pointer-events-none opacity-40' if pagina <= 1 }}">Anterior</a>
             <span class="text-sm text-texto-muted">Página {{ pagina }} de {{ total_paginas }}</span>
             <a href="{{ url_base }}pagina={{ pagina + 1 }}"
-               class="h-9 px-3 grid place-items-center rounded-input border border-borde text-sm
+               class="h-boton px-3 grid place-items-center rounded-input border border-borde text-sm
                       {{ 'pointer-events-none opacity-40' if pagina >= total_paginas }}">Siguiente</a>
         </nav>
     {% endif %}

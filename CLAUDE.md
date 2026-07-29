@@ -148,6 +148,32 @@ campos de auditoría internos (`updated_at`, `password_hash`).
 
 ---
 
+## Principio 6: de Frontend y Diseño Responsivo
+
+### 1. Enfoque "Mobile-First" Obligatorio
+* **Estrategia:** Diseña y escribe los estilos pensando primero en pantallas móviles pequeñas. Agrega complejidad y layouts para pantallas más grandes mediante media queries progresivas (`min-width`).
+* **Regla:** Evita modificar layouts mediante `max-width` descendente a menos que sea estrictamente necesario para casos de borde.
+
+### 2. Layouts Fluídos y Flexibles
+* **Grillas y Contenedores:** Usa CSS Grid y Flexbox en lugar de posiciones absolutas o anchos fijos (`width: 500px`).
+* **Unidades Relativas:** Prioriza el uso de unidades relativas (`rem`, `em`, `%`, `vw/vh`, `clamp()`) sobre unidades absolutas en píxeles (`px`) para tipografía, márgenes y paddings.
+* **Ajuste Automático:** Utiliza propiedades como `grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` para contenedores de elementos repetitivos.
+
+### 3. Manejo Riguroso de Breakpoints
+* **Puntos de quiebre estándar:** Mantén consistencia utilizando una escala definida de breakpoints:
+  * Mobile: `< 640px`
+  * Tablet: `640px - 1023px`
+  * Desktop: `1024px - 1279px`
+  * Large Desktop: `>= 1280px`
+* **Defensión contra Overflow:** Ningún componente debe generar scroll horizontal inadvertido (`overflow-x: hidden` a nivel global y manejo explicito de `max-width: 100%` en imágenes y media).
+
+### 4. Criterio de Ejecución en Code Reviews/Generación
+Antes de entregar o dar por finalizado un componente UI, verifica:
+- ¿El componente se adapta limpiamente desde 320px de ancho hasta 1920px+?
+- ¿Los elementos interactivos (botones, enlaces) mantienen un área de toque adecuada en pantallas táctiles (mínimo 44x44px)?
+- ¿Se preserva la legibilidad tipográfica y la jerarquía visual en todos los tamaños?
+---
+
 ## ARQUITECTURA Y ESTRUCTURA DE ARCHIVOS
 
 ```
@@ -241,7 +267,7 @@ siempre — no inventar colores, tipografías ni estilos fuera de esta escala.
 - **Área de contenido:** desde x=358px, padding interno desde los bordes
 - **Header superior:** altura ~95px, contiene logo (izquierda) +
   buscador central + badge de usuario (derecha)
-- **Responsive:** tablet (no mobile)
+
 
 ### Estructura del sidebar
 De arriba hacia abajo (con íconos + texto):

@@ -29,10 +29,10 @@
 
         <div class="flex justify-end gap-3 mt-6">
             <button type="button" @click="baja.abierta = false"
-                    class="h-9 px-5 rounded-input border border-borde
+                    class="h-boton px-5 rounded-input border border-borde
                            hover:border-primary hover:text-primary">Cancelar</button>
             <button type="button" @click="confirmarBaja()" :disabled="baja.procesando"
-                    class="h-9 px-5 rounded-input bg-danger text-white font-medium hover:opacity-90 disabled:opacity-60"
+                    class="h-boton px-5 rounded-input bg-danger text-white font-medium hover:opacity-90 disabled:opacity-60"
                     x-text="baja.advertencia ? 'Dar de baja igualmente' : 'Confirmar'"></button>
         </div>
     </div>

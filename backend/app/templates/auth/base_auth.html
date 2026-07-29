@@ -25,38 +25,7 @@
           rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        // Misma config que base.html: los colores apuntan a las CSS
-        // variables de custom.css, que es donde vive el modo oscuro.
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: 'var(--color-primary)',
-                        'primary-hover': 'var(--color-primary-hover)',
-                        accent: 'var(--color-accent)',
-                        bg: 'var(--color-bg)',
-                        surface: 'var(--color-surface)',
-                        'surface-alt': 'var(--color-surface-alt)',
-                        borde: 'var(--color-border)',
-                        texto: 'var(--color-text)',
-                        'texto-muted': 'var(--color-text-muted)',
-                        'texto-disabled': 'var(--color-text-disabled)',
-                        danger: 'var(--color-danger)',
-                        success: 'var(--color-success)',
-                        'sidebar-bg': 'var(--color-sidebar-bg)',
-                    },
-                    fontFamily: { sans: ['Archivo', 'system-ui', 'sans-serif'] },
-                    fontSize: {
-                        xs: '14px', sm: '15px', base: '18px',
-                        lg: '22px', xl: '30px', '2xl': '60px',
-                    },
-                    borderRadius: { input: '5px', pill: '15px', search: '25px' },
-                },
-            },
-        };
-    </script>
+    {% include "components/_tailwind_config.html" %}
 
     <link rel="stylesheet" href="{{ estatico('/css/custom.css') }}">
     <script src="{{ estatico('/js/app.js') }}" defer></script>

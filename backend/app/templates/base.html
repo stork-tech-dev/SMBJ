@@ -27,60 +27,7 @@
           rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        // Los colores apuntan a las CSS variables de custom.css: el modo
-        // oscuro se resuelve ahí y ningún template repite un hex.
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: 'var(--color-primary)',
-                        'primary-hover': 'var(--color-primary-hover)',
-                        accent: 'var(--color-accent)',
-                        welcome: 'var(--color-welcome)',
-                        bg: 'var(--color-bg)',
-                        surface: 'var(--color-surface)',
-                        'surface-alt': 'var(--color-surface-alt)',
-                        borde: 'var(--color-border)',
-                        texto: 'var(--color-text)',
-                        'texto-muted': 'var(--color-text-muted)',
-                        'texto-disabled': 'var(--color-text-disabled)',
-                        'texto-header': 'var(--color-text-header)',
-                        'texto-invert': 'var(--color-text-invert)',
-                        danger: 'var(--color-danger)',
-                        success: 'var(--color-success)',
-                        'sidebar-bg': 'var(--color-sidebar-bg)',
-                        'sidebar-text': 'var(--color-sidebar-text)',
-                    },
-                    fontFamily: {
-                        sans: ['Archivo', 'system-ui', 'sans-serif'],
-                    },
-                    // Escala tipográfica del design system (Figma).
-                    fontSize: {
-                        xs: '14px',
-                        sm: '15px',
-                        base: '18px',
-                        lg: '22px',
-                        xl: '30px',
-                        '2xl': '60px',
-                    },
-                    borderRadius: {
-                        input: '5px',
-                        pill: '15px',
-                        search: '25px',
-                    },
-                    spacing: {
-                        sidebar: '290px',
-                        header: '95px',
-                    },
-                    maxWidth: {
-                        layout: '1440px',
-                    },
-                },
-            },
-        };
-    </script>
+    {% include "components/_tailwind_config.html" %}
 
     <link rel="stylesheet" href="{{ estatico('/css/custom.css') }}">
 
@@ -118,18 +65,42 @@
 
 {% from "components/toast.html" import contenedor_toasts %}
 {% from "components/marca.html" import marca %}
+{% from "components/icons.html" import icono %}
 
 {# El contenedor NO lleva mx-auto: el sidebar tiene que quedar pegado al
    borde izquierdo de la pantalla. El ancho del diseño (1440px) se respeta
-   limitando el área de contenido, no centrando todo el layout. #}
-<div class="flex min-h-screen">
+   limitando el área de contenido, no centrando todo el layout.
+
+   `nav` gobierna el cajón lateral en mobile y tablet. Desde lg el sidebar
+   es fijo y la variable deja de tener efecto. #}
+<div class="flex min-h-screen" x-data="{ nav: false }" @keydown.escape.window="nav = false">
+
+    {# Fondo oscuro detrás del cajón. Solo existe mientras está abierto y
+       nunca en escritorio, donde el sidebar es parte del layout. #}
+    <div x-show="nav" x-cloak x-transition.opacity @click="nav = false"
+         class="no-print fixed inset-0 z-40 bg-black/40 lg:hidden" aria-hidden="true"></div>
 
     {# ================= SIDEBAR ================= #}
-    <aside class="no-print hidden md:flex md:flex-col w-sidebar shrink-0 bg-sidebar-bg text-sidebar-text">
-        <div class="h-header flex items-center px-8 shrink-0">
+    {# Hasta lg es un cajón deslizable fuera de pantalla; desde lg vuelve al
+       flujo normal y queda siempre visible. El corte va en lg (1024px) y no
+       en md: con 290px de sidebar, una tablet de 768px dejaría el contenido
+       en 478px. Además md no existe en la escala del Principio 6. #}
+    <aside id="sidebar-nav"
+           class="no-print flex flex-col w-sidebar shrink-0 bg-sidebar-bg text-sidebar-text
+                  fixed inset-y-0 left-0 z-50 overflow-y-auto
+                  transition-transform duration-200 ease-out
+                  lg:static lg:z-auto lg:translate-x-0 lg:overflow-visible"
+           :class="nav ? 'translate-x-0' : '-translate-x-full'">
+        <div class="h-header flex items-center justify-between px-8 shrink-0">
             <a href="/" class="text-white" aria-label="Inicio">
                 {{ marca(letra_empresa|default('S'), clases='h-12') }}
             </a>
+
+            {# Cerrar el cajón sin depender del overlay ni del teclado. #}
+            <button type="button" @click="nav = false" aria-label="Cerrar menú"
+                    class="lg:hidden -mr-2 p-2 text-white/80 hover:text-white">
+                {{ icono('cerrar', clases='w-6 h-6') }}
+            </button>
         </div>
 
         {# Sin overflow: recortaría las esquinas cóncavas del ítem activo y la
@@ -153,15 +124,30 @@
 
         {# ---------------- HEADER ---------------- #}
         <header class="no-print h-header shrink-0 flex items-center justify-end gap-4 w-full
-                       pl-9 lg:pl-[60px] pr-9 lg:pr-[60px] border-b border-borde">
+                       px-4 sm:px-9 lg:px-[3.75rem] border-b border-borde">
 
-            {# Buscador global. hx-* queda listo para el módulo que lo implemente. #}
-            <div class="w-full max-w-md">
+            {# Única entrada a la navegación por debajo de lg: sin esto el
+               sidebar queda inalcanzable y no hay forma de cambiar de módulo.
+               `mr-auto` lo ancla a la izquierda sin alterar el resto. #}
+            <button type="button" @click="nav = true"
+                    class="lg:hidden mr-auto -ml-2 p-2 text-texto-muted hover:text-primary"
+                    aria-controls="sidebar-nav" :aria-expanded="nav" aria-label="Abrir menú">
+                {{ icono('menu', clases='w-6 h-6') }}
+            </button>
+
+            {# Buscador global. hx-* queda listo para el módulo que lo implemente.
+
+               Oculto por debajo de sm: en 320px la fila es hamburguesa +
+               buscador + tema + usuario, y el buscador quedaba en ~60px
+               —inservible— además de empujar el header a lo ancho. Todavía
+               no está implementado, así que no se pierde ninguna función;
+               cuando lo esté hay que darle su propia entrada en mobile. #}
+            <div class="hidden sm:block w-full max-w-md min-w-0">
                 <label for="buscador-global" class="sr-only">Buscar</label>
                 <input id="buscador-global"
                        type="search"
                        placeholder="Buscar…"
-                       class="w-full h-10 px-5 text-sm bg-surface border border-borde rounded-search
+                       class="w-full h-control px-5 text-sm bg-surface border border-borde rounded-search
                               text-texto focus:outline-none focus:border-primary">
             </div>
 
@@ -169,7 +155,7 @@
             <button type="button"
                     @click="alternar()"
                     :aria-label="dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
-                    class="h-10 w-10 grid place-items-center rounded-input border border-borde
+                    class="h-control w-control grid place-items-center rounded-input border border-borde
                            text-texto-muted hover:text-primary hover:border-primary transition-colors">
                 <span x-show="!dark" aria-hidden="true">☾</span>
                 <span x-show="dark" x-cloak aria-hidden="true">☀</span>
@@ -178,7 +164,7 @@
             {# Badge del usuario logueado, con menú de sesión. #}
             <div class="relative" x-data="{ menu: false }" @click.outside="menu = false">
                 <button type="button" @click="menu = !menu" :aria-expanded="menu"
-                        class="flex items-center gap-2 px-5 h-10 rounded-pill bg-accent text-white">
+                        class="flex items-center gap-2 px-5 h-control rounded-pill bg-accent text-white">
                     <span class="text-sm font-medium truncate max-w-[12rem]">
                         {{ usuario_actual.nombre|default('Invitado') }}
                     </span>
@@ -201,7 +187,7 @@
         </header>
 
         {# ---------------- CONTENIDO ---------------- #}
-        <main id="contenido" class="flex-1 w-full pl-9 lg:pl-[60px] pr-9 lg:pr-[60px] py-8">
+        <main id="contenido" class="flex-1 w-full px-4 sm:px-9 lg:px-[3.75rem] py-8">
             {% block contenido %}{% endblock %}
         </main>
     </div>

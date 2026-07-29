@@ -11,7 +11,7 @@
         <h1 class="text-xl font-semibold">Ingresar</h1>
         <button type="button" @click="alternar()"
                 :aria-label="dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
-                class="h-10 w-10 grid place-items-center rounded-input border border-borde
+                class="h-control w-control grid place-items-center rounded-input border border-borde
                        text-texto-muted hover:text-primary hover:border-primary">
             <span x-show="!dark" aria-hidden="true">☾</span>
             <span x-show="dark" x-cloak aria-hidden="true">☀</span>
@@ -23,7 +23,7 @@
             <label for="username" class="text-base font-medium">Usuario</label>
             <input id="username" x-model="username" type="text" required autofocus
                    autocomplete="username"
-                   class="w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+                   class="w-full h-control px-3 text-base bg-surface border border-borde rounded-input
                           focus:outline-none focus:border-primary">
         </div>
 
@@ -31,12 +31,12 @@
             <label for="password" class="text-base font-medium">Contraseña</label>
             <input id="password" x-model="password" type="password" required
                    autocomplete="current-password"
-                   class="w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+                   class="w-full h-control px-3 text-base bg-surface border border-borde rounded-input
                           focus:outline-none focus:border-primary">
         </div>
 
         <button type="submit" :disabled="enviando"
-                class="w-full h-[35px] rounded-input bg-primary text-white text-base font-medium
+                class="w-full h-boton rounded-input bg-primary text-white text-base font-medium
                        hover:bg-primary-hover disabled:opacity-60 flex items-center justify-center gap-2">
             {# Spinner mientras se valida. #}
             <svg x-show="enviando" x-cloak class="animate-spin h-4 w-4" viewBox="0 0 24 24"
@@ -66,11 +66,11 @@
         <div class="flex flex-col gap-1">
             <label for="username-reset" class="text-base font-medium">Usuario</label>
             <input id="username-reset" x-model="usernameReset" type="text"
-                   class="w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+                   class="w-full h-control px-3 text-base bg-surface border border-borde rounded-input
                           focus:outline-none focus:border-primary">
         </div>
         <button type="submit" :disabled="recuperando"
-                class="w-full h-[35px] rounded-input border border-borde text-base font-medium
+                class="w-full h-boton rounded-input border border-borde text-base font-medium
                        hover:border-primary hover:text-primary disabled:opacity-60"
                 x-text="recuperando ? 'Enviando…' : 'Enviar instrucciones'"></button>
     </form>

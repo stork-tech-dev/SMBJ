@@ -38,6 +38,14 @@
     --color-sidebar-text: #ffffff;
     --color-sidebar-active: rgba(255, 255, 255, 0.18);
 
+    /* --- Alturas de control (Principio 6) ---
+       Con puntero fino valen los tamaños de Figma; el mínimo de 44x44 se
+       aplica más abajo, solo donde hay dedos. Así el escritorio se ve
+       exactamente como el diseño y la regla rige donde importa. */
+    --alto-control: 2.5rem;    /* 40px — inputs y selects */
+    --alto-boton: 2.1875rem;   /* 35px — botones */
+    --toque-min: 0px;          /* sin mínimo forzado en mouse */
+
     /* --- Geometría --- */
     --radius-input: 5px;
     --radius-pill: 15px;
@@ -45,6 +53,33 @@
     --sidebar-width: 290px;
     --header-height: 95px;
     --layout-max: 1440px;
+}
+
+/* Pantallas táctiles: el Principio 6 exige un área de toque de 44x44px.
+   `pointer: coarse` es la consulta correcta —el ancho de pantalla no dice
+   nada sobre si hay dedos o mouse: una notebook angosta sigue siendo
+   puntero fino, y una tablet grande sigue siendo táctil. */
+@media (pointer: coarse) {
+    :root {
+        --alto-control: 2.75rem;  /* 44px */
+        --alto-boton: 2.75rem;    /* 44px */
+        --toque-min: 2.75rem;     /* 44px */
+    }
+}
+
+/* Ningún componente puede generar scroll horizontal (Principio 6). Las
+   tablas anchas scrollean dentro de su propio contenedor `overflow-x-auto`,
+   nunca empujando la página. */
+html,
+body {
+    overflow-x: hidden;
+}
+
+img,
+svg,
+video,
+canvas {
+    max-width: 100%;
 }
 
 /* Modo oscuro: mismas variables, otros valores. Nada más cambia. */
@@ -145,7 +180,9 @@ body {
    del formulario de usuario. */
 .campo-linea {
     width: 100%;
-    height: 34px;
+    /* Alineado al resto de los controles: sube a 44px en pantallas
+       táctiles sin que el template tenga que saber nada. */
+    height: var(--alto-control);
     padding: 0 2px;
     font-size: 18px;
     font-weight: 300;

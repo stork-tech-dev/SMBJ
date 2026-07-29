@@ -48,7 +48,14 @@
 
     {# Borrar y activar no llevan fondo: son íconos, con texto opcional. #}
     {%- set sin_fondo = variante in ('borrar', 'activar') -%}
-    {%- set forma = 'p-1' if (sin_fondo and not etiqueta) else 'h-8 px-4 rounded-input' -%}
+    {# Los de solo ícono medían ~30px (p-1 sobre un ícono de 22px): el área
+       de toque más chica del sistema y a la vez la más usada, porque son
+       los Ver / Editar / Borrar de cada fila. `min-*-toque` los lleva a
+       44x44 en pantallas táctiles sin agrandar el ícono, y en escritorio
+       la variable vale 0, así que el diseño no se mueve. #}
+    {%- set forma = 'p-1 min-h-toque min-w-toque justify-center'
+                    if (sin_fondo and not etiqueta)
+                    else 'h-boton px-4 rounded-input justify-center' -%}
 
     {%- if href or enlace -%}
         <a {% if href %}href="{{ href }}"{% endif %}
@@ -78,8 +85,10 @@
 {# Enlace "volver": flecha + texto, para las sub-páginas que cuelgan de un
    hub (ej. las secciones dentro de Configuraciones). #}
 {% macro volver(url, texto='Volver') %}
+    {# min-h-toque agranda solo el área de toque: el texto ya está centrado
+       por el flex, así que en escritorio no se mueve nada. #}
     <a href="{{ url }}"
-       class="inline-flex items-center gap-2 text-sm font-semibold text-texto-muted
+       class="inline-flex items-center gap-2 min-h-toque text-sm font-semibold text-texto-muted
               hover:text-primary transition-colors">
         {{ icono('flecha-izquierda', clases='w-4 h-4') }}
         <span>{{ texto }}</span>

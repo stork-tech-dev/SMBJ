@@ -8,7 +8,7 @@
      {{ campo_rango('precio', 'Precio', tipo='number') }}
    =========================================================================== #}
 
-{% set _clases_input = 'w-full h-10 px-3 text-base bg-surface border border-borde rounded-input
+{% set _clases_input = 'w-full h-control px-3 text-base bg-surface border border-borde rounded-input
                         text-texto focus:outline-none focus:border-primary disabled:bg-surface-alt
                         disabled:text-texto-disabled' %}
 
@@ -95,7 +95,7 @@
         'peligro':    'bg-danger text-white hover:opacity-90'
     } %}
     <button type="{{ tipo }}"
-            class="h-[35px] px-5 rounded-input text-base font-medium transition-colors
+            class="h-boton px-5 rounded-input text-base font-medium transition-colors
                    {{ estilos.get(variante, estilos['primario']) }}"
             {{ atributos|safe }}>
         {{ texto }}

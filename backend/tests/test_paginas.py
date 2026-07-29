@@ -317,3 +317,192 @@ def test_el_colspan_de_la_fila_vacia_acompana_a_las_columnas(client, crear_usuar
     colspan = int(re.search(r'colspan="(\d+)"', tabla).group(1))
 
     assert colspan == columnas, f"{columnas} columnas pero colspan={colspan}"
+
+
+def test_hay_navegacion_alcanzable_en_mobile(client, crear_usuario):
+    """
+    El sidebar se oculta por debajo de lg, así que tiene que existir el
+    botón que lo abre. Sin él la app queda sin navegación en teléfono,
+    que es como estaba antes del Principio 6.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    html = client.get("/").text
+
+    assert 'aria-controls="sidebar-nav"' in html, "falta el botón que abre el menú"
+    assert 'id="sidebar-nav"' in html, "el aside no tiene el id que referencia el botón"
+    assert 'aria-label="Cerrar menú"' in html, "el cajón no se puede cerrar sin el overlay"
+
+
+def test_no_se_usan_breakpoints_fuera_de_la_escala(client, crear_usuario):
+    """
+    El Principio 6 define <640 / 640-1023 / 1024-1279 / >=1280. `md:` (768)
+    y `2xl:` (1536) quedan fuera de esa escala.
+    """
+    import pathlib
+    import re
+
+    plantillas = pathlib.Path(__file__).parent.parent / "app" / "templates"
+    fuera_de_escala = {}
+    for p in plantillas.rglob("*.html"):
+        hallazgos = re.findall(r'(?<![\w-])(?:md|2xl):[a-z]', p.read_text())
+        if hallazgos:
+            fuera_de_escala[str(p.relative_to(plantillas))] = len(hallazgos)
+
+    assert not fuera_de_escala, f"breakpoints fuera de la escala: {fuera_de_escala}"
+
+
+def test_el_macro_de_iconos_no_devuelve_svg_vacio(client, crear_usuario):
+    """
+    `trazos.get(nombre, '')` devuelve un SVG vacío si el nombre no existe:
+    el ícono desaparece sin que nada falle. Este test ata cada nombre usado
+    en las plantillas a un trazo real.
+    """
+    import pathlib
+    import re
+
+    plantillas = pathlib.Path(__file__).parent.parent / "app" / "templates"
+    definidos = set(
+        re.findall(r"^\s*'([a-z-]+)':", (plantillas / "components" / "icons.html").read_text(), re.M)
+    )
+
+    usados = set()
+    for p in plantillas.rglob("*.html"):
+        usados.update(re.findall(r"icono\('([a-z-]+)'", p.read_text()))
+
+    assert usados <= definidos, f"íconos usados pero no definidos: {sorted(usados - definidos)}"
+
+
+def test_la_config_de_tailwind_esta_definida_una_sola_vez():
+    """
+    Estaba copiada en base.html y en auth/base_auth.html, y las copias ya
+    habían divergido (a la de auth le faltaban 4 colores y 2 escalas).
+    Una sola definición, incluida por ambos.
+    """
+    import pathlib
+
+    plantillas = pathlib.Path(__file__).parent.parent / "app" / "templates"
+    con_config = [
+        str(p.relative_to(plantillas))
+        for p in plantillas.rglob("*.html")
+        if "tailwind.config" in p.read_text()
+    ]
+    assert con_config == ["components/_tailwind_config.html"], con_config
+
+    for base in ("base.html", "auth/base_auth.html"):
+        contenido = (plantillas / base).read_text()
+        assert 'include "components/_tailwind_config.html"' in contenido, base
+
+
+def test_la_escala_tipografica_no_usa_pixeles():
+    """El Principio 6 pide unidades relativas para tipografía."""
+    import pathlib
+    import re
+
+    cfg = (
+        pathlib.Path(__file__).parent.parent
+        / "app" / "templates" / "components" / "_tailwind_config.html"
+    ).read_text()
+
+    bloque = re.search(r"fontSize: \{(.*?)\n\s*\},", cfg, re.S).group(1)
+    # Los px que quedan son los del comentario de equivalencia, no valores.
+    valores = re.findall(r":\s*'([^']+)'", bloque)
+    con_px = [v for v in valores if "px" in v]
+    assert not con_px, f"tamaños en px: {con_px}"
+
+
+def test_hay_guard_global_contra_overflow_horizontal():
+    """Ningún componente puede empujar la página a lo ancho (Principio 6)."""
+    import pathlib
+
+    css = (
+        pathlib.Path(__file__).parent.parent / "app" / "static" / "css" / "custom.css"
+    ).read_text()
+
+    assert "overflow-x: hidden" in css
+    assert "--toque-min" in css, "faltan las variables de área de toque"
+    assert "pointer: coarse" in css, "el mínimo de 44px debe regir solo en táctil"
+
+
+def test_los_controles_usan_los_tokens_de_altura():
+    """
+    Ningún control puede volver a fijar su alto a mano: las alturas salen
+    de --alto-control / --alto-boton, que suben a 44px en táctil. Un
+    `h-10` suelto se saltearía el mínimo del Principio 6 en silencio.
+    """
+    import pathlib
+    import re
+
+    plantillas = pathlib.Path(__file__).parent.parent / "app" / "templates"
+
+    # Un alto precedido por un ancho igual (`w-8 h-8`, `w-[22px] h-[22px]`)
+    # es el tamaño de un ícono, no de un control: los glifos sí llevan
+    # medidas fijas y el Principio 6 no habla de ellos.
+    icono = re.compile(r"w-(\S+)\s+h-\1")
+
+    sueltas = {}
+    for p in plantillas.rglob("*.html"):
+        texto = icono.sub("", p.read_text())
+        hallazgos = re.findall(r"\bh-(?:8|9|10|\[\d+px\])", texto)
+        if hallazgos:
+            sueltas[str(p.relative_to(plantillas))] = hallazgos
+
+    assert not sueltas, f"alturas fijas fuera de los tokens: {sueltas}"
+
+
+def test_los_botones_de_solo_icono_reservan_area_de_toque():
+    """
+    Son los controles más usados (Ver/Editar/Borrar de cada fila) y los
+    más chicos: ~30px. Deben pedir el mínimo táctil.
+    """
+    import pathlib
+
+    macro = (
+        pathlib.Path(__file__).parent.parent
+        / "app" / "templates" / "components" / "botones.html"
+    ).read_text()
+
+    assert "min-h-toque" in macro and "min-w-toque" in macro
+
+
+def test_los_controles_no_tienen_ancho_fijo_en_mobile():
+    """
+    Un `w-[220px]` suelto no entra en 320px y empuja la página a lo ancho.
+    Todo ancho de control debe arrancar fluido y fijarse recién desde sm.
+    """
+    import pathlib
+    import re
+
+    plantillas = pathlib.Path(__file__).parent.parent / "app" / "templates"
+
+    # Captura la clase COMPLETA, con su prefijo: sin eso `max-w-[35rem]` y
+    # `sm:w-[15rem]` se leen como si fueran `w-[...]` a secas.
+    clase = re.compile(r"(?:^|[\s\"'])((?:[a-z]+:)?(?:min-|max-)?w-\[(\d+(?:\.\d+)?)(px|rem)\])")
+
+    sin_fluido = {}
+    for p in plantillas.rglob("*.html"):
+        for m in re.finditer(clase, p.read_text()):
+            token, valor, unidad = m.group(1), float(m.group(2)), m.group(3)
+            px = valor if unidad == "px" else valor * 16
+            # Los anchos chicos son glifos de íconos, no controles.
+            if px < 100:
+                continue
+            # Válidos: con breakpoint (`sm:w-[…]`) o como tope (`max-w-[…]`).
+            if ":" in token or token.startswith("max-"):
+                continue
+            sin_fluido.setdefault(str(p.relative_to(plantillas)), []).append(token)
+
+    assert not sin_fluido, f"anchos fijos sin variante fluida: {sin_fluido}"
+
+
+def test_el_padding_del_contenido_se_achica_en_mobile():
+    """36px de cada lado se comen 72px de los 320 disponibles."""
+    import pathlib
+
+    base = (
+        pathlib.Path(__file__).parent.parent / "app" / "templates" / "base.html"
+    ).read_text()
+
+    assert "px-4 sm:px-9" in base, "el contenido no reduce su padding en mobile"
+    assert "pl-9" not in base and "pr-9" not in base

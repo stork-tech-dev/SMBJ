@@ -1,0 +1,100 @@
+{# ===========================================================================
+   Configuración de Tailwind. Única en todo el sistema (Principio 2: DRY).
+
+   Antes estaba copiada en base.html y en auth/base_auth.html, y las dos
+   copias ya habían divergido: la de auth se había quedado sin los colores
+   `welcome`, `texto-header`, `texto-invert` y `sidebar-text`, ni las
+   escalas `spacing`/`maxWidth`. Nada se veía roto porque las pantallas de
+   login todavía no usaban esos tokens, pero el primero que los usara
+   habría renderizado sin estilo y sin ningún error.
+
+   Se incluye justo después del <script> del CDN de Tailwind, que es lo que
+   define el objeto `tailwind` sobre el que se escribe acá.
+   =========================================================================== #}
+<script>
+    // Los colores apuntan a las CSS variables de custom.css: el modo
+    // oscuro se resuelve ahí y ningún template repite un hex.
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            // FUERA de `extend`: así REEMPLAZA la escala de Tailwind en vez
+            // de sumarse a ella. Los defaults traen `md` (768px) y `2xl`
+            // (1536px), que no existen en la escala del Principio 6;
+            // declarándola acá esos breakpoints dejan de generar CSS.
+            screens: {
+                sm: '640px',   // Tablet   640 – 1023
+                lg: '1024px',  // Desktop  1024 – 1279
+                xl: '1280px',  // Large Desktop >= 1280
+            },
+            extend: {
+                colors: {
+                    primary: 'var(--color-primary)',
+                    'primary-hover': 'var(--color-primary-hover)',
+                    accent: 'var(--color-accent)',
+                    welcome: 'var(--color-welcome)',
+                    bg: 'var(--color-bg)',
+                    surface: 'var(--color-surface)',
+                    'surface-alt': 'var(--color-surface-alt)',
+                    borde: 'var(--color-border)',
+                    texto: 'var(--color-text)',
+                    'texto-muted': 'var(--color-text-muted)',
+                    'texto-disabled': 'var(--color-text-disabled)',
+                    'texto-header': 'var(--color-text-header)',
+                    'texto-invert': 'var(--color-text-invert)',
+                    danger: 'var(--color-danger)',
+                    success: 'var(--color-success)',
+                    'sidebar-bg': 'var(--color-sidebar-bg)',
+                    'sidebar-text': 'var(--color-sidebar-text)',
+                },
+                fontFamily: {
+                    sans: ['Archivo', 'system-ui', 'sans-serif'],
+                },
+                // Escala tipográfica del design system (Figma), en rem para
+                // que respete el tamaño de fuente del navegador. Los valores
+                // en píxeles del comentario son los del diseño a 16px de raíz.
+                fontSize: {
+                    xs: '0.875rem',    // 14px
+                    sm: '0.9375rem',   // 15px
+                    base: '1.125rem',  // 18px
+                    lg: '1.375rem',    // 22px
+                    xl: '1.875rem',    // 30px
+                    // Fluidos: 60px y 50px fijos desbordan en 320px.
+                    '2xl': 'clamp(2.25rem, 7vw, 3.75rem)',    // 36 → 60px
+                    titulo: 'clamp(1.75rem, 6vw, 3.125rem)',  // 28 → 50px
+                },
+                borderRadius: {
+                    input: '5px',
+                    pill: '15px',
+                    search: '25px',
+                },
+                spacing: {
+                    sidebar: '18.125rem',  // 290px
+                    header: '5.9375rem',   // 95px
+                },
+                maxWidth: {
+                    layout: '90rem',  // 1440px
+                },
+                // Alturas de control. Salen de CSS variables porque cambian
+                // solas en pantallas táctiles: en escritorio conservan los
+                // valores de Figma (input 40px, botón 35px) y con puntero
+                // grueso suben al mínimo de 44px del Principio 6.
+                height: {
+                    control: 'var(--alto-control)',
+                    boton: 'var(--alto-boton)',
+                },
+                // Para los botones cuadrados de solo ícono (toggle de tema,
+                // mostrar/ocultar contraseña): sin esto crecerían solo a lo
+                // alto en táctil y dejarían de ser cuadrados.
+                width: {
+                    control: 'var(--alto-control)',
+                },
+                minHeight: {
+                    toque: 'var(--toque-min)',
+                },
+                minWidth: {
+                    toque: 'var(--toque-min)',
+                },
+            },
+        },
+    };
+</script>

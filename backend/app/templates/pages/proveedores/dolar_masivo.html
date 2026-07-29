@@ -12,7 +12,7 @@
         <span class="mx-1" aria-hidden="true">/</span>
         <span>Cambio masivo del dólar</span>
     </nav>
-    <h1 class="text-[50px] leading-none font-black text-welcome">Cambio masivo</h1>
+    <h1 class="text-titulo leading-none font-black text-welcome">Cambio masivo</h1>
 
     <div class="grid gap-6 mt-8 lg:grid-cols-2">
 
@@ -39,7 +39,7 @@
                     <label for="valor" class="text-sm font-semibold text-texto-header"
                            x-text="modalidad === 'valor' ? 'Nuevo valor ($)' : 'Porcentaje (%)'"></label>
                     <input id="valor" type="number" step="0.01" x-model="valor" @input.debounce.300ms="calcularPreview()"
-                           class="h-10 w-[160px] px-3 bg-surface border-2 border-borde rounded-input
+                           class="h-control w-full sm:w-[10rem] px-3 bg-surface border-2 border-borde rounded-input
                                   focus:outline-none focus:border-primary">
                 </div>
                 <p class="text-sm text-texto-muted pb-2" x-show="modalidad === 'porcentaje'">
@@ -101,7 +101,7 @@
             </div>
 
             <button type="button" @click="aplicar()" :disabled="!preview.length || aplicando"
-                    class="mt-6 h-10 px-8 rounded-input bg-primary text-white text-base font-medium
+                    class="mt-6 h-control px-8 rounded-input bg-primary text-white text-base font-medium
                            hover:bg-primary-hover disabled:opacity-50"
                     x-text="aplicando ? 'Aplicando…' : 'Aplicar cambio'"></button>
         </section>
@@ -124,7 +124,7 @@
             </label>
 
             <button type="button" @click="importar()" :disabled="!archivo || importando"
-                    class="mt-4 h-10 px-8 rounded-input bg-primary text-white text-base font-medium
+                    class="mt-4 h-control px-8 rounded-input bg-primary text-white text-base font-medium
                            hover:bg-primary-hover disabled:opacity-50"
                     x-text="importando ? 'Importando…' : 'Importar'"></button>
 

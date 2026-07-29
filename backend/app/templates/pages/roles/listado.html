@@ -8,18 +8,18 @@
 <div x-data="abmRoles()" x-init="cargar()">
 
     {{ volver('/configuracion', 'Configuraciones') }}
-    <h1 class="mt-2 text-[50px] leading-none font-black text-welcome">Roles</h1>
+    <h1 class="mt-2 text-titulo leading-none font-black text-welcome">Roles</h1>
 
     {# ---------- Filtros (Principio 5) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
         <input type="text" x-model="filtros.nombre" @input.debounce.400ms="cargar()"
                placeholder="Nombre" aria-label="Nombre"
-               class="h-10 w-[240px] px-4 text-sm font-semibold bg-surface border-2 border-borde
+               class="h-control w-full sm:w-[15rem] px-4 text-sm font-semibold bg-surface border-2 border-borde
                       rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
 
-        <div class="relative">
+        <div class="relative w-full sm:w-auto">
             <select x-model="filtros.activo" @change="cargar()" aria-label="Estado"
-                    class="h-10 w-[160px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                    class="h-control w-full sm:w-[10rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
                            rounded-input appearance-none focus:outline-none focus:border-primary"
                     :class="filtros.activo ? 'text-texto' : 'text-texto-disabled'">
                 <option value="">Estado (todos)</option>
@@ -29,9 +29,9 @@
             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
         </div>
 
-        <div class="relative">
+        <div class="relative w-full sm:w-auto">
             <select x-model="filtros.es_sistema" @change="cargar()" aria-label="Tipo"
-                    class="h-10 w-[190px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                    class="h-control w-full sm:w-[11.875rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
                            rounded-input appearance-none focus:outline-none focus:border-primary"
                     :class="filtros.es_sistema ? 'text-texto' : 'text-texto-disabled'">
                 <option value="">Tipo (todos)</option>
@@ -42,7 +42,7 @@
         </div>
 
         <button type="button" @click="limpiar()"
-                class="h-9 px-4 rounded-input text-sm text-texto-muted border border-borde
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
                        hover:border-primary hover:text-primary">Limpiar filtros</button>
 
         <p class="text-sm text-texto-muted">
@@ -51,7 +51,7 @@
         </p>
 
         <button type="button" @click="abrirAlta()"
-                class="ml-auto h-10 px-6 inline-flex items-center gap-2 rounded-input bg-accent
+                class="ml-auto h-control px-6 inline-flex items-center gap-2 rounded-input bg-accent
                        text-white text-sm font-semibold hover:opacity-90">
             {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
         </button>
@@ -136,7 +136,7 @@
                     {# En roles del sistema el nombre no se edita: es la clave
                        con la que el código los identifica. #}
                     <input id="r-nombre" x-model="form.nombre" required :disabled="form.es_sistema"
-                           class="h-10 px-3 bg-surface border border-borde rounded-input
+                           class="h-control px-3 bg-surface border border-borde rounded-input
                                   disabled:bg-surface-alt disabled:text-texto-disabled">
                     <span x-show="form.es_sistema" class="text-sm text-texto-muted">
                         Los roles del sistema no se pueden renombrar.
@@ -146,15 +146,15 @@
                 <div class="flex flex-col gap-1">
                     <label for="r-desc" class="text-base font-medium">Descripción</label>
                     <input id="r-desc" x-model="form.descripcion"
-                           class="h-10 px-3 bg-surface border border-borde rounded-input">
+                           class="h-control px-3 bg-surface border border-borde rounded-input">
                 </div>
 
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" @click="form.abierto = false"
-                            class="h-[35px] px-5 rounded-input border border-borde
+                            class="h-boton px-5 rounded-input border border-borde
                                    hover:border-primary hover:text-primary">Cancelar</button>
                     <button type="submit" :disabled="form.guardando"
-                            class="h-[35px] px-5 rounded-input bg-primary text-white font-medium
+                            class="h-boton px-5 rounded-input bg-primary text-white font-medium
                                    hover:bg-primary-hover disabled:opacity-60"
                             x-text="form.guardando ? 'Guardando…' : 'Guardar'"></button>
                 </div>
@@ -174,10 +174,10 @@
                class="mt-3 text-base text-danger" x-text="confirmacion.advertencia"></p>
             <div class="flex justify-end gap-3 mt-6">
                 <button type="button" @click="confirmacion.abierta = false"
-                        class="h-[35px] px-5 rounded-input border border-borde
+                        class="h-boton px-5 rounded-input border border-borde
                                hover:border-primary hover:text-primary">Cancelar</button>
                 <button type="button" @click="confirmacion.accion()"
-                        class="h-[35px] px-5 rounded-input bg-danger text-white font-medium
+                        class="h-boton px-5 rounded-input bg-danger text-white font-medium
                                hover:opacity-90">Confirmar</button>
             </div>
         </div>

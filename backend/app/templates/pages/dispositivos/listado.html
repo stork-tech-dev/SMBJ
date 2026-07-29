@@ -8,18 +8,18 @@
 <div x-data="abmDispositivos()" x-init="cargar(); cargarLocales()">
 
     {{ volver('/configuracion', 'Configuraciones') }}
-    <h1 class="mt-2 text-[50px] leading-none font-black text-welcome">Dispositivos</h1>
+    <h1 class="mt-2 text-titulo leading-none font-black text-welcome">Dispositivos</h1>
 
     {# ---------- Filtros ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
         <input type="text" x-model="filtros.descripcion" @input.debounce.300ms="cargar()"
                placeholder="Descripción" aria-label="Descripción"
-               class="h-10 w-[220px] px-4 text-sm font-semibold bg-surface border-2 border-borde
+               class="h-control w-full sm:w-[13.75rem] px-4 text-sm font-semibold bg-surface border-2 border-borde
                       rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
 
-        <div class="relative">
+        <div class="relative w-full sm:w-auto">
             <select x-model="filtros.punto_de_venta_id" @change="cargar()" aria-label="Local"
-                    class="h-10 w-[200px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                    class="h-control w-full sm:w-[12.5rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
                            rounded-input appearance-none focus:outline-none focus:border-primary"
                     :class="filtros.punto_de_venta_id ? 'text-texto' : 'text-texto-disabled'">
                 <option value="">Local (todos)</option>
@@ -30,9 +30,9 @@
             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
         </div>
 
-        <div class="relative">
+        <div class="relative w-full sm:w-auto">
             <select x-model="filtros.activo" @change="cargar()" aria-label="Estado"
-                    class="h-10 w-[150px] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
+                    class="h-control w-full sm:w-[9.375rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
                            rounded-input appearance-none focus:outline-none focus:border-primary"
                     :class="filtros.activo ? 'text-texto' : 'text-texto-disabled'">
                 <option value="">Estado (todos)</option>
@@ -45,14 +45,14 @@
         <div class="flex items-center gap-2">
             <span class="text-sm font-semibold text-texto-header">Último acceso</span>
             <input type="date" x-model="filtros.acceso_desde" @change="cargar()" aria-label="Desde"
-                   class="h-10 px-3 text-sm bg-surface border-2 border-borde rounded-input focus:outline-none focus:border-primary">
+                   class="h-control px-3 text-sm bg-surface border-2 border-borde rounded-input focus:outline-none focus:border-primary">
             <span class="text-texto-disabled">–</span>
             <input type="date" x-model="filtros.acceso_hasta" @change="cargar()" aria-label="Hasta"
-                   class="h-10 px-3 text-sm bg-surface border-2 border-borde rounded-input focus:outline-none focus:border-primary">
+                   class="h-control px-3 text-sm bg-surface border-2 border-borde rounded-input focus:outline-none focus:border-primary">
         </div>
 
         <button type="button" @click="limpiar()"
-                class="h-9 px-4 rounded-input text-sm text-texto-muted border border-borde
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
                        hover:border-primary hover:text-primary">Limpiar filtros</button>
 
         <p class="text-sm text-texto-muted">
@@ -133,9 +133,9 @@
                 </div>
                 <div class="flex flex-col gap-1">
                     <label for="d-local" class="text-sm font-semibold text-texto-header">Local asignado</label>
-                    <div class="relative">
+                    <div class="relative w-full sm:w-auto">
                         <select id="d-local" x-model="form.punto_de_venta_id"
-                                class="w-full h-10 pl-3 pr-9 text-base font-light bg-surface border-[0.5px]
+                                class="w-full h-control pl-3 pr-9 text-base font-light bg-surface border-[0.5px]
                                        border-texto-disabled rounded-input appearance-none focus:outline-none focus:border-primary">
                             <option value="">Sin asignar</option>
                             <template x-for="l in locales" :key="l.id">
@@ -158,9 +158,9 @@
                 </label>
                 <div class="flex justify-end gap-3 mt-2">
                     <button type="button" @click="form.abierto = false"
-                            class="h-9 px-5 rounded-input border border-borde hover:border-primary hover:text-primary">Cancelar</button>
+                            class="h-boton px-5 rounded-input border border-borde hover:border-primary hover:text-primary">Cancelar</button>
                     <button type="submit" :disabled="form.guardando"
-                            class="h-9 px-8 rounded-input bg-primary text-white font-medium hover:bg-primary-hover disabled:opacity-60"
+                            class="h-boton px-8 rounded-input bg-primary text-white font-medium hover:bg-primary-hover disabled:opacity-60"
                             x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
                 </div>
             </form>

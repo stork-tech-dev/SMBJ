@@ -55,12 +55,12 @@
 
             <div class="flex justify-end gap-3 px-6 pb-5">
                 <button type="button" @click="cerrar()"
-                        class="h-[35px] px-5 rounded-input text-base border border-borde
+                        class="h-boton px-5 rounded-input text-base border border-borde
                                text-texto hover:border-primary hover:text-primary">
                     Cancelar
                 </button>
                 <button type="button"
-                        class="h-[35px] px-5 rounded-input text-base font-medium bg-danger text-white
+                        class="h-boton px-5 rounded-input text-base font-medium bg-danger text-white
                                hover:opacity-90"
                         @click="
                             htmx.ajax(metodo.toUpperCase(), url, { target: '#contenido', swap: 'outerHTML' });

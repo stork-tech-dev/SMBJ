@@ -7,7 +7,7 @@
      class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
      @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
      role="dialog" aria-modal="true">
-    <div class="w-full max-w-[560px] my-8 bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+    <div class="w-full max-w-full sm:w-[35rem] my-8 bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
         <div class="flex items-center justify-between px-10 pt-8 pb-2">
             <h2 class="text-lg font-black text-welcome"
                 x-text="form.id ? (form.razon_social || 'Editar proveedor') : 'Nuevo proveedor'"></h2>
@@ -57,10 +57,10 @@
 
             <div class="sm:col-span-2 flex justify-end gap-3 mt-2">
                 <button type="button" @click="form.abierto = false"
-                        class="h-9 px-5 rounded-input border border-borde text-base
+                        class="h-boton px-5 rounded-input border border-borde text-base
                                hover:border-primary hover:text-primary">Cancelar</button>
                 <button type="submit" :disabled="form.guardando"
-                        class="h-9 px-8 rounded-input bg-primary text-white text-base font-medium
+                        class="h-boton px-8 rounded-input bg-primary text-white text-base font-medium
                                hover:bg-primary-hover disabled:opacity-60"
                         x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
             </div>

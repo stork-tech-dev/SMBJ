@@ -30,8 +30,10 @@
 
     <template x-for="t in items" :key="t.id">
         <div role="status"
-             class="flex items-start gap-3 min-w-[18rem] max-w-sm px-4 py-3 rounded-input
-                    border bg-surface shadow-lg"
+             {# El min-w arranca recién en sm: 288px fijos más el margen del
+                contenedor desbordaban una pantalla de 320px. #}
+             class="flex items-start gap-3 w-full sm:w-auto sm:min-w-[18rem] max-w-sm
+                    px-4 py-3 rounded-input border bg-surface shadow-lg"
              :class="{
                 'border-success text-success': t.tipo === 'exito',
                 'border-danger text-danger':   t.tipo === 'error',

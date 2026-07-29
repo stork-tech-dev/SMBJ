@@ -45,11 +45,11 @@
                             <label for="fc-dolar" class="text-sm font-semibold text-texto-header">Nuevo valor</label>
                             <input id="fc-dolar" type="number" step="0.01" min="0.01"
                                    x-model="ficha.nuevoDolar" required
-                                   class="h-10 w-[130px] px-3 bg-surface border-2 border-borde rounded-input
+                                   class="h-control w-full sm:w-[8.125rem] px-3 bg-surface border-2 border-borde rounded-input
                                           focus:outline-none focus:border-primary">
                         </div>
                         <button type="submit" :disabled="ficha.guardandoDolar"
-                                class="h-10 px-5 rounded-input bg-primary text-white text-base font-medium
+                                class="h-control px-5 rounded-input bg-primary text-white text-base font-medium
                                        hover:bg-primary-hover disabled:opacity-60">Actualizar</button>
                     </form>
                 </div>
