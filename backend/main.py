@@ -28,13 +28,19 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# La documentación interactiva se publica solo fuera de producción. Swagger,
+# ReDoc y el openapi.json no exigen autenticación y describen la API entera
+# —endpoints, esquemas, nombres de campos—, así que en un servidor público
+# son un mapa del sistema para cualquiera que entre a la URL.
+_ES_PRODUCCION = settings.APP_ENV == "production"
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="ERP Soleil / Mallorca — API v1",
     version="0.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=None if _ES_PRODUCCION else "/docs",
+    redoc_url=None if _ES_PRODUCCION else "/redoc",
+    openapi_url=None if _ES_PRODUCCION else "/openapi.json",
     lifespan=lifespan,
 )
 

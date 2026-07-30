@@ -8,11 +8,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Dependencias del sistema:
 #   - libpq5 y build tools → psycopg2
+#   - postgresql-client → psql, que el entrypoint usa para aplicar el seed
 #   - libpango/libcairo/... → WeasyPrint (generación de PDF)
 #   - tzdata → zona horaria UTC-03:00
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
+        postgresql-client \
         tzdata \
         curl \
         libpango-1.0-0 \
@@ -33,6 +35,11 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
+RUN chmod +x entrypoint.sh
+
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# El entrypoint aplica migraciones y seed, y escucha en ${PORT}. En
+# desarrollo docker-compose sobreescribe el comando con --reload y esto no
+# se ejecuta.
+CMD ["./entrypoint.sh"]

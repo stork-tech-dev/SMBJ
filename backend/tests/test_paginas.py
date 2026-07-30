@@ -851,3 +851,34 @@ def test_los_modulos_pendientes_muestran_su_pantalla(client, crear_usuario):
         # misma closure, todas marcarían la última del bucle.
         activo = resp.text.split('aria-current="page"')[0].rsplit('href="', 1)[1].rstrip('"\n ')
         assert activo == ruta, f"{ruta}: marcó {activo}"
+
+
+def test_la_documentacion_se_oculta_en_produccion():
+    """
+    Swagger, ReDoc y el openapi.json no exigen autenticación: publicados
+    describen la API entera a cualquiera que entre a la URL.
+
+    Se reconstruye la app con APP_ENV=production en vez de usar el `client`
+    del conftest, que ya se creó con la configuración de test.
+    """
+    import importlib
+
+    from config import settings
+
+    original = settings.APP_ENV
+    try:
+        settings.APP_ENV = "production"
+        import main
+
+        app_prod = importlib.reload(main).app
+        assert app_prod.docs_url is None
+        assert app_prod.redoc_url is None
+        assert app_prod.openapi_url is None
+
+        settings.APP_ENV = "development"
+        app_dev = importlib.reload(main).app
+        assert app_dev.docs_url == "/docs"
+        assert app_dev.openapi_url == "/openapi.json"
+    finally:
+        settings.APP_ENV = original
+        importlib.reload(main)
