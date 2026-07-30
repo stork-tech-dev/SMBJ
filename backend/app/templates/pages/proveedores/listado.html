@@ -5,18 +5,24 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones %}
+{% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
 <div x-data="abmProveedores()" x-init="cargar()">
 
-    <div class="flex items-center justify-between gap-4">
-        <h1 class="text-titulo leading-none font-black text-welcome">Proveedores</h1>
+    {% call encabezado('Proveedores') %}
         <a href="/proveedores/dolar-masivo"
            class="h-control px-5 inline-flex items-center gap-2 rounded-input border border-borde
                   text-sm font-semibold hover:border-primary hover:text-primary">
             {{ icono('chart', clases='w-4 h-4') }} Cambio masivo del dólar
         </a>
-    </div>
+
+        <button type="button" @click="abrirAlta()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+    {% endcall %}
 
     {# ---------- Filtros en tiempo real (tabla chica) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
@@ -61,12 +67,6 @@
             <span x-text="proveedores.length"></span>
             <span x-text="proveedores.length === 1 ? 'proveedor encontrado' : 'proveedores encontrados'"></span>
         </p>
-
-        <button type="button" @click="abrirAlta()"
-                class="ml-auto h-control px-6 inline-flex items-center gap-2 rounded-input bg-accent
-                       text-white text-sm font-semibold hover:opacity-90">
-            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
-        </button>
     </div>
 
     {# ---------- Tabla ---------- #}

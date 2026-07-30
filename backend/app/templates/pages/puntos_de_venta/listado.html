@@ -3,12 +3,18 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
+{% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
 <div x-data="abmPuntos()" x-init="cargar()">
 
-    {{ volver('/configuracion', 'Configuraciones') }}
-    <h1 class="mt-2 text-titulo leading-none font-black text-welcome">Puntos de venta</h1>
+    {% call encabezado('Puntos de venta', volver_url='/configuracion', volver_texto='Configuraciones') %}
+        <button type="button" @click="abrirAlta()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+    {% endcall %}
 
     {# ---------- Filtros ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
@@ -50,12 +56,6 @@
             <span x-text="puntos.length"></span>
             <span x-text="puntos.length === 1 ? 'punto de venta' : 'puntos de venta'"></span>
         </p>
-
-        <button type="button" @click="abrirAlta()"
-                class="ml-auto h-control px-6 inline-flex items-center gap-2 rounded-input bg-accent
-                       text-white text-sm font-semibold hover:opacity-90">
-            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
-        </button>
     </div>
 
     {# ---------- Tabla ---------- #}

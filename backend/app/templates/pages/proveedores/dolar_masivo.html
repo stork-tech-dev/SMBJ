@@ -3,6 +3,7 @@
 {% extends "base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
 <div x-data="dolarMasivo()" x-init="cargar()">
@@ -12,7 +13,7 @@
         <span class="mx-1" aria-hidden="true">/</span>
         <span>Cambio masivo del dólar</span>
     </nav>
-    <h1 class="text-titulo leading-none font-black text-welcome">Cambio masivo</h1>
+    {% call encabezado('Cambio masivo', volver_url='/proveedores', volver_texto='Proveedores') %}{% endcall %}
 
     <div class="grid gap-6 mt-8 lg:grid-cols-2">
 

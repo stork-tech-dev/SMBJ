@@ -1,0 +1,200 @@
+{# Árbol de categorías. Los datos salen de /api/v1/categorias: esta página
+   no consulta la base (Principio 1). #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones, volver %}
+{% from "components/encabezado.html" import encabezado %}
+
+{% block contenido %}
+<div x-data="arbolCategorias()" x-init="cargar()">
+
+    {% call encabezado('Categorías', volver_url='/productos', volver_texto='Productos') %}
+        <button type="button" @click="abrirAlta(null)"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nivel 1
+        </button>
+    {% endcall %}
+
+    {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <label class="sr-only" for="f-nombre">Nombre</label>
+        <input id="f-nombre" type="text" x-model="filtros.nombre" @input.debounce.300ms="cargar()"
+               placeholder="Nombre"
+               class="h-control w-full sm:w-[13.75rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input text-texto
+                      placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <div class="relative w-full sm:w-auto">
+            <label class="sr-only" for="f-nivel">Nivel</label>
+            <select id="f-nivel" x-model="filtros.nivel" @change="cargar()"
+                    class="h-control w-full sm:w-[10rem] pl-4 pr-10 text-sm font-semibold bg-surface
+                           border-2 border-borde rounded-input appearance-none
+                           focus:outline-none focus:border-primary"
+                    :class="filtros.nivel ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Nivel</option>
+                <template x-for="n in 5" :key="n">
+                    <option :value="n" x-text="'Nivel ' + n" class="text-texto"></option>
+                </template>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'categoría encontrada' : 'categorías encontradas'"></span>
+        </p>
+    </div>
+
+    {# ---------- Árbol ----------
+       Se renderiza recursivamente con un <template x-for> por nivel. Alpine
+       no tiene componentes recursivos, así que la profundidad se despliega
+       con un solo bucle sobre la lista aplanada: cada nodo ya trae su nivel
+       y el sangrado sale de ahí. Es más simple que anidar 5 templates. #}
+    <div class="mt-6 bg-surface rounded-[20px] shadow-[0_0_45px_-20px_#557eaa] overflow-hidden">
+        <div class="overflow-x-auto">
+            {# El ancho mínimo arranca en sm: en 320px las filas se comprimen
+               y el nombre trunca, que es preferible a forzar scroll. #}
+            <div class="sm:min-w-[30rem]">
+                <template x-for="nodo in visibles" :key="nodo.id">
+                    <div class="flex items-center gap-2 border-t border-borde px-4 sm:px-8 py-3
+                                hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)] transition-shadow">
+
+                        {# Sangrado por nivel. El padding se calcula inline
+                           porque depende de un dato, no de una clase fija. #}
+                        <div class="flex items-center gap-2 flex-1 min-w-0"
+                             :style="'padding-left:' + ((nodo.nivel - 1) * 1.5) + 'rem'">
+
+                            {# Solo los nodos con hijos muestran el chevron. #}
+                            <button type="button" @click="alternar(nodo.id)"
+                                    class="min-h-toque min-w-toque grid place-items-center
+                                           text-texto-muted hover:text-primary"
+                                    :class="!nodo.hijos.length && 'invisible'"
+                                    :aria-expanded="abiertos.includes(nodo.id)"
+                                    :aria-label="abiertos.includes(nodo.id) ? 'Contraer' : 'Expandir'">
+                                <span class="transition-transform inline-block"
+                                      :class="abiertos.includes(nodo.id) && 'rotate-90'">
+                                    {{ icono('chevron-derecha') }}
+                                </span>
+                            </button>
+
+                            <span class="font-medium truncate" x-text="nodo.nombre"></span>
+
+                            <span class="text-xs text-texto-disabled shrink-0"
+                                  x-text="'N' + nodo.nivel"></span>
+
+                            <span x-show="nodo.hijos.length" x-cloak
+                                  class="text-xs text-texto-muted shrink-0"
+                                  x-text="'(' + nodo.hijos.length + ')'"></span>
+                        </div>
+
+                        <div class="shrink-0">
+                            {% call acciones() %}
+                                {# Solo hasta el nivel 4 se puede anidar: el 5 es el tope. #}
+                                {{ accion('ver', texto='Agregar', icono_nombre='mas',
+                                          atributos='x-show="nodo.nivel < 5"
+                                                     @click="abrirAlta(nodo)"') }}
+                                {{ accion('editar', atributos='@click="abrirEdicion(nodo)"') }}
+                                {{ accion('borrar', atributos='@click="confirmarBaja(nodo)"
+                                                               title="Eliminar"') }}
+                            {% endcall %}
+                        </div>
+                    </div>
+                </template>
+
+                <p x-show="!visibles.length && !cargando" class="px-8 py-16 text-center text-texto-muted">
+                    Sin categorías. Empezá creando una de nivel 1.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Modal de alta / edición ---------- #}
+    <div x-show="form.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-form-categoria">
+
+        <div class="w-full max-w-[35rem] my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
+                <div>
+                    <h2 id="titulo-form-categoria" class="text-lg font-black text-welcome"
+                        x-text="form.id ? 'Editar categoría' : 'Nueva categoría'"></h2>
+                    <p class="mt-1 text-sm text-texto-muted" x-text="form.ubicacion"></p>
+                </div>
+                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-2">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardar()" class="px-6 sm:px-10 pb-8 pt-4">
+                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="cat-nombre" class="text-sm font-semibold text-texto-header">
+                            Nombre<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="cat-nombre" x-model="form.nombre" required maxlength="150"
+                               class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="cat-orden" class="text-sm font-semibold text-texto-header">
+                            Orden
+                        </label>
+                        <input id="cat-orden" type="number" min="0" x-model="form.orden"
+                               class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Entre categorías del mismo nivel.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-8">
+                    <button type="button" @click="form.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="form.guardando"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="form.guardando ? 'Guardando…'
+                                                   : (form.id ? 'Finalizar' : 'Crear')"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ---------- Confirmación de baja ---------- #}
+    <div x-show="confirmacion.abierta" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @click.self="confirmacion.abierta = false" role="dialog" aria-modal="true">
+        <div class="w-full max-w-md bg-surface rounded-[20px] shadow-xl p-6 sm:p-8">
+            <h2 class="text-lg font-semibold">Eliminar categoría</h2>
+            <p class="mt-3 text-base text-texto-muted">
+                ¿Confirmás eliminar <span class="font-medium" x-text="confirmacion.nombre"></span>?
+                La acción queda auditada.
+            </p>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" @click="confirmacion.abierta = false"
+                        class="h-boton px-5 rounded-input border border-borde
+                               hover:border-primary hover:text-primary">Cancelar</button>
+                <button type="button" @click="eliminar()"
+                        class="h-boton px-5 rounded-input bg-danger text-white font-medium
+                               hover:opacity-90">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/categorias.js') }}"></script>
+{% endblock %}

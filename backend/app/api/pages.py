@@ -35,13 +35,25 @@ router = APIRouter(include_in_schema=False)
 # `solo_maestra` lo restringe a la Cuenta Maestra.
 # `hub_configuracion` marca el ítem que agrupa CONFIGURACION_SECCIONES: se
 # muestra si el usuario puede ver al menos una de esas secciones.
+# `oculto` lo esconde de TODOS los perfiles, sin importar sus permisos: es
+# para módulos cuya pantalla todavía no existe.
 MENU_SIDEBAR = [
     {"nombre": "Home", "url": "/", "icono": "home", "modulo": None},
     {"nombre": "Proveedores", "url": "/proveedores", "icono": "truck", "modulo": Modulo.PROVEEDORES},
     {"nombre": "Productos", "url": "/productos", "icono": "box", "modulo": Modulo.PRODUCTOS},
     {"nombre": "Ventas", "url": "/ventas", "icono": "cart", "modulo": Modulo.VENTAS},
     {"nombre": "Reportes", "url": "/reportes", "icono": "chart", "modulo": Modulo.REPORTES},
-    {"nombre": "Auditoría", "url": "/auditoria", "icono": "list", "modulo": Modulo.AUDITORIA},
+    # Oculto hasta que exista su pantalla: hoy /auditoria no tiene ruta HTML
+    # y el ítem llevaba a un 404. El endpoint GET /api/v1/auditoria sigue
+    # funcionando; lo que se esconde es la entrada del menú. Para reactivarlo
+    # alcanza con borrar la línea `"oculto": True`.
+    {
+        "nombre": "Auditoría",
+        "url": "/auditoria",
+        "icono": "list",
+        "modulo": Modulo.AUDITORIA,
+        "oculto": True,
+    },
     {
         "nombre": "Configuraciones",
         "url": "/configuracion",
@@ -137,6 +149,11 @@ def _visible(db: Session, usuario, item: dict, es_maestra: bool) -> bool:
     de acceso: las tarjetas se filtraban solo por módulo e ignoraban
     `solo_maestra`, que es lo que protege a Roles.
     """
+    # Se evalúa primero: un ítem oculto no se muestra a nadie, ni siquiera
+    # a la Cuenta Maestra.
+    if item.get("oculto"):
+        return False
+
     if item.get("solo_maestra"):
         return es_maestra
     # Hub de Configuraciones: visible si alguna de sus secciones lo es.
@@ -202,10 +219,22 @@ async def login(
     if usuario is not None:
         return RedirectResponse("/", status_code=303)
 
+    # Saludo del local: solo en dispositivos activos y asignados. Se
+    # resuelve desde la cookie, en modo lectura — renderizar el login no
+    # crea ni modifica ningún dispositivo.
+    from app.services.device_service import local_a_saludar
+    from config import settings as configuracion
+
     return templates.TemplateResponse(
         request,
         "auth/login.html",
-        {"request": request, "letra_empresa": servicio_configuracion.letra_empresa(db)},
+        {
+            "request": request,
+            "letra_empresa": servicio_configuracion.letra_empresa(db),
+            "local_dispositivo": local_a_saludar(
+                db, request.cookies.get(configuracion.DEVICE_COOKIE_NAME)
+            ),
+        },
     )
 
 
@@ -375,6 +404,71 @@ async def configuracion(
             ruta_activa="/configuracion",
             secciones=secciones_configuracion(db, usuario),
         ),
+    )
+
+
+# Módulos que todavía no se construyeron. Su ítem sigue en el sidebar —el
+# usuario quiere verlos— y estas rutas existen solo para que resuelvan en
+# vez de dar 404. Cuando cada módulo se implemente, su entrada sale de acá
+# y pasa a tener su propia ruta.
+MODULOS_PENDIENTES = {
+    "/ventas": "Ventas",
+    "/reportes": "Reportes",
+    "/ajustes": "Ajustes",
+}
+
+
+def _registrar_pendientes() -> None:
+    """
+    Da de alta las rutas de los módulos pendientes.
+
+    En un bucle y no una por una: las tres son idénticas salvo el título y
+    la ruta activa, así que escribirlas a mano sería copiar tres veces el
+    mismo handler.
+    """
+    for ruta, titulo in MODULOS_PENDIENTES.items():
+
+        def _pagina(
+            request: Request,
+            db: Session = Depends(get_db),
+            usuario=Depends(requiere_sesion),
+            # Se capturan por defecto: sin esto las tres closures leerían
+            # el valor de la última vuelta del bucle.
+            _ruta: str = ruta,
+            _titulo: str = titulo,
+        ):
+            return templates.TemplateResponse(
+                request,
+                "pages/pendiente.html",
+                contexto_base(request, db, usuario, titulo=_titulo, ruta_activa=_ruta),
+            )
+
+        router.get(ruta, response_class=HTMLResponse, name=f"pendiente{ruta}")(_pagina)
+
+
+_registrar_pendientes()
+
+
+@router.get("/productos", response_class=HTMLResponse)
+async def productos(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/productos/listado.html",
+        contexto_base(request, db, usuario, titulo="Productos", ruta_activa="/productos"),
+    )
+
+
+@router.get("/categorias", response_class=HTMLResponse)
+async def categorias(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """Árbol de categorías. Cuelga de Productos, no de Configuraciones."""
+    return templates.TemplateResponse(
+        request,
+        "pages/categorias/arbol.html",
+        contexto_base(request, db, usuario, titulo="Categorías", ruta_activa="/productos"),
     )
 
 

@@ -1,0 +1,508 @@
+"""
+Reglas de negocio de productos y variantes.
+
+Lo central de este módulo es el precio de venta: es un campo persistido
+que se deriva de otros dos (`precio_usd` del producto y `dolar_actual` del
+proveedor). Que esté desnormalizado obliga a que TODO camino que toque
+cualquiera de esos dos pase por `calcular_precio_venta()`, o la base
+empieza a mentir.
+
+Los dos caminos son:
+  1. Cambia `precio_usd` → `crear_producto` / `editar_producto`.
+  2. Cambia el dólar del proveedor → `recalcular_precios_de_proveedor()`,
+     que llama `_aplicar_cambio_dolar()` en el service de proveedores.
+"""
+
+from decimal import Decimal
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.core.auditoria import registrar_auditoria, snapshot
+from app.core.codigos import (
+    CodigoInvalido,
+    armar_codigo_completo,
+    codificar_sku,
+    digito_verificador,
+)
+from app.core.utils import ahora_db, normalizar_texto, redondear_hacia_arriba
+from app.models.categoria import Categoria
+from app.models.configuracion import ConfiguracionSistema
+from app.models.producto import Estacionalidad, Producto, Variante
+from app.models.proveedor import EstadoProveedor, Proveedor
+from app.models.usuario import Usuario
+from app.services.roles import NoEncontrado, ReglaDeNegocio
+
+
+def obtener_producto(db: Session, producto_id: int) -> Producto:
+    producto = db.get(Producto, producto_id)
+    if producto is None:
+        raise NoEncontrado("Producto inexistente")
+    return producto
+
+
+def obtener_variante(db: Session, variante_id: int) -> Variante:
+    variante = db.get(Variante, variante_id)
+    if variante is None:
+        raise NoEncontrado("Variante inexistente")
+    return variante
+
+
+# ============================================================================
+# PRECIO
+# ============================================================================
+
+
+def calcular_precio_venta(
+    db: Session, precio_usd: Decimal, dolar: Decimal
+) -> Decimal:
+    """
+    Precio en pesos: dólares × cotización, redondeado HACIA ARRIBA al
+    múltiplo configurado.
+
+    Hacia arriba y no al más cercano: el redondeo no puede hacer que el
+    precio de venta quede por debajo del que corresponde.
+    """
+    config = db.execute(select(ConfiguracionSistema)).scalars().first()
+    multiplo = config.redondeo if config else Decimal("1")
+    return redondear_hacia_arriba(Decimal(precio_usd) * Decimal(dolar), multiplo)
+
+
+def recalcular_precios_de_proveedor(db: Session, proveedor_id: int) -> int:
+    """
+    Recalcula el precio de venta de todos los productos de un proveedor.
+
+    La llama `_aplicar_cambio_dolar()` en el service de proveedores, que es
+    el único punto por donde pasa un cambio de cotización —individual,
+    masivo o por Excel—. Engancharse ahí y no en los tres endpoints es lo
+    que evita que uno quede desincronizado.
+
+    Devuelve cuántos productos se actualizaron.
+    """
+    proveedor = db.get(Proveedor, proveedor_id)
+    if proveedor is None:
+        return 0
+
+    productos = list(
+        db.execute(select(Producto).where(Producto.proveedor_id == proveedor_id))
+        .scalars()
+        .all()
+    )
+
+    for producto in productos:
+        producto.precio_venta = calcular_precio_venta(
+            db, producto.precio_usd, proveedor.dolar_actual
+        )
+        producto.updated_at = ahora_db()
+
+    if productos:
+        db.flush()
+    return len(productos)
+
+
+# ============================================================================
+# VALIDACIONES
+# ============================================================================
+
+
+def _validar_categoria(db: Session, categoria_id: int) -> Categoria:
+    categoria = db.get(Categoria, categoria_id)
+    if categoria is None:
+        raise ReglaDeNegocio("La categoría no existe")
+    return categoria
+
+
+def _validar_proveedor(db: Session, proveedor_id: int) -> Proveedor:
+    proveedor = db.get(Proveedor, proveedor_id)
+    if proveedor is None:
+        raise ReglaDeNegocio("El proveedor no existe")
+    if proveedor.estado != EstadoProveedor.ACTIVO:
+        raise ReglaDeNegocio("No se puede cargar un producto de un proveedor inactivo")
+    return proveedor
+
+
+def _validar_descuento(db: Session, descuento: Decimal | None) -> Decimal:
+    """
+    El descuento del producto no puede pasar el tope global.
+
+    El tope vive en `configuracion_sistema`, así que la validación tiene
+    que consultarlo: no alcanza con el CHECK de 0-100 de la tabla.
+    """
+    if descuento is None:
+        return Decimal("0")
+
+    descuento = Decimal(descuento)
+    if descuento < 0:
+        raise ReglaDeNegocio("El descuento no puede ser negativo")
+
+    config = db.execute(select(ConfiguracionSistema)).scalars().first()
+    tope = config.descuento_maximo if config else Decimal("100")
+    if descuento > tope:
+        raise ReglaDeNegocio(f"El descuento no puede superar el máximo configurado ({tope}%)")
+
+    return descuento
+
+
+# ============================================================================
+# CÓDIGOS Y VARIANTES
+# ============================================================================
+
+
+def _siguiente_sku(db: Session) -> str:
+    """
+    Próximo SKU, tomado de la secuencia de PostgreSQL.
+
+    `nextval` es atómico: dos transacciones concurrentes reciben valores
+    distintos sin bloquearse. Un `MAX(sku) + 1` podría entregar el mismo
+    número a las dos y hacer fallar una por el índice único.
+    """
+    correlativo = db.execute(select(func.nextval("productos_sku_seq"))).scalar_one()
+    try:
+        return codificar_sku(int(correlativo))
+    except CodigoInvalido as exc:
+        raise ReglaDeNegocio(str(exc)) from exc
+
+
+def _letra_empresa(db: Session) -> str:
+    from app.services.configuracion import letra_empresa
+
+    return letra_empresa(db)
+
+
+def _crear_variante(
+    db: Session, producto: Producto, sufijo: str | None, es_base: bool
+) -> Variante:
+    """
+    Crea una variante y le congela el código.
+
+    `codigo_completo` y `verificador` se calculan una sola vez, acá: la
+    etiqueta se imprime y se pega a la mercadería, así que recalcularlos
+    después invalidaría lo que ya está en el depósito.
+    """
+    try:
+        codigo = armar_codigo_completo(_letra_empresa(db), producto.sku, sufijo)
+    except CodigoInvalido as exc:
+        raise ReglaDeNegocio(str(exc)) from exc
+
+    existe = db.execute(
+        select(Variante.id).where(Variante.codigo_completo == codigo)
+    ).scalar_one_or_none()
+    if existe:
+        raise ReglaDeNegocio(f"Ya existe una variante con el código '{codigo}'")
+
+    variante = Variante(
+        producto_id=producto.id,
+        sufijo=sufijo,
+        es_base=es_base,
+        codigo_completo=codigo,
+        verificador=digito_verificador(codigo),
+        created_at=ahora_db(),
+        updated_at=ahora_db(),
+    )
+    db.add(variante)
+    db.flush()
+    return variante
+
+
+def agregar_variante(
+    db: Session,
+    autor: Usuario,
+    producto_id: int,
+    sufijo: str,
+    ubicacion_deposito: str | None = None,
+    stock_minimo: int = 0,
+    ip_origen: str | None = None,
+) -> Variante:
+    """
+    Agrega una variante real a un producto.
+
+    Si el producto todavía no manejaba variantes, la BASE se elimina: no
+    pueden convivir con las reales, porque el stock quedaría partido entre
+    una variante genérica y las concretas.
+    """
+    producto = obtener_producto(db, producto_id)
+
+    # Se consulta la BASE en vez de leerla de `producto.variantes`: esa
+    # colección queda cacheada en la sesión y, tras haber borrado la base
+    # en una llamada anterior, seguiría devolviendo el objeto eliminado.
+    base = (
+        db.execute(
+            select(Variante).where(
+                Variante.producto_id == producto.id, Variante.es_base.is_(True)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if base is not None:
+        if base.stock_actual:
+            raise ReglaDeNegocio(
+                "El producto tiene stock cargado sin variantes: hay que "
+                "descargarlo antes de dividirlo en variantes"
+            )
+        db.delete(base)
+        db.flush()
+
+    variante = _crear_variante(db, producto, sufijo=sufijo, es_base=False)
+
+    variante.ubicacion_deposito = normalizar_texto(ubicacion_deposito)
+    variante.stock_minimo = stock_minimo
+
+    producto.tiene_variantes = True
+    producto.updated_at = ahora_db()
+    db.flush()
+
+    registrar_auditoria(
+        db,
+        usuario_id=autor.id,
+        accion="variante.crear",
+        entidad="variantes",
+        entidad_id=variante.id,
+        estado_nuevo=variante,
+        ip_origen=ip_origen,
+    )
+    return variante
+
+
+# ============================================================================
+# LISTADO Y ABM
+# ============================================================================
+
+
+def listar_productos(
+    db: Session,
+    sku: str | None = None,
+    descripcion: str | None = None,
+    categoria_id: int | None = None,
+    proveedor_id: int | None = None,
+    estacionalidad: str | None = None,
+    activo: bool | None = None,
+    precio_desde: Decimal | None = None,
+    precio_hasta: Decimal | None = None,
+    pagina: int = 1,
+    tamano: int = 50,
+) -> tuple[list[Producto], int]:
+    """Filtros del Principio 5, todos resueltos en el backend."""
+    consulta = select(Producto)
+
+    if sku:
+        consulta = consulta.where(Producto.sku.ilike(f"%{sku}%"))
+    if descripcion:
+        consulta = consulta.where(Producto.descripcion.ilike(f"%{descripcion}%"))
+    if categoria_id is not None:
+        # Incluye la descendencia: filtrar por "Zapatillas" trae también lo
+        # de "Deportivas" y "Urbanas". Los productos suelen colgar de las
+        # hojas, así que un filtro exacto por un nodo intermedio devolvería
+        # cero resultados casi siempre.
+        from app.services.categorias import rama_de_ids
+
+        consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
+    if proveedor_id is not None:
+        consulta = consulta.where(Producto.proveedor_id == proveedor_id)
+    if estacionalidad:
+        consulta = consulta.where(Producto.estacionalidad == estacionalidad)
+    if activo is not None:
+        consulta = consulta.where(Producto.activo.is_(activo))
+    if precio_desde is not None:
+        consulta = consulta.where(Producto.precio_venta >= precio_desde)
+    if precio_hasta is not None:
+        consulta = consulta.where(Producto.precio_venta <= precio_hasta)
+
+    total = db.execute(
+        select(func.count()).select_from(consulta.order_by(None).subquery())
+    ).scalar_one()
+
+    filas = (
+        db.execute(consulta.order_by(Producto.sku).limit(tamano).offset((pagina - 1) * tamano))
+        .unique()
+        .scalars()
+        .all()
+    )
+    return list(filas), total
+
+
+def crear_producto(
+    db: Session,
+    autor: Usuario,
+    categoria_id: int,
+    proveedor_id: int,
+    precio_usd: Decimal,
+    descripcion: str | None = None,
+    sku_proveedor: str | None = None,
+    descuento_producto: Decimal | None = None,
+    peso_gramos: Decimal | None = None,
+    estacionalidad: str = Estacionalidad.PERMANENTE.value,
+    stock_infinito: bool = False,
+    ip_origen: str | None = None,
+) -> Producto:
+    """
+    Alta de producto. Genera el SKU, calcula el precio de venta y crea la
+    variante BASE, todo en la misma transacción.
+    """
+    _validar_categoria(db, categoria_id)
+    proveedor = _validar_proveedor(db, proveedor_id)
+
+    if Decimal(precio_usd) <= 0:
+        raise ReglaDeNegocio("El precio en dólares debe ser mayor a cero")
+
+    descuento = _validar_descuento(db, descuento_producto)
+
+    if peso_gramos is not None and Decimal(peso_gramos) <= 0:
+        raise ReglaDeNegocio("El peso debe ser mayor a cero")
+
+    producto = Producto(
+        sku=_siguiente_sku(db),
+        sku_proveedor=normalizar_texto(sku_proveedor),
+        descripcion=normalizar_texto(descripcion),
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        precio_usd=Decimal(precio_usd),
+        precio_venta=calcular_precio_venta(db, precio_usd, proveedor.dolar_actual),
+        descuento_producto=descuento,
+        peso_gramos=Decimal(peso_gramos) if peso_gramos is not None else None,
+        estacionalidad=Estacionalidad(estacionalidad),
+        stock_infinito=stock_infinito,
+        tiene_variantes=False,
+        activo=True,
+        created_at=ahora_db(),
+        updated_at=ahora_db(),
+    )
+    db.add(producto)
+    db.flush()
+
+    # Todo producto arranca con su BASE: así el stock siempre cuelga de una
+    # variante, con o sin variantes reales.
+    _crear_variante(db, producto, sufijo=None, es_base=True)
+
+    registrar_auditoria(
+        db,
+        usuario_id=autor.id,
+        accion="producto.crear",
+        entidad="productos",
+        entidad_id=producto.id,
+        estado_nuevo=producto,
+        ip_origen=ip_origen,
+    )
+    return producto
+
+
+def editar_producto(
+    db: Session,
+    autor: Usuario,
+    producto_id: int,
+    descripcion: str | None = None,
+    sku_proveedor: str | None = None,
+    categoria_id: int | None = None,
+    precio_usd: Decimal | None = None,
+    descuento_producto: Decimal | None = None,
+    peso_gramos: Decimal | None = None,
+    estacionalidad: str | None = None,
+    stock_infinito: bool | None = None,
+    ip_origen: str | None = None,
+) -> Producto:
+    """
+    Edita el producto. El SKU y el proveedor no se cambian: el SKU está
+    impreso en las etiquetas, y cambiar de proveedor cambiaría la base del
+    precio sin dejar rastro de por qué.
+    """
+    producto = obtener_producto(db, producto_id)
+    antes = snapshot(producto)
+
+    if categoria_id is not None:
+        _validar_categoria(db, categoria_id)
+        producto.categoria_id = categoria_id
+
+    if descripcion is not None:
+        producto.descripcion = normalizar_texto(descripcion)
+    if sku_proveedor is not None:
+        producto.sku_proveedor = normalizar_texto(sku_proveedor)
+
+    if precio_usd is not None:
+        if Decimal(precio_usd) <= 0:
+            raise ReglaDeNegocio("El precio en dólares debe ser mayor a cero")
+        producto.precio_usd = Decimal(precio_usd)
+        # El precio de venta se deriva: cambiar uno sin el otro dejaría la
+        # base inconsistente.
+        producto.precio_venta = calcular_precio_venta(
+            db, producto.precio_usd, producto.proveedor.dolar_actual
+        )
+
+    if descuento_producto is not None:
+        producto.descuento_producto = _validar_descuento(db, descuento_producto)
+
+    if peso_gramos is not None:
+        if Decimal(peso_gramos) <= 0:
+            raise ReglaDeNegocio("El peso debe ser mayor a cero")
+        producto.peso_gramos = Decimal(peso_gramos)
+
+    if estacionalidad is not None:
+        producto.estacionalidad = Estacionalidad(estacionalidad)
+    if stock_infinito is not None:
+        producto.stock_infinito = stock_infinito
+
+    producto.updated_at = ahora_db()
+    db.flush()
+
+    registrar_auditoria(
+        db,
+        usuario_id=autor.id,
+        accion="producto.editar",
+        entidad="productos",
+        entidad_id=producto.id,
+        estado_anterior=antes,
+        estado_nuevo=producto,
+        ip_origen=ip_origen,
+    )
+    return producto
+
+
+def cambiar_estado_producto(
+    db: Session, autor: Usuario, producto_id: int, activo: bool, ip_origen: str | None = None
+) -> Producto:
+    """
+    Alta o baja lógica. Los productos no se borran: quedan referenciados
+    en ventas y en movimientos de stock.
+    """
+    producto = obtener_producto(db, producto_id)
+    antes = snapshot(producto)
+
+    producto.activo = activo
+    producto.updated_at = ahora_db()
+    db.flush()
+
+    registrar_auditoria(
+        db,
+        usuario_id=autor.id,
+        accion="producto.activar" if activo else "producto.desactivar",
+        entidad="productos",
+        entidad_id=producto.id,
+        estado_anterior=antes,
+        estado_nuevo=producto,
+        ip_origen=ip_origen,
+    )
+    return producto
+
+
+# ============================================================================
+# CÓDIGO DE BARRAS
+# ============================================================================
+
+
+def barcode_svg(db: Session, variante_id: int) -> str:
+    """
+    Code128 de la variante, en SVG.
+
+    Se codifica `codigo_completo + verificador`: el módulo 11 viaja dentro
+    del código de barras, así que un escaneo también lo trae. El checksum
+    módulo 103 de Code128 lo agrega la librería sola; nunca se persiste.
+    """
+    import io
+
+    from barcode import Code128
+    from barcode.writer import SVGWriter
+
+    variante = obtener_variante(db, variante_id)
+
+    buffer = io.BytesIO()
+    Code128(variante.codigo_con_verificador, writer=SVGWriter()).write(buffer)
+    return buffer.getvalue().decode("utf-8")

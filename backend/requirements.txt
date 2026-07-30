@@ -21,6 +21,11 @@ bcrypt==4.2.1
 # --- Templates ---
 jinja2==3.1.5
 
+# --- Códigos de barras (módulo 04) ---
+# Genera Code128 en SVG. El checksum módulo 103 (ISO/IEC 15417) lo
+# calcula la librería; no se persiste. MIT, sin servicios externos.
+python-barcode==0.15.1
+
 # --- Reportes ---
 weasyprint==63.1
 openpyxl==3.1.5

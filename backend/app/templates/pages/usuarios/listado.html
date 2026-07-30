@@ -4,13 +4,18 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
+{% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
 <div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarLocales()">
 
-    {{ volver('/configuracion', 'Configuraciones') }}
-    {# Título: Archivo Black 50px en azul grisáceo, según el diseño. #}
-    <h1 class="mt-2 text-titulo leading-none font-black text-welcome">Usuarios</h1>
+    {% call encabezado('Usuarios', volver_url='/configuracion', volver_texto='Configuraciones') %}
+        <button type="button" @click="abrirAlta()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+    {% endcall %}
 
     {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
@@ -64,13 +69,6 @@
             <span x-text="total"></span>
             <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
         </p>
-
-        <button type="button" @click="abrirAlta()"
-                class="ml-auto h-control px-6 inline-flex items-center gap-2 rounded-input
-                       bg-accent text-white text-sm font-semibold hover:opacity-90 transition-opacity">
-            {{ icono('mas', clases='w-4 h-4') }}
-            Crear nuevo
-        </button>
     </div>
 
     {# ---------- Tarjeta con la tabla ---------- #}

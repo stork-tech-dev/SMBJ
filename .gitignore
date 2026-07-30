@@ -25,4 +25,9 @@ Thumbs.db
 *.pdf
 *.xlsx
 
+# Fotos de producto subidas por el usuario. Son datos, no código: viven en
+# el disco del servidor y no se versionan. El bind mount ./backend:/app las
+# deja persistidas en el host entre rebuilds del contenedor.
+/backend/app/static/productos/
+
 prompts/

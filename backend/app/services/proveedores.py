@@ -340,6 +340,21 @@ def _aplicar_cambio_dolar(
         ip_origen=ip_origen,
     )
     db.flush()
+
+    # El precio de venta de los productos se deriva de esta cotización y
+    # está desnormalizado, así que hay que recalcularlo o la base miente.
+    #
+    # Va acá y no en los tres endpoints que cambian el dólar (individual,
+    # masivo y por Excel) porque los tres desembocan en esta función: es
+    # un único lugar que no se puede olvidar. En la misma transacción, así
+    # el precio nunca queda a mitad de camino de la cotización.
+    #
+    # El import es local para no acoplar los módulos al cargarse: el
+    # service de productos importa este para validar el alta.
+    from app.services.productos import recalcular_precios_de_proveedor
+
+    recalcular_precios_de_proveedor(db, proveedor.id)
+
     return registro
 
 

@@ -6,7 +6,7 @@ específico vive acá (Principio 2: DRY).
 """
 
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from fastapi import Request
 
@@ -60,6 +60,23 @@ def redondear(valor: Decimal | float | int, decimales: int = 2) -> Decimal:
     """
     cuantizador = Decimal(1).scaleb(-decimales)
     return Decimal(str(valor)).quantize(cuantizador, rounding=ROUND_HALF_UP)
+
+
+def redondear_hacia_arriba(valor: Decimal, multiplo: Decimal) -> Decimal:
+    """
+    Redondeo comercial hacia arriba al múltiplo configurado.
+
+    Es distinto de `redondear()`: aquel es half-up sobre decimales y este
+    es CEIL sobre un múltiplo. Con `multiplo = 100`, un precio de 1401
+    queda en 1500 y no en 1400 — el precio de venta nunca baja por efecto
+    del redondeo.
+
+    Un múltiplo de cero o negativo no redondea nada: devuelve el valor
+    tal cual en vez de dividir por cero.
+    """
+    if multiplo is None or multiplo <= 0:
+        return valor
+    return (Decimal(valor) / multiplo).quantize(Decimal(1), rounding=ROUND_CEILING) * multiplo
 
 
 def normalizar_texto(valor: str | None) -> str | None:

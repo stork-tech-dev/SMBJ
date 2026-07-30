@@ -1,0 +1,42 @@
+{# ===========================================================================
+   Macro: encabezado de página.
+
+   Título a la izquierda y acciones de pantalla a la derecha, arriba de la
+   barra de filtros. Las acciones (crear, ir a otra pantalla) no operan
+   sobre el listado, así que no van mezcladas con los filtros: ahí se
+   confunden con ellos.
+
+   Uso:
+     {% from "components/encabezado.html" import encabezado %}
+
+     {% call encabezado('Productos') %}
+        {{ ... botones ... }}
+     {% endcall %}
+
+   Con enlace de retorno, para las pantallas que cuelgan de un hub:
+
+     {% call encabezado('Usuarios', volver_url='/configuracion',
+                        volver_texto='Configuraciones') %}
+        ...
+     {% endcall %}
+
+   Sin acciones también sirve: se llama con el bloque vacío y queda solo
+   el título (y el retorno, si corresponde).
+   =========================================================================== #}
+
+{% from "components/botones.html" import volver %}
+
+{% macro encabezado(titulo, volver_url=None, volver_texto='Volver') %}
+    {% if volver_url %}{{ volver(volver_url, volver_texto) }}{% endif %}
+
+    <div class="flex flex-wrap items-center justify-between gap-4
+                {{ 'mt-2' if volver_url }}">
+        <h1 class="text-titulo leading-none font-black text-welcome">{{ titulo }}</h1>
+
+        {# gap propio: los botones se separan entre sí menos que del título,
+           y en pantallas angostas bajan juntos en su propia fila. #}
+        <div class="flex flex-wrap items-center gap-3">
+            {{ caller() }}
+        </div>
+    </div>
+{% endmacro %}

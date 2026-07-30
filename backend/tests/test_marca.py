@@ -23,7 +23,7 @@ def configurar_letra(db):
         config = servicio_configuracion.obtener_configuracion(db)
         if config is None:
             config = ConfiguracionSistema(
-                redondeo=10, descuento_maximo=30, metodo_descuento="encadenado",
+                redondeo=1000, descuento_maximo=30, metodo_descuento="encadenado",
                 letra_empresa=letra, updated_at=ahora_db(),
             )
             db.add(config)

@@ -1,0 +1,21 @@
+{# Pantalla de un módulo que todavía no se construyó.
+
+   Una sola plantilla parametrizada con `titulo` para los tres módulos
+   pendientes: copiarla por cada uno sería repetir estructura de UI, que es
+   lo que el Principio 2 pide evitar. Cuando un módulo se implemente, su
+   ruta deja de apuntar acá y esto no se toca.
+
+   Existe para que el ítem del sidebar resuelva: antes llevaba a un 404. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+
+{% block contenido %}
+
+{% call encabezado(titulo) %}{% endcall %}
+
+<p class="mt-4 text-base text-texto-muted">
+    Este módulo todavía no está disponible.
+</p>
+
+{% endblock %}

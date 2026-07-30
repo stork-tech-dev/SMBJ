@@ -1,0 +1,136 @@
+"""Schemas del módulo de productos."""
+
+from datetime import datetime
+from decimal import Decimal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+_ESTACIONALIDAD = "^(permanente|verano|invierno|otoño|primavera)$"
+
+
+class ProductoCrear(BaseModel):
+    """
+    `sku`, `precio_venta` y las variantes no están: los genera el backend.
+
+    Si el cliente pudiera mandar el SKU rompería el correlativo de la
+    secuencia; si pudiera mandar el precio de venta, ese precio dejaría de
+    derivarse del dólar del proveedor y la cascada quedaría inservible.
+    """
+
+    categoria_id: int
+    proveedor_id: int
+    precio_usd: Decimal = Field(gt=0, description="Precio en dólares, mayor a cero")
+    descripcion: str | None = None
+    sku_proveedor: str | None = Field(default=None, max_length=30)
+    descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
+    peso_gramos: Decimal | None = Field(default=None, gt=0)
+    estacionalidad: str = Field(default="permanente", pattern=_ESTACIONALIDAD)
+    stock_infinito: bool = False
+
+
+class ProductoEditar(BaseModel):
+    """
+    Todo opcional. El SKU y el proveedor no se editan: el SKU está impreso
+    en las etiquetas y cambiar de proveedor movería la base del precio.
+    """
+
+    categoria_id: int | None = None
+    descripcion: str | None = None
+    sku_proveedor: str | None = Field(default=None, max_length=30)
+    precio_usd: Decimal | None = Field(default=None, gt=0)
+    descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
+    peso_gramos: Decimal | None = Field(default=None, gt=0)
+    estacionalidad: str | None = Field(default=None, pattern=_ESTACIONALIDAD)
+    stock_infinito: bool | None = None
+
+
+class PrecioPreview(BaseModel):
+    """
+    Valores informativos del formulario, calculados por el backend.
+
+    Ambos crudos: el formato de moneda lo pone el frontend (Principio 1).
+    """
+
+    dolar_proveedor: Decimal
+    precio_venta: Decimal
+
+
+class ProductoEstado(BaseModel):
+    activo: bool
+
+
+class VarianteCrear(BaseModel):
+    sufijo: str = Field(min_length=1, max_length=1, description="Un carácter alfanumérico")
+    ubicacion_deposito: str | None = Field(default=None, max_length=100)
+    stock_minimo: int = Field(default=0, ge=0)
+
+
+class VarianteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    producto_id: int
+    sufijo: str | None
+    es_base: bool
+    codigo_completo: str
+    verificador: str
+    stock_actual: int
+    stock_minimo: int
+    ubicacion_deposito: str | None
+    activo: bool
+
+
+class FotoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    # Ruta relativa: el frontend la usa tal cual como src.
+    url: str
+    es_principal: bool
+    orden: int
+
+
+class CategoriaResumen(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    nivel: int
+
+
+class ProveedorResumen(BaseModel):
+    """
+    Datos mínimos del proveedor. No expone `dolar_actual` ni datos de
+    contacto: en el listado de productos solo hace falta identificarlo.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+
+
+class ProductoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sku: str
+    sku_proveedor: str | None
+    descripcion: str | None
+    categoria_id: int
+    categoria: CategoriaResumen
+    proveedor_id: int
+    proveedor: ProveedorResumen
+    # Ambos crudos: el formato de moneda lo pone el frontend (Principio 1).
+    precio_usd: Decimal
+    precio_venta: Decimal
+    descuento_producto: Decimal
+    peso_gramos: Decimal | None
+    estacionalidad: str
+    stock_infinito: bool
+    tiene_variantes: bool
+    activo: bool
+    variantes: list[VarianteResponse]
+    fotos: list[FotoResponse]
+    created_at: datetime
+    updated_at: datetime

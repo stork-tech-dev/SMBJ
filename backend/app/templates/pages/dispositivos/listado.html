@@ -3,12 +3,12 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
+{% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
 <div x-data="abmDispositivos()" x-init="cargar(); cargarLocales()">
 
-    {{ volver('/configuracion', 'Configuraciones') }}
-    <h1 class="mt-2 text-titulo leading-none font-black text-welcome">Dispositivos</h1>
+    {% call encabezado('Dispositivos', volver_url='/configuracion', volver_texto='Configuraciones') %}{% endcall %}
 
     {# ---------- Filtros ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">

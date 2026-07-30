@@ -207,3 +207,42 @@ class DeviceService:
 
     def reactivar(self, device_id: int, usuario_id: int, ip: str | None) -> Dispositivo:
         return self._cambiar_estado(device_id, True, usuario_id, ip)
+
+
+def local_a_saludar(db: Session, uuid_dispositivo: str | None) -> str | None:
+    """
+    Nombre del punto de venta con el que saludar en el login, o None.
+
+    Solo saluda a dispositivos **activos y con local asignado**: es el
+    mismo criterio que `get_active_device`, el que habilita a un celular a
+    operar. Un dispositivo recién creado (inactivo y sin local) no muestra
+    nada, que es lo correcto — todavía no pertenece a ningún local.
+
+    Resuelve el dispositivo desde la cookie con la sesión del request y no
+    desde `request.state.device`. Dos motivos: ese snapshot lo deja el
+    middleware, que en los tests está apagado —la feature quedaría sin
+    poder probarse—, y así la consulta usa la misma sesión que el resto de
+    la página.
+
+    Es de SOLO LECTURA: a diferencia de `identificar_dispositivo`, no crea
+    un dispositivo si no lo encuentra. Renderizar el login no debe tener
+    efectos secundarios.
+    """
+    if not uuid_dispositivo:
+        return None
+
+    # get_by_uuid ya devuelve None ante un uuid mal formado, así que una
+    # cookie manipulada no rompe la pantalla de login.
+    dispositivo = DeviceRepository(db).get_by_uuid(uuid_dispositivo)
+    if (
+        dispositivo is None
+        or not dispositivo.activo
+        or dispositivo.punto_de_venta_id is None
+    ):
+        return None
+
+    punto = db.get(PuntoDeVenta, dispositivo.punto_de_venta_id)
+    # Un local dado de baja no se saluda: sería confuso.
+    if punto is None or not punto.activo:
+        return None
+    return punto.nombre

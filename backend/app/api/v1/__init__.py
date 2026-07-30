@@ -12,8 +12,10 @@ from app.api.v1 import (
     admin_dispositivos,
     auditoria,
     auth,
+    categorias,
     dispositivos,
     health,
+    productos,
     proveedores,
     puntos_de_venta,
     roles,
@@ -26,6 +28,8 @@ api_router.include_router(auth.router)
 api_router.include_router(roles.router)
 api_router.include_router(usuarios.router)
 api_router.include_router(proveedores.router)
+api_router.include_router(categorias.router)
+api_router.include_router(productos.router)
 api_router.include_router(puntos_de_venta.router)
 api_router.include_router(dispositivos.router)
 api_router.include_router(admin_dispositivos.router)

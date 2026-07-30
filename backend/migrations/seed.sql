@@ -14,10 +14,20 @@
 
 -- ----------------------------------------------------------------------------
 -- 1. Configuración del sistema (fila única)
+--
+-- `redondeo` es el múltiplo al que se lleva HACIA ARRIBA el precio de venta
+-- en pesos: precio_usd × dolar_actual del proveedor, con CEIL al múltiplo.
+-- En 1000, un costo de 7.462 se vende a 8.000. Es un valor de negocio
+-- definido con el cliente, no un default técnico: el salto entre escalones
+-- es de mil pesos y define el margen, así que no conviene cambiarlo sin
+-- consultarlo.
+--
+-- El WHERE NOT EXISTS hace que este INSERT solo corra en una instalación
+-- vacía: volver a ejecutar el seed nunca pisa una configuración ya cargada.
 -- ----------------------------------------------------------------------------
 INSERT INTO configuracion_sistema
     (redondeo, descuento_maximo, metodo_descuento, letra_empresa, updated_at, updated_by)
-SELECT 10.00, 30.00, 'encadenado', 'S', NOW(), NULL
+SELECT 1000.00, 30.00, 'encadenado', 'S', NOW(), NULL
 WHERE NOT EXISTS (SELECT 1 FROM configuracion_sistema);
 
 

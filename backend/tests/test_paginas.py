@@ -506,3 +506,348 @@ def test_el_padding_del_contenido_se_achica_en_mobile():
 
     assert "px-4 sm:px-9" in base, "el contenido no reduce su padding en mobile"
     assert "pl-9" not in base and "pr-9" not in base
+
+
+def test_la_pagina_de_categorias_se_renderiza(client, crear_usuario):
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    resp = client.get("/categorias")
+    assert resp.status_code == 200
+    assert "arbolCategorias" in resp.text
+    assert "Categorías" in resp.text
+
+
+def test_la_pagina_de_productos_se_renderiza(client, crear_usuario):
+    """El ítem del sidebar apuntaba a /productos, que no existía y daba 404."""
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    resp = client.get("/productos")
+    assert resp.status_code == 200
+    assert "abmProductos" in resp.text
+
+
+def test_categorias_marca_productos_en_el_sidebar(client, crear_usuario):
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    resp = client.get("/categorias")
+    assert resp.text.count("nav-activo") == 1
+    activo = resp.text.split('aria-current="page"')[0].rsplit('href="', 1)[1].rstrip('"\n ')
+    assert activo == "/productos"
+
+
+def test_toda_pantalla_es_alcanzable_desde_la_navegacion(client, crear_usuario):
+    """
+    Regresión: el ABM de categorías quedó huérfano al reemplazar la
+    redirección de /productos por el listado. La pantalla funcionaba, pero
+    no se llegaba desde ningún lado — el tipo de rotura que no falla, solo
+    desaparece.
+
+    Cada página con sesión tiene que estar enlazada desde el sidebar o
+    desde otra página.
+    """
+    import re
+
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    # Páginas que no cuelgan del sidebar y necesitan un enlace de entrada.
+    entradas = {
+        "/categorias": "/productos",
+        "/puntos-de-venta": "/configuracion",
+        "/dispositivos": "/configuracion",
+        "/usuarios": "/configuracion",
+        "/roles": "/configuracion",
+    }
+
+    for destino, desde in entradas.items():
+        origen = client.get(desde)
+        assert origen.status_code == 200, desde
+        assert f'href="{destino}"' in origen.text, f"{desde} no enlaza a {destino}"
+
+        # Y el camino de vuelta, para no dejar al usuario sin salida.
+        vuelta = client.get(destino)
+        assert vuelta.status_code == 200, destino
+        assert f'href="{desde}"' in vuelta.text, f"{destino} no vuelve a {desde}"
+
+
+def test_todas_las_pantallas_usan_el_macro_de_encabezado():
+    """
+    El encabezado (título + acciones) es estructura de UI repetida: va en
+    un macro, no copiado en cada plantilla (Principio 2). Un <h1> suelto
+    significa que alguien volvió a copiarlo.
+    """
+    import pathlib
+    import re
+
+    paginas = pathlib.Path(__file__).parent.parent / "app" / "templates" / "pages"
+    sueltos = {}
+    for p in paginas.rglob("*.html"):
+        texto = p.read_text()
+        if re.search(r'<h1 class="[^"]*text-titulo', texto):
+            sueltos[str(p.relative_to(paginas))] = "h1 fuera del macro"
+
+    assert not sueltos, sueltos
+
+
+def test_el_boton_de_alta_no_vive_en_la_barra_de_filtros(client, crear_usuario):
+    """
+    Crear no es una acción sobre el listado: mezclado con los filtros se
+    confunde con ellos. Va arriba, con el título.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    for url in ("/productos", "/usuarios", "/roles", "/proveedores",
+                "/puntos-de-venta", "/categorias"):
+        html = client.get(url).text
+        assert html.count("Crear ") >= 1, url
+
+        # El botón tiene que aparecer ANTES del primer filtro.
+        i_crear = html.find("Crear ")
+        i_filtros = html.find("Limpiar filtros")
+        if i_filtros != -1:
+            assert i_crear < i_filtros, f"{url}: el botón de alta quedó entre los filtros"
+
+
+def test_el_enlace_de_retorno_no_esta_duplicado(client, crear_usuario):
+    """
+    Al unificar los encabezados quedó un `volver` suelto conviviendo con
+    el del macro, y la flecha aparecía dos veces. El HTML renderizado es
+    el único lugar donde eso se nota.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    retornos = {
+        "/usuarios": "/configuracion",
+        "/roles": "/configuracion",
+        "/puntos-de-venta": "/configuracion",
+        "/dispositivos": "/configuracion",
+        "/categorias": "/productos",
+    }
+
+    for url, destino in retornos.items():
+        html = client.get(url).text
+        # El <main> excluye el sidebar, que también enlaza a esas rutas.
+        main = html.split('id="contenido"')[1]
+        assert main.count(f'href="{destino}"') == 1, f"{url}: retorno duplicado o ausente"
+
+
+def test_las_acciones_de_pantalla_estan_agrupadas(client, crear_usuario):
+    """
+    Proveedores tenía su propio contenedor flex alrededor del título, y al
+    meter el macro adentro quedaron dos flex anidados: "Crear nuevo" se
+    pegaba al título y "Cambio masivo" quedaba solo a la derecha.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    main = client.get("/proveedores").text.split('id="contenido"')[1]
+
+    i_titulo = main.find(">Proveedores</h1>")
+    i_masivo = main.find("Cambio masivo del dólar")
+    i_crear = main.find("Crear nuevo")
+    i_filtros = main.find("Limpiar filtros")
+
+    # Las dos acciones van juntas, después del título y antes de los filtros.
+    assert i_titulo < i_masivo < i_crear < i_filtros
+
+
+# ============================================================================
+# SALUDO DEL LOCAL EN EL LOGIN
+# ============================================================================
+
+
+def _dispositivo(db, activo, punto_de_venta_id):
+    """Crea un dispositivo y devuelve su uuid, para mandarlo como cookie."""
+    from app.models.dispositivo import Dispositivo
+
+    d = Dispositivo(
+        descripcion="Celular de prueba",
+        activo=activo,
+        punto_de_venta_id=punto_de_venta_id,
+    )
+    db.add(d)
+    db.flush()
+    return str(d.uuid)
+
+
+def _local(db, crear_usuario, activo=True):
+    from app.models.punto_de_venta import TipoPuntoVenta
+    from app.services import puntos_de_venta as servicio
+
+    autor = crear_usuario("cm_local", ROL_CUENTA_MAESTRA)
+    punto = servicio.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "1234")
+    if not activo:
+        servicio.cambiar_estado(db, autor, punto.id, activo=False)
+    return punto
+
+
+def test_el_login_saluda_al_local_del_dispositivo(client, db, crear_usuario):
+    punto = _local(db, crear_usuario)
+    uuid = _dispositivo(db, activo=True, punto_de_venta_id=punto.id)
+    db.commit()
+
+    client.cookies.set("device_uuid", uuid)
+    resp = client.get("/login")
+
+    assert resp.status_code == 200
+    assert "Bienvenido a Patio Olmos" in resp.text
+
+
+def test_un_dispositivo_inactivo_no_muestra_saludo(client, db, crear_usuario):
+    """Un celular todavía sin activar no es de ningún local."""
+    punto = _local(db, crear_usuario)
+    uuid = _dispositivo(db, activo=False, punto_de_venta_id=punto.id)
+    db.commit()
+
+    client.cookies.set("device_uuid", uuid)
+    resp = client.get("/login")
+
+    assert "Bienvenido a" not in resp.text
+
+
+def test_un_dispositivo_sin_local_no_muestra_saludo(client, db, crear_usuario):
+    uuid = _dispositivo(db, activo=True, punto_de_venta_id=None)
+    db.commit()
+
+    client.cookies.set("device_uuid", uuid)
+    resp = client.get("/login")
+
+    assert "Bienvenido a" not in resp.text
+
+
+def test_un_navegador_sin_dispositivo_no_muestra_saludo(client):
+    """El caso normal: alguien entrando desde una computadora cualquiera."""
+    resp = client.get("/login")
+
+    assert resp.status_code == 200
+    assert "Bienvenido a" not in resp.text
+
+
+def test_un_local_dado_de_baja_no_se_saluda(client, db, crear_usuario):
+    """
+    El dispositivo sigue activo y asignado, pero el local se dio de baja:
+    saludar a un local cerrado sería confuso.
+    """
+    punto = _local(db, crear_usuario, activo=False)
+    uuid = _dispositivo(db, activo=True, punto_de_venta_id=punto.id)
+    db.commit()
+
+    client.cookies.set("device_uuid", uuid)
+    resp = client.get("/login")
+
+    assert "Bienvenido a" not in resp.text
+
+
+def test_el_saludo_va_antes_del_titulo_ingresar(client, db, crear_usuario):
+    punto = _local(db, crear_usuario)
+    uuid = _dispositivo(db, activo=True, punto_de_venta_id=punto.id)
+    db.commit()
+
+    client.cookies.set("device_uuid", uuid)
+    html = client.get("/login").text
+
+    assert html.find("Bienvenido a Patio Olmos") < html.find(">Ingresar</h1>")
+
+
+def test_el_formato_de_moneda_no_vuelve_a_redondear():
+    """
+    El redondeo del precio es CEIL y lo hace el backend. Si la vista usa
+    `maximumFractionDigits: 0` aplica su propio redondeo half-expand: con
+    el `redondeo` del sistema en 0,50 un precio guardado como 1234,49 se
+    mostraría "$1.234", menos de lo que se cobra.
+
+    Hoy no se nota porque el redondeo configurado es 1000 y los precios no
+    tienen decimales, pero eso es un valor de configuración, no una
+    garantía.
+    """
+    import pathlib
+    import re
+
+    js = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
+    culpables = {}
+    for archivo in js.glob("*.js"):
+        texto = archivo.read_text()
+        # Un máximo de decimales sin un mínimo igual deja que Intl redondee.
+        for m in re.finditer(r"maximumFractionDigits:\s*(\d+)", texto):
+            if "minimumFractionDigits" not in texto:
+                culpables.setdefault(archivo.name, []).append(m.group(0))
+
+    assert not culpables, f"formato que puede redondear importes: {culpables}"
+
+
+def test_auditoria_no_se_muestra_a_nadie(client, crear_usuario, roles, dar_permiso):
+    """
+    Está oculta hasta que exista su pantalla: hoy /auditoria no tiene ruta
+    HTML y el ítem llevaba a un 404.
+
+    Se prueba con la Cuenta Maestra —que ve todo— y con un rol al que se le
+    da el permiso explícitamente: `oculto` gana sobre cualquier permiso.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+    assert 'href="/auditoria"' not in client.get("/").text
+
+    crear_usuario("auditor", ROL_DUENO)
+    dar_permiso(rol_id=roles[ROL_DUENO].id, modulo=Modulo.AUDITORIA, ver=True)
+    client.post("/api/v1/auth/login", json={"username": "auditor", "password": "Test1234!"})
+    assert 'href="/auditoria"' not in client.get("/").text
+
+
+def test_el_endpoint_de_auditoria_sigue_activo(client, crear_usuario):
+    """
+    Se oculta el ítem del menú, no la funcionalidad: la auditoría es
+    append-only y su endpoint de lectura tiene que seguir disponible.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    headers_login = client.post(
+        "/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"}
+    )
+    assert headers_login.status_code == 200
+
+    resp = client.get("/api/v1/auditoria")
+    assert resp.status_code == 200
+
+
+def test_ningun_item_del_sidebar_lleva_a_un_404(client, crear_usuario):
+    """
+    Regresión: "Productos" y "Auditoría" apuntaban a rutas inexistentes y
+    nadie lo notaba hasta hacer clic.
+
+    Los módulos sin construir (Ventas, Reportes, Ajustes) tienen una
+    pantalla en blanco para que su ítem resuelva, así que la regla vale
+    para todos sin excepciones.
+    """
+    import re
+
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    aside = client.get("/").text.split("<aside")[1].split("</aside>")[0]
+    destinos = sorted(set(re.findall(r'href="(/[^"]*)"', aside)))
+    assert destinos, "el sidebar no tiene ningún enlace"
+
+    rotos = [d for d in destinos if client.get(d, follow_redirects=False).status_code == 404]
+    assert not rotos, f"ítems del sidebar que dan 404: {rotos}"
+
+
+def test_los_modulos_pendientes_muestran_su_pantalla(client, crear_usuario):
+    """Cada uno con su título y su ítem del sidebar marcado."""
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    for ruta, titulo in {"/ventas": "Ventas", "/reportes": "Reportes",
+                         "/ajustes": "Ajustes"}.items():
+        resp = client.get(ruta)
+        assert resp.status_code == 200, ruta
+        assert f">{titulo}</h1>" in resp.text, ruta
+        assert "todavía no está disponible" in resp.text, ruta
+
+        # El ítem correcto queda activo: si las tres rutas compartieran la
+        # misma closure, todas marcarían la última del bucle.
+        activo = resp.text.split('aria-current="page"')[0].rsplit('href="', 1)[1].rstrip('"\n ')
+        assert activo == ruta, f"{ruta}: marcó {activo}"

@@ -3,12 +3,18 @@
 
 {% from "components/botones.html" import accion, acciones, volver %}
 {% from "components/icons.html" import icono %}
+{% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
 <div x-data="abmRoles()" x-init="cargar()">
 
-    {{ volver('/configuracion', 'Configuraciones') }}
-    <h1 class="mt-2 text-titulo leading-none font-black text-welcome">Roles</h1>
+    {% call encabezado('Roles', volver_url='/configuracion', volver_texto='Configuraciones') %}
+        <button type="button" @click="abrirAlta()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+    {% endcall %}
 
     {# ---------- Filtros (Principio 5) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
@@ -49,12 +55,6 @@
             <span x-text="roles.length"></span>
             <span x-text="roles.length === 1 ? 'rol encontrado' : 'roles encontrados'"></span>
         </p>
-
-        <button type="button" @click="abrirAlta()"
-                class="ml-auto h-control px-6 inline-flex items-center gap-2 rounded-input bg-accent
-                       text-white text-sm font-semibold hover:opacity-90">
-            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
-        </button>
     </div>
 
     {# ---------- Tabla ---------- #}

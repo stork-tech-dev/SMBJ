@@ -7,6 +7,14 @@
 {% block formulario_auth %}
 <div x-data="pantallaLogin()">
 
+    {# Saludo del local. Solo aparece en dispositivos activos y asignados a
+       un punto de venta: en un navegador cualquiera no hay nada que decir. #}
+    {% if local_dispositivo %}
+        <p class="mb-4 text-lg font-semibold text-welcome">
+            Bienvenido a {{ local_dispositivo }}
+        </p>
+    {% endif %}
+
     <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">Ingresar</h1>
         <button type="button" @click="alternar()"
