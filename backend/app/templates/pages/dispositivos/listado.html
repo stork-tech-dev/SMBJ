@@ -73,6 +73,7 @@
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Último acceso</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">IP</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Equipo</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
                 </thead>
@@ -93,6 +94,17 @@
                             </td>
                             <td class="px-4 py-5 align-middle text-sm" x-text="formatearFecha(d.ultimo_acceso)"></td>
                             <td class="px-4 py-5 align-middle text-sm text-texto-muted" x-text="d.ultima_ip || '—'"></td>
+
+                            {# Sistema, navegador y modelo, leídos del
+                               User-Agent. El string crudo va en el title:
+                               es lo que permite entender un caso raro sin
+                               ir a la base. #}
+                            <td class="px-4 py-5 align-middle text-sm" :title="d.user_agent || ''">
+                                <span x-text="equipo(d)"></span>
+                                <span x-show="d.modelo" x-cloak
+                                      class="block text-xs text-texto-muted"
+                                      x-text="d.modelo"></span>
+                            </td>
                             <td class="px-8 py-5 align-middle text-right whitespace-nowrap">
                                 {% call acciones() %}
                                     {{ accion('editar', atributos='@click="abrirEdicion(d)"') }}
@@ -105,7 +117,7 @@
                         </tr>
                     </template>
                     <tr x-show="!dispositivos.length && !cargando">
-                        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                        <td colspan="8" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
                     </tr>
                 </tbody>
             </table>

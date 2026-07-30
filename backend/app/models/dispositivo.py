@@ -56,6 +56,21 @@ class Dispositivo(Base):
     ultima_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # --- Qué equipo se conecta (leído del header User-Agent) ---
+    #
+    # Se guarda el string CRUDO además de lo interpretado. El User-Agent es
+    # irregular y las heurísticas de `core/user_agent.py` van a fallar con
+    # algún navegador raro: teniendo el original se puede corregir la
+    # interpretación más adelante sin haber perdido el dato.
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    sistema_operativo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    navegador: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Solo lo informan los móviles: los navegadores de escritorio no exponen
+    # marca ni modelo de la máquina, así que ahí queda NULL.
+    modelo: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )

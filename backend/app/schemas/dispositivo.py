@@ -23,6 +23,12 @@ class DispositivoResponse(BaseModel):
     ultimo_acceso: datetime | None
     ultima_ip: str | None
     observaciones: str | None
+    # Datos del equipo leídos del User-Agent. Crudos: el frontend
+    # decide cómo mostrarlos (Principio 1).
+    user_agent: str | None
+    sistema_operativo: str | None
+    navegador: str | None
+    modelo: str | None
     created_at: datetime
     updated_at: datetime
 

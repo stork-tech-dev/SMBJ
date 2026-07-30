@@ -244,3 +244,97 @@ def test_response_admin_no_expone_fingerprint(client, db, crear_usuario, login, 
     assert resp.status_code == 200
     assert "fingerprint" not in resp.text
     assert "fp-secreto" not in resp.text
+
+
+# ============================================================================
+# DATOS DEL EQUIPO (User-Agent)
+# ============================================================================
+
+UA_ANDROID = (
+    "Mozilla/5.0 (Linux; Android 13; SM-A536E) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+)
+UA_WINDOWS = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+)
+
+
+def test_el_alta_captura_los_datos_del_equipo(db):
+    from app.services.device_service import DeviceService
+
+    servicio = DeviceService(db)
+    dispositivo, _ = servicio.identificar_dispositivo(
+        uuid_cookie=None, fingerprint=None, ip="1.2.3.4", user_agent=UA_ANDROID
+    )
+
+    assert dispositivo.sistema_operativo == "Android 13"
+    assert dispositivo.navegador == "Chrome 120"
+    assert dispositivo.modelo == "SM-A536E"
+    # El string crudo se conserva: permite reinterpretarlo si las
+    # heurísticas fallan con algún navegador.
+    assert dispositivo.user_agent == UA_ANDROID
+
+
+def test_los_datos_se_refrescan_en_cada_acceso(db):
+    """Un equipo puede actualizar su sistema o cambiar de navegador."""
+    from app.services.device_service import DeviceService
+
+    servicio = DeviceService(db)
+    dispositivo, _ = servicio.identificar_dispositivo(None, None, "1.2.3.4", UA_ANDROID)
+    db.flush()
+
+    servicio.identificar_dispositivo(
+        str(dispositivo.uuid), None, "1.2.3.4", user_agent=UA_WINDOWS
+    )
+
+    assert dispositivo.sistema_operativo == "Windows 10/11"
+    assert dispositivo.navegador == "Chrome 119"
+    # El modelo se limpia: un equipo de escritorio no informa ninguno.
+    assert dispositivo.modelo is None
+
+
+def test_una_request_sin_user_agent_no_borra_lo_conocido(db):
+    """
+    Los clientes de API (curl, un script) no mandan User-Agent. Eso no
+    puede vaciar los datos que ya se sabían del equipo.
+    """
+    from app.services.device_service import DeviceService
+
+    servicio = DeviceService(db)
+    dispositivo, _ = servicio.identificar_dispositivo(None, None, "1.2.3.4", UA_ANDROID)
+    db.flush()
+
+    servicio.identificar_dispositivo(str(dispositivo.uuid), None, "1.2.3.4", user_agent=None)
+
+    assert dispositivo.sistema_operativo == "Android 13"
+    assert dispositivo.modelo == "SM-A536E"
+
+
+def test_un_dispositivo_sin_datos_no_rompe_el_alta(db):
+    """El alta tiene que funcionar aunque no llegue el header."""
+    from app.services.device_service import DeviceService
+
+    dispositivo, _ = DeviceService(db).identificar_dispositivo(None, None, None, None)
+
+    assert dispositivo.user_agent is None
+    assert dispositivo.sistema_operativo is None
+
+
+def test_los_datos_del_equipo_viajan_en_la_api(client, db, crear_usuario, login):
+    from app.core.permisos import ROL_CUENTA_MAESTRA
+    from app.services.device_service import DeviceService
+
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    DeviceService(db).identificar_dispositivo(None, None, "1.2.3.4", UA_ANDROID)
+    db.commit()
+
+    resp = client.get("/api/v1/admin/dispositivos", headers=login("admin"))
+    assert resp.status_code == 200
+
+    fila = resp.json()[0]
+    assert fila["sistema_operativo"] == "Android 13"
+    assert fila["navegador"] == "Chrome 120"
+    assert fila["modelo"] == "SM-A536E"
+    # El fingerprint sigue sin exponerse: es dato interno de recuperación.
+    assert "fingerprint" not in fila

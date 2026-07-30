@@ -12,6 +12,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.user_agent import interpretar
 from app.core.utils import ahora_db
 from app.models.dispositivo import Dispositivo
 
@@ -46,9 +47,14 @@ class DeviceRepository:
         ).scalars().first()
 
     def create(
-        self, fingerprint: str | None, ip: str | None, uuid: uuid_lib.UUID | None = None
+        self,
+        fingerprint: str | None,
+        ip: str | None,
+        uuid: uuid_lib.UUID | None = None,
+        user_agent: str | None = None,
     ) -> Dispositivo:
         """Crea un dispositivo nuevo, inactivo y sin local, como pide el flujo."""
+        datos_equipo = interpretar(user_agent)
         dispositivo = Dispositivo(
             uuid=uuid or uuid_lib.uuid4(),
             fingerprint=fingerprint,
@@ -58,6 +64,10 @@ class DeviceRepository:
             fecha_alta=ahora_db(),
             ultimo_acceso=ahora_db(),
             ultima_ip=ip,
+            user_agent=user_agent,
+            sistema_operativo=datos_equipo["sistema_operativo"],
+            navegador=datos_equipo["navegador"],
+            modelo=datos_equipo["modelo"],
             created_at=ahora_db(),
             updated_at=ahora_db(),
         )
@@ -65,10 +75,21 @@ class DeviceRepository:
         self.db.flush()
         return dispositivo
 
-    def update_last_access(self, dispositivo: Dispositivo, ip: str | None) -> Dispositivo:
+    def update_last_access(
+        self, dispositivo: Dispositivo, ip: str | None, user_agent: str | None = None
+    ) -> Dispositivo:
         dispositivo.ultimo_acceso = ahora_db()
         if ip:
             dispositivo.ultima_ip = ip
+
+        # Se refresca en cada acceso, igual que la IP: el equipo puede
+        # actualizar su sistema o cambiar de navegador. Solo si llegó algo,
+        # para que una request sin header no borre lo que ya se sabía.
+        if user_agent:
+            dispositivo.user_agent = user_agent
+            for campo, valor in interpretar(user_agent).items():
+                setattr(dispositivo, campo, valor)
+
         self.db.flush()
         return dispositivo
 

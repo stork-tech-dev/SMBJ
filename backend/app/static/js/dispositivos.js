@@ -13,6 +13,18 @@ function abmDispositivos() {
             descripcion: '', punto_de_venta_id: '', observaciones: '', activo: false,
         },
 
+        /**
+         * Sistema y navegador en una línea: "Android 13 · Chrome 120".
+         *
+         * Une los tramos que existen: en un equipo que nunca se conectó, o
+         * con un User-Agent que las heurísticas no reconocen, los dos
+         * pueden ser null y se muestra un guion.
+         */
+        equipo(d) {
+            const partes = [d.sistema_operativo, d.navegador].filter(Boolean);
+            return partes.length ? partes.join(' · ') : '—';
+        },
+
         formatearFecha(iso) {
             if (!iso) return 'Nunca';
             return new Date(iso).toLocaleString('es-AR', {

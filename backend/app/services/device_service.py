@@ -27,7 +27,11 @@ class DeviceService:
     # ------------------------------------------------------------------
 
     def identificar_dispositivo(
-        self, uuid_cookie: str | None, fingerprint: str | None, ip: str | None
+        self,
+        uuid_cookie: str | None,
+        fingerprint: str | None,
+        ip: str | None,
+        user_agent: str | None = None,
     ) -> tuple[Dispositivo, bool]:
         """
         Resuelve qué dispositivo corresponde a esta request y lo devuelve
@@ -45,7 +49,7 @@ class DeviceService:
         if uuid_cookie:
             dispositivo = self.repo.get_by_uuid(uuid_cookie)
             if dispositivo is not None:
-                self.repo.update_last_access(dispositivo, ip)
+                self.repo.update_last_access(dispositivo, ip, user_agent)
                 # En una navegación normal el dispositivo se crea sin
                 # fingerprint (el navegador no manda el header). Cuando el
                 # frontend luego llama con el fingerprint, se completa acá,
@@ -59,7 +63,7 @@ class DeviceService:
         if fingerprint:
             candidato = self.repo.get_by_fingerprint(fingerprint)
             if candidato is not None and candidato.activo:
-                self.repo.update_last_access(candidato, ip)
+                self.repo.update_last_access(candidato, ip, user_agent)
                 registrar_auditoria(
                     self.db,
                     usuario_id=None,
@@ -72,7 +76,9 @@ class DeviceService:
                 return candidato, True
 
         # 3. Alta de un dispositivo nuevo (inactivo, sin local).
-        dispositivo = self.repo.create(fingerprint=fingerprint, ip=ip)
+        dispositivo = self.repo.create(
+            fingerprint=fingerprint, ip=ip, user_agent=user_agent
+        )
         registrar_auditoria(
             self.db,
             usuario_id=None,

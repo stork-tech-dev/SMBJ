@@ -48,12 +48,14 @@ class DeviceMiddleware(BaseHTTPMiddleware):
         uuid_cookie = request.cookies.get(settings.DEVICE_COOKIE_NAME)
         fingerprint = request.headers.get(settings.DEVICE_FINGERPRINT_HEADER)
         ip = ip_de_request(request)
+        # Único dato que el navegador expone sobre el equipo.
+        user_agent = request.headers.get("user-agent")
 
         set_cookie_uuid = None
         db = SessionLocal()
         try:
             servicio = DeviceService(db)
-            dispositivo, set_cookie = servicio.identificar_dispositivo(uuid_cookie, fingerprint, ip)
+            dispositivo, set_cookie = servicio.identificar_dispositivo(uuid_cookie, fingerprint, ip, user_agent)
             db.commit()
             # Se guardan datos simples, no el objeto ORM: la sesión se cierra
             # acá y el objeto quedaría desligado.

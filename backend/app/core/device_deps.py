@@ -43,8 +43,9 @@ def get_current_device(
     uuid_cookie = request.cookies.get(settings.DEVICE_COOKIE_NAME)
     fingerprint = request.headers.get(settings.DEVICE_FINGERPRINT_HEADER)
     ip = ip_de_request(request)
+    user_agent = request.headers.get("user-agent")
 
-    dispositivo, set_cookie = servicio.identificar_dispositivo(uuid_cookie, fingerprint, ip)
+    dispositivo, set_cookie = servicio.identificar_dispositivo(uuid_cookie, fingerprint, ip, user_agent)
     db.commit()
 
     # Deja el dispositivo disponible como request.state.device también para
