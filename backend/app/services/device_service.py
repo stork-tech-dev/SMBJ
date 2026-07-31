@@ -32,7 +32,8 @@ class DeviceService:
         fingerprint: str | None,
         ip: str | None,
         user_agent: str | None = None,
-    ) -> tuple[Dispositivo, bool]:
+        crear: bool = False,
+    ) -> tuple[Dispositivo | None, bool]:
         """
         Resuelve qué dispositivo corresponde a esta request y lo devuelve
         junto con un flag `set_cookie` (True cuando hay que escribir/renovar
@@ -41,7 +42,16 @@ class DeviceService:
         Flujo:
           1. Cookie válida  → actualizar último acceso.
           2. Sin cookie pero fingerprint de un dispositivo ACTIVO → restaurar.
-          3. En cualquier otro caso → crear uno nuevo, inactivo.
+          3. No se encontró → se crea solo si `crear` es True; si no, None.
+
+        `crear` viene en False por defecto a propósito. Antes el alta era un
+        efecto de identificar, así que CUALQUIER visita sin cookie —incluida
+        la pantalla de login de un visitante cualquiera— dejaba una fila. Con
+        el default invertido, un camino nuevo que se olvide del parámetro no
+        registra nada: falla del lado seguro.
+
+        Hoy el único que pide `crear=True` es el login: un dispositivo entra
+        al sistema recién cuando alguien se autentica en él.
 
         NO hace commit: lo hace quien llama (el endpoint o el middleware).
         """
@@ -75,7 +85,12 @@ class DeviceService:
                 # Se reescribe la cookie con el uuid recuperado.
                 return candidato, True
 
-        # 3. Alta de un dispositivo nuevo (inactivo, sin local).
+        # 3. No se reconoció el dispositivo. Sin `crear` no se registra nada:
+        #    es lo que evita acumular una fila por cada visitante anónimo.
+        if not crear:
+            return None, False
+
+        # Alta de un dispositivo nuevo (inactivo, sin local).
         dispositivo = self.repo.create(
             fingerprint=fingerprint, ip=ip, user_agent=user_agent
         )

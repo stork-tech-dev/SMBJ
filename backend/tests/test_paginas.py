@@ -882,3 +882,33 @@ def test_la_documentacion_se_oculta_en_produccion():
     finally:
         settings.APP_ENV = original
         importlib.reload(main)
+
+
+def test_el_estado_del_dispositivo_no_lo_tapa_la_falta_de_local():
+    """
+    Regresión: `etiquetaEstado` devolvía "Sin asignar" cuando el
+    dispositivo no tenía local, y esa rama cortaba antes de mirar
+    `activo`. Dos dispositivos con estado opuesto se veían idénticos, y
+    activar uno sin local parecía no haber tenido efecto.
+
+    Se valida sobre el archivo real: es lógica de presentación en JS y no
+    hay forma de ejercitarla desde el cliente de pruebas.
+    """
+    import pathlib
+    import re
+
+    js = (
+        pathlib.Path(__file__).parent.parent / "app" / "static" / "js" / "dispositivos.js"
+    ).read_text()
+
+    cuerpo = re.search(r"etiquetaEstado\(d\) \{(.*?)\n        \},", js, re.S).group(1)
+
+    # La etiqueta tiene que decidirse por `activo`, sin ramas previas que
+    # miren el local.
+    assert "punto_de_venta_id" not in cuerpo, (
+        "la etiqueta de estado volvió a depender del local: tapa el valor de activo"
+    )
+    assert "d.activo" in cuerpo
+
+    # El matiz "activo pero todavía no puede operar" no se pierde.
+    assert "faltaLocal" in js

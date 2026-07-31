@@ -20,13 +20,15 @@ def get_current_device(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-) -> Dispositivo:
+) -> Dispositivo | None:
     """
-    Dispositivo actual según la cookie, sin importar si está activo.
+    Dispositivo actual según la cookie, sin importar si está activo, o
+    None si este equipo todavía no está registrado.
 
-    Si no hay cookie, lo crea (inactivo) o lo recupera por fingerprint, y
-    escribe la cookie en la response — igual que el flujo del middleware,
-    pero con la sesión del request para que sea testeable.
+    NO da de alta: el alta ocurre solo en el login. Si esta dependency
+    creara, seguiría siendo posible generar filas llamando directamente
+    a /api/v1/dispositivos/me, que es público — el mismo agujero que se
+    cerró en el middleware, por otra puerta.
     """
     servicio = DeviceService(db)
 
@@ -45,8 +47,13 @@ def get_current_device(
     ip = ip_de_request(request)
     user_agent = request.headers.get("user-agent")
 
-    dispositivo, set_cookie = servicio.identificar_dispositivo(uuid_cookie, fingerprint, ip, user_agent)
+    dispositivo, set_cookie = servicio.identificar_dispositivo(
+        uuid_cookie, fingerprint, ip, user_agent
+    )
     db.commit()
+
+    if dispositivo is None:
+        return None
 
     # Deja el dispositivo disponible como request.state.device también para
     # los endpoints de API (donde el middleware no corre).
@@ -72,11 +79,19 @@ def get_current_device(
     return dispositivo
 
 
-def get_active_device(dispositivo: Dispositivo = Depends(get_current_device)) -> Dispositivo:
+def get_active_device(
+    dispositivo: Dispositivo | None = Depends(get_current_device),
+) -> Dispositivo:
     """
-    Como el anterior, pero devuelve 403 si el dispositivo no está activo o
-    no tiene un local asignado. Lo usarán los endpoints operativos.
+    Como el anterior, pero devuelve 403 si el dispositivo no está activo,
+    no tiene un local asignado o directamente no está registrado. Lo usarán
+    los endpoints operativos.
     """
+    if dispositivo is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dispositivo no registrado: hay que iniciar sesión en él",
+        )
     if not dispositivo.activo:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Dispositivo no activado"

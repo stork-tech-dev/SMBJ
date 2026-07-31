@@ -39,13 +39,30 @@ function abmDispositivos() {
             return l ? l.nombre : '—';
         },
 
+        /**
+         * Estado del dispositivo: activo o inactivo, y nada más.
+         *
+         * Antes devolvía "Sin asignar" cuando no había local, y esa rama
+         * cortaba ANTES de mirar `activo`: dos dispositivos con estado
+         * opuesto se veían idénticos, y activar uno sin local parecía no
+         * haber tenido efecto. Que no tenga local ya se ve en la columna
+         * "Local" y en el borde rojo de la fila; repetirlo acá costaba
+         * justamente el dato que esta columna tiene que mostrar.
+         */
         etiquetaEstado(d) {
-            if (!d.punto_de_venta_id) return 'Sin asignar';
             return d.activo ? 'Activo' : 'Inactivo';
         },
         badgeEstado(d) {
-            if (!d.punto_de_venta_id) return 'bg-surface-alt text-texto-muted';
             return d.activo ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger';
+        },
+
+        /**
+         * Un dispositivo activo pero sin local todavía no puede operar:
+         * `get_active_device` exige las dos condiciones. Se avisa al lado
+         * del estado para no perder ese matiz al separar las etiquetas.
+         */
+        faltaLocal(d) {
+            return d.activo && !d.punto_de_venta_id;
         },
 
         async cargar() {

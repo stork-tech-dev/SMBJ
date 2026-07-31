@@ -88,9 +88,15 @@
                             </td>
                             <td class="px-4 py-5 align-middle font-medium" x-text="d.descripcion"></td>
                             <td class="px-4 py-5 align-middle" x-text="nombreLocal(d.punto_de_venta_id)"></td>
-                            <td class="px-4 py-5 align-middle">
+                            <td class="px-4 py-5 align-middle whitespace-nowrap">
                                 <span class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs font-medium"
                                       :class="badgeEstado(d)" x-text="etiquetaEstado(d)"></span>
+
+                                {# Activo pero sin local: no puede operar
+                                   todavía. Sin esta aclaración, separar el
+                                   estado del local perdería ese matiz. #}
+                                <span x-show="faltaLocal(d)" x-cloak
+                                      class="block mt-1 text-xs text-texto-muted">sin local</span>
                             </td>
                             <td class="px-4 py-5 align-middle text-sm" x-text="formatearFecha(d.ultimo_acceso)"></td>
                             <td class="px-4 py-5 align-middle text-sm text-texto-muted" x-text="d.ultima_ip || '—'"></td>

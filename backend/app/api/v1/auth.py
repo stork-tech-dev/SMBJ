@@ -26,6 +26,7 @@ from app.schemas.auth import (
 )
 from app.schemas.comunes import MensajeResponse
 from app.services import auth as servicio_auth
+from app.services.device_service import DeviceService
 from config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -58,7 +59,28 @@ def _setear_cookies(response: Response, access: str, refresh: str) -> None:
     )
 
 
+def _setear_cookie_dispositivo(response: Response, uuid: str) -> None:
+    """
+    Cookie que identifica al equipo, con los mismos atributos que usa el
+    middleware. Se escribe en el login, que es donde se da de alta.
+
+    Dura años y sobrevive al logout a propósito: identifica al equipo, no a
+    la sesión. Por eso `_borrar_cookies` no la toca.
+    """
+    response.set_cookie(
+        settings.DEVICE_COOKIE_NAME,
+        uuid,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.DEVICE_COOKIE_MAX_AGE,
+        path="/",
+    )
+
+
 def _borrar_cookies(response: Response) -> None:
+    # No se borra la del dispositivo: el equipo sigue siendo el mismo
+    # después de que su usuario cierre sesión.
     response.delete_cookie(settings.JWT_COOKIE_NAME, path="/")
     response.delete_cookie(settings.JWT_REFRESH_COOKIE_NAME, path="/")
 
@@ -94,9 +116,24 @@ def login(
     if not debe_cambiar:
         servicio_auth.marcar_acceso(db, usuario)
 
+    # Alta del dispositivo. Es el ÚNICO punto del sistema que registra
+    # uno: así solo entran los equipos donde alguien se autenticó, y no
+    # queda una fila por cada visitante que abrió la pantalla de login.
+    # Si el equipo ya estaba registrado, esto solo refresca su acceso.
+    servicio_dispositivos = DeviceService(db)
+    dispositivo, escribir_cookie = servicio_dispositivos.identificar_dispositivo(
+        uuid_cookie=request.cookies.get(settings.DEVICE_COOKIE_NAME),
+        fingerprint=request.headers.get(settings.DEVICE_FINGERPRINT_HEADER),
+        ip=ip,
+        user_agent=request.headers.get("user-agent"),
+        crear=True,
+    )
+
     db.commit()
 
     _setear_cookies(response, access, refresh)
+    if dispositivo is not None and escribir_cookie:
+        _setear_cookie_dispositivo(response, str(dispositivo.uuid))
 
     return TokenResponse(
         access_token=access,

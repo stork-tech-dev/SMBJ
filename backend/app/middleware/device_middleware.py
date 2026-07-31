@@ -55,13 +55,20 @@ class DeviceMiddleware(BaseHTTPMiddleware):
         db = SessionLocal()
         try:
             servicio = DeviceService(db)
-            dispositivo, set_cookie = servicio.identificar_dispositivo(uuid_cookie, fingerprint, ip, user_agent)
+            # Sin `crear`: el middleware identifica los dispositivos ya
+            # registrados, pero no da de alta ninguno. El alta ocurre en
+            # el login, para no dejar una fila por cada visitante que
+            # llegue a la pantalla de ingreso.
+            dispositivo, set_cookie = servicio.identificar_dispositivo(
+                uuid_cookie, fingerprint, ip, user_agent
+            )
             db.commit()
-            # Se guardan datos simples, no el objeto ORM: la sesión se cierra
-            # acá y el objeto quedaría desligado.
-            request.state.device = _snapshot_device(dispositivo)
-            if set_cookie:
-                set_cookie_uuid = str(dispositivo.uuid)
+            if dispositivo is not None:
+                # Se guardan datos simples, no el objeto ORM: la sesión se
+                # cierra acá y el objeto quedaría desligado.
+                request.state.device = _snapshot_device(dispositivo)
+                if set_cookie:
+                    set_cookie_uuid = str(dispositivo.uuid)
         except Exception:  # noqa: BLE001 - la identificación nunca debe romper la request
             db.rollback()
             logger.exception("Fallo identificando el dispositivo")
