@@ -1,0 +1,21 @@
+{# ===========================================================================
+   Favicon de la empresa instalada.
+
+   Va en un parcial y no escrito en cada layout porque lo necesitan tanto
+   base.html como auth/base_auth.html, y son cinco líneas que tienen que
+   coincidir (Principio 2: DRY).
+
+   Los iconos salen de los logos, recortados: el logo entero es ilegible a
+   16px. De Mallorca se usa la "M" y de Soleil el anillo. Ver el detalle en
+   los comentarios de static/img/favicon-*.svg.
+
+   Tres etiquetas y no una sola:
+     - SVG: lo usan los navegadores actuales; escala a cualquier tamaño.
+     - PNG 32px: respaldo para los que ignoran el SVG.
+     - apple-touch-icon: el icono cuando se agrega a la pantalla de inicio
+       en iOS, que pide un PNG grande y no lee ninguna de las otras dos.
+   =========================================================================== #}
+{% set letra = letra_empresa|default('S') %}
+<link rel="icon" type="image/svg+xml" href="{{ estatico('/img/favicon-' ~ letra ~ '.svg') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ estatico('/img/favicon-' ~ letra ~ '-32.png') }}">
+<link rel="apple-touch-icon" href="{{ estatico('/img/apple-touch-icon-' ~ letra ~ '.png') }}">

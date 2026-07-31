@@ -3,9 +3,13 @@
 
    Son los tres botones del diseño (capa "Usuarios CM" → "Grupo 50"):
 
-     BtnVer     → fondo #557eaa, ícono de ojo + texto
-     BtnEditar  → fondo #0073e3, ícono de lápiz + texto
+     BtnVer     → fondo `accent`, ícono de ojo + texto
+     BtnEditar  → fondo `primary`, ícono de lápiz + texto
      BtnBorrar  → sin fondo, ícono de papelera en rojo
+
+   Los colores se nombran por su token, no por su valor: cambian según la
+   empresa instalada (ver la paleta por empresa en custom.css), así que un
+   hexadecimal acá quedaría desactualizado en la mitad de las instalaciones.
 
    El texto es parametrizable, porque no todas las pantallas usan los
    mismos verbos: en /roles el botón "ver" dice "Permisos" y el de borrar

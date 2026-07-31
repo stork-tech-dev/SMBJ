@@ -5,6 +5,8 @@ Qué marca se muestra depende de `configuracion_sistema.letra_empresa`, y
 aplica igual en el sidebar y en las pantallas de autenticación.
 """
 
+import re
+
 import pytest
 
 from app.core.permisos import ROL_CUENTA_MAESTRA
@@ -13,6 +15,7 @@ from app.models.configuracion import ConfiguracionSistema
 from app.services import configuracion as servicio_configuracion
 
 LOGO_MALLORCA = 'aria-label="Mallorca"'
+LOGO_SOLEIL = 'aria-label="Soleil Bijouterie"'
 
 
 @pytest.fixture
@@ -49,15 +52,61 @@ def test_login_muestra_el_logo_de_mallorca(client, configurar_letra):
     assert LOGO_MALLORCA in resp.text
 
 
-def test_login_muestra_soleil_en_texto(client, configurar_letra):
-    """Soleil todavía no tiene logo: va la palabra."""
+def test_login_muestra_el_logo_de_soleil(client, configurar_letra):
     configurar_letra("S")
 
     resp = client.get("/login")
 
     assert resp.status_code == 200
+    assert LOGO_SOLEIL in resp.text
     assert LOGO_MALLORCA not in resp.text
-    assert "Soleil" in resp.text
+
+
+def test_el_logo_de_soleil_no_depende_de_currentcolor(client, configurar_letra):
+    """
+    El de Soleil es un logo de tres colores sobre su propio triángulo
+    oscuro: si alguien lo "unificara" pasándolo a `currentColor` para que
+    se parezca al de Mallorca, quedaría un triángulo monocromo ilegible
+    sobre el dorado del sidebar.
+    """
+    configurar_letra("S")
+
+    texto = client.get("/login").text
+    logo = texto[texto.index(LOGO_SOLEIL) : texto.index("</svg>", texto.index(LOGO_SOLEIL))]
+
+    assert "currentColor" not in logo
+    for color in ("#CBA770", "#D1D3D4", "#231F20"):
+        assert color in logo, f"el logo perdió el color {color}"
+
+
+@pytest.mark.parametrize("letra", ["M", "S"])
+def test_el_favicon_es_el_de_la_empresa(client, configurar_letra, letra):
+    configurar_letra(letra)
+
+    texto = client.get("/login").text
+
+    assert f"/static/img/favicon-{letra}.svg" in texto
+    assert f"/static/img/favicon-{letra}-32.png" in texto
+    assert f"/static/img/apple-touch-icon-{letra}.png" in texto
+
+
+@pytest.mark.parametrize("letra", ["M", "S"])
+def test_los_archivos_del_favicon_se_sirven(client, configurar_letra, letra):
+    """
+    Un `<link rel="icon">` a un archivo que no existe no rompe la página:
+    el navegador se queda con el icono en blanco y nadie se entera. Por eso
+    se piden los tres archivos de verdad.
+    """
+    configurar_letra(letra)
+    texto = client.get("/login").text
+
+    enlaces = re.findall(r'rel="(?:icon|apple-touch-icon)"[^>]*href="([^"]+)"', texto)
+    assert len(enlaces) == 3, f"se esperaban 3 iconos, hay {len(enlaces)}"
+
+    for url in enlaces:
+        resp = client.get(url)
+        assert resp.status_code == 200, f"{url} devolvió {resp.status_code}"
+        assert resp.content, f"{url} vino vacío"
 
 
 def test_sidebar_usa_la_misma_marca(client, crear_usuario, configurar_letra):

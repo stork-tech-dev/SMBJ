@@ -6,11 +6,19 @@
    custom.css, así que el modo oscuro funciona igual acá.
    =========================================================================== #}
 <!DOCTYPE html>
-<html lang="es" x-data="temaApp()" x-init="aplicar()" :class="{ 'dark': dark }">
+{# Igual que en base.html: la paleta sale de la empresa instalada. El login
+   también tiene que verse con los colores de la marca correcta. #}
+<html lang="es"
+      data-empresa="{{ letra_empresa|default('S') }}"
+      x-data="temaApp()"
+      x-init="aplicar()"
+      :class="{ 'dark': dark }">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block titulo_auth %}Ingresar{% endblock %} · {{ APP_NAME }}</title>
+
+    {% include "components/_favicon.html" %}
 
     {# Evita el flash de tema claro antes de que Alpine monte. #}
     <script>

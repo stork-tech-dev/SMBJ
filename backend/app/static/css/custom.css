@@ -38,6 +38,11 @@
     --color-sidebar-text: #ffffff;
     --color-sidebar-active: rgba(255, 255, 255, 0.18);
 
+    /* Círculo de los casilleros de "Accesos permitidos". Es un gris neutro
+       que no cambia entre empresas, pero vive acá para que ningún color
+       quede escrito a mano en las reglas de más abajo. */
+    --color-check-borde: #8f9090;
+
     /* --- Alturas de control (Principio 6) ---
        Con puntero fino valen los tamaños de Figma; el mínimo de 44x44 se
        aplica más abajo, solo donde hay dedos. Así el escritorio se ve
@@ -82,6 +87,41 @@ canvas {
     max-width: 100%;
 }
 
+/* ==========================================================================
+   Paleta por empresa
+
+   El sistema se instala para una empresa u otra, y cada una tiene su
+   identidad visual. `configuracion_sistema.letra_empresa` ya decidía el
+   logo; acá decide también los colores.
+
+   `:root` conserva los valores de Mallorca, así que la instalación en uso
+   no cambia: una empresa nueva solo agrega el bloque que la sobrescribe.
+   Es el mismo mecanismo que el modo oscuro —redefinir variables, no
+   duplicar clases (Principio 2).
+
+   Solo se redefinen los colores de MARCA. Los grises, el rojo de error y
+   el verde de éxito son iguales en las dos identidades (confirmado contra
+   el Figma), y que un error se vea rojo no es una decisión de marca.
+
+   Se usa un atributo y no una clase a propósito: `.dark[data-empresa="S"]`
+   tiene más especificidad que `.dark` sola, así que el modo oscuro de una
+   empresa siempre le gana a la regla genérica sin depender del orden en
+   que estén escritas las reglas.
+   ========================================================================== */
+
+[data-empresa="S"] {
+    --color-primary: #e38d41;          /* naranja: botones de acción */
+    /* El Figma define el estado presionado, no el hover. Se usa el mismo
+       para los dos, que es lo que hoy consume `hover:bg-primary-hover`. */
+    --color-primary-hover: #8b4a11;
+    --color-accent: #886632;
+    --color-welcome: #cba770;
+    /* En Soleil el sidebar NO es el color primario, a diferencia de
+       Mallorca: es el dorado de la marca. Las variables ya estaban
+       separadas, así que soporta las dos formas sin cambios. */
+    --color-sidebar-bg: #cba770;
+}
+
 /* Modo oscuro: mismas variables, otros valores. Nada más cambia. */
 .dark {
     --color-primary: #2a8cf0;
@@ -106,6 +146,28 @@ canvas {
     --color-sidebar-bg: #10243a;
     --color-sidebar-text: #e9f1fa;
     --color-sidebar-active: rgba(255, 255, 255, 0.12);
+}
+
+/* Soleil en modo oscuro: los mismos tonos de marca, aclarados para que
+   tengan contraste contra el fondo oscuro —igual que hace `.dark` con los
+   azules de Mallorca. Sin esto, una instalación de Soleil volvería al azul
+   apenas alguien prendiera el tema oscuro.
+
+   El selector combina las dos condiciones, así que gana por especificidad
+   sobre `.dark` sola y sobre `[data-empresa="S"]` sola. No importa dónde
+   esté escrito en el archivo. */
+.dark[data-empresa="S"] {
+    --color-primary: #f0a45f;
+    --color-primary-hover: #f7bc85;
+    --color-accent: #b08c4e;
+    --color-welcome: #dcc094;
+
+    /* Acá el sidebar NO se va a un casi-negro como el de Mallorca, y no es
+       un descuido: el logo de Soleil es un triángulo oscuro de color fijo
+       (no hereda currentColor como el de Mallorca), así que sobre un fondo
+       oscuro desaparece. Con este dorado apagado el logo se sigue leyendo
+       y el tema oscuro igual se nota. Lo cuida un test. */
+    --color-sidebar-bg: #a8894f;
 }
 
 /* --- Tipografía base del design system --- */
@@ -212,7 +274,7 @@ body {
     width: 16px;
     height: 16px;
     margin: 0;
-    border: 1px solid #8f9090;
+    border: 1px solid var(--color-check-borde);
     border-radius: 50px;
     background-color: transparent;
     display: grid;
@@ -239,16 +301,40 @@ body {
    porque lo concede el rol y los overrides solo suman. */
 .acceso-check:disabled {
     cursor: not-allowed;
-    border-color: #8f9090;
+    border-color: var(--color-check-borde);
 }
 
 .acceso-check:disabled::before {
-    background-color: #8f9090;
+    background-color: var(--color-check-borde);
 }
 
 .acceso-check:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
+}
+
+/* Tarjeta contenedora de las tablas y paneles de las pantallas de listado.
+
+   La sombra estaba escrita a mano en diez plantillas como
+   `shadow-[0_0_45px_-20px_#557eaa]`. Además de repetirse, era el único
+   color del sistema que no salía de una variable: al instalar otra empresa
+   las tablas se habrían quedado con la sombra azul de Mallorca. */
+.tarjeta {
+    box-shadow: 0 0 45px -20px var(--color-accent);
+}
+
+/* Tarjeta que además es un enlace (el menú de Configuraciones): sombra más
+   chica que se agranda al pasar el mouse.
+
+   `color-mix` es lo que permite bajarle la opacidad al color de la marca
+   sin escribirlo dos veces —una en hexa y otra en rgba— y que las dos
+   copias se desincronicen al cambiar de empresa. */
+.tarjeta-enlace {
+    box-shadow: 0 0 15px -6px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.tarjeta-enlace:hover {
+    box-shadow: 0 0 20px -4px color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 
 /* Alpine.js: oculta los elementos con x-cloak hasta que termina de montar,

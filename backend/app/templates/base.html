@@ -5,7 +5,11 @@
    No duplicar sidebar ni header en ninguna página (Principio 2: DRY).
    =========================================================================== #}
 <!DOCTYPE html>
+{# `data-empresa` elige la paleta de colores de la empresa instalada, del
+   mismo modo que `letra_empresa` ya elegía el logo. La correspondencia
+   entre la letra y los colores vive entera en custom.css. #}
 <html lang="es"
+      data-empresa="{{ letra_empresa|default('S') }}"
       x-data="temaApp()"
       x-init="aplicar()"
       :class="{ 'dark': dark }">
@@ -13,6 +17,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block titulo %}{{ titulo|default('Inicio') }} · {{ APP_NAME }}{% endblock %}</title>
+
+    {% include "components/_favicon.html" %}
 
     {# Evita el flash de tema claro antes de que Alpine monte. #}
     <script>
