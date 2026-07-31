@@ -912,3 +912,31 @@ def test_el_estado_del_dispositivo_no_lo_tapa_la_falta_de_local():
 
     # El matiz "activo pero todavía no puede operar" no se pierde.
     assert "faltaLocal" in js
+
+
+def test_las_pantallas_de_auth_muestran_la_marca_en_todo_ancho(client, crear_usuario):
+    """
+    Regresión: el panel de marca es `hidden lg:flex` y el logo vivía solo
+    ahí, así que por debajo de 1024px —celulares y tablets— la pantalla de
+    login quedaba sin ninguna identificación de la empresa.
+
+    Se verifican las dos variantes complementarias: la del panel y la de
+    móvil. Cada una aparece donde la otra no, de modo que hay logo en todo
+    ancho y nunca se ven duplicados.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA, ultimo_acceso=None)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    # /cambiar-password usa el mismo layout: es adonde va a parar un usuario
+    # nuevo en su primer ingreso, muchas veces desde el celular.
+    for url in ("/login", "/cambiar-password"):
+        html = client.get(url, follow_redirects=True).text
+
+        assert "hidden lg:flex" in html, f"{url}: falta el panel de escritorio"
+        assert "lg:hidden mb-8" in html, f"{url}: falta la marca de móvil"
+
+        # El logo de móvil va sobre fondo claro: en blanco sería invisible.
+        bloque = html.split("lg:hidden mb-8")[1][:120]
+        assert "text-primary" in html.split("lg:hidden")[0][-200:] or "text-primary" in bloque, (
+            f"{url}: la marca de móvil no toma el color de marca"
+        )

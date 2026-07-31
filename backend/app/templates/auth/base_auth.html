@@ -39,7 +39,8 @@
 
 <div class="min-h-screen grid lg:grid-cols-2">
 
-    {# Panel de marca. Oculto en pantallas chicas. #}
+    {# Panel de marca. Oculto por debajo de lg: en un celular ocuparía media
+       pantalla. El logo para esas anchuras va arriba del formulario. #}
     <div class="hidden lg:flex flex-col justify-center px-16 bg-sidebar-bg text-white">
         <div class="text-white">
             {{ marca(letra_empresa|default('S'), clases='h-20') }}
@@ -49,6 +50,18 @@
 
     <div class="flex items-center justify-center px-6 py-12">
         <div class="w-full max-w-sm">
+
+            {# Marca para móvil y tablet. `lg:hidden` es el complemento exacto
+               del `hidden lg:flex` del panel: cada logo aparece donde el otro
+               no está, así que nunca se ven los dos.
+
+               Va en `text-primary` y no en blanco porque el SVG hereda
+               `currentColor` (ver components/marca.html): acá el fondo es
+               claro, y el blanco del panel quedaría invisible. #}
+            <div class="lg:hidden mb-8 flex justify-center text-primary">
+                {{ marca(letra_empresa|default('S'), clases='h-14') }}
+            </div>
+
             {% block formulario_auth %}{% endblock %}
         </div>
     </div>
