@@ -27,6 +27,15 @@ function abmProductos() {
 
         detalle: { abierto: false, producto: null },
 
+        // Alta de variante. `reemplazaBase` se resuelve al abrir el modal y
+        // sirve para avisar ANTES de confirmar que el código de la BASE va a
+        // desaparecer: si ya se imprimió esa etiqueta, queda sin respaldo y
+        // el sistema no tiene forma de saberlo.
+        variante: {
+            abierto: false, guardando: false, reemplazaBase: false,
+            sufijo: '', ubicacion_deposito: '', stock_minimo: 0,
+        },
+
         // Valores informativos del formulario. null = todavía sin datos
         // suficientes (falta el proveedor o el precio).
         preview: { dolar_proveedor: null, precio_venta: null },
@@ -158,10 +167,59 @@ function abmProductos() {
             this.detalle = { abierto: true, producto: p };
         },
 
-        async abrirVariante() {
-            const sufijo = window.prompt('Sufijo de la variante (un carácter):');
+        /* --- Alta de variante --- */
+
+        abrirVariante() {
+            const variantes = this.detalle.producto?.variantes || [];
+            this.variante = {
+                abierto: true,
+                guardando: false,
+                // La primera variante real reemplaza a la BASE. Si el
+                // producto ya tiene variantes, no hay BASE que perder.
+                reemplazaBase: variantes.some((v) => v.es_base),
+                sufijo: '',
+                ubicacion_deposito: '',
+                stock_minimo: 0,
+            };
+        },
+
+        /**
+         * Nombre del proveedor elegido. En edición el proveedor no se puede
+         * cambiar —no está en `ProductoActualizar` ni en el servicio— así que
+         * el formulario lo muestra como dato fijo en vez de como desplegable.
+         */
+        nombreProveedor() {
+            const id = Number(this.form.proveedor_id);
+            return this.proveedores.find((p) => p.id === id)?.nombre || '—';
+        },
+
+        /** Sufijos ya usados: sirven para avisar antes de que la API rechace. */
+        sufijosUsados() {
+            return (this.detalle.producto?.variantes || [])
+                .filter((v) => !v.es_base)
+                .map((v) => v.sufijo);
+        },
+
+        /** Cómo va a quedar el código, para verlo antes de confirmar. */
+        codigoPrevisto() {
+            const sufijo = (this.variante.sufijo || '').toUpperCase();
+            if (!sufijo) return '';
+            // Se toma el prefijo de una variante existente en vez de armarlo
+            // acá: la letra de la empresa la decide el backend y el frontend
+            // no tiene por qué conocerla (Principio 1).
+            const alguna = (this.detalle.producto?.variantes || [])[0];
+            if (!alguna) return '';
+            const base = alguna.es_base
+                ? alguna.codigo_completo
+                : alguna.codigo_completo.slice(0, -1);
+            return base + sufijo;
+        },
+
+        async guardarVariante() {
+            const sufijo = (this.variante.sufijo || '').trim().toUpperCase();
             if (!sufijo) return;
 
+            this.variante.guardando = true;
             try {
                 const resp = await fetch(
                     `/api/v1/productos/${this.detalle.producto.id}/variantes`,
@@ -169,7 +227,13 @@ function abmProductos() {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ sufijo: sufijo.toUpperCase() }),
+                        body: JSON.stringify({
+                            sufijo,
+                            // El backend normaliza el texto; mandar '' sería
+                            // guardar una ubicación vacía en vez de ninguna.
+                            ubicacion_deposito: this.variante.ubicacion_deposito || null,
+                            stock_minimo: Number(this.variante.stock_minimo) || 0,
+                        }),
                     }
                 );
                 if (!resp.ok) {
@@ -177,10 +241,13 @@ function abmProductos() {
                     throw new Error(error.detail || 'No se pudo agregar la variante');
                 }
                 window.toast('Variante agregada', 'exito');
+                this.variante.abierto = false;
                 this.detalle.abierto = false;
                 this.cargar();
             } catch (e) {
                 window.toast(e.message, 'error');
+            } finally {
+                this.variante.guardando = false;
             }
         },
 

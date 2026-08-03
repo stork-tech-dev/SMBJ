@@ -94,27 +94,27 @@
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)] relative"
                             :class="!u.activo && 'opacity-60'">
 
-                            <td class="px-8 py-5 align-middle">
+                            <td class="px-8 py-3 align-middle">
                                 <span class="font-medium" x-text="u.username"></span>
                                 {# Estado en texto coloreado inline, como el resto del sistema. #}
                                 <span x-show="!u.activo" x-cloak
                                       class="ml-2 text-xs font-medium text-danger">Inactivo</span>
                             </td>
 
-                            <td class="px-4 py-5 align-middle font-medium" x-text="u.nombre"></td>
+                            <td class="px-4 py-3 align-middle font-medium" x-text="u.nombre"></td>
 
-                            <td class="px-4 py-5 align-middle font-medium" x-text="u.rol.nombre"></td>
+                            <td class="px-4 py-3 align-middle font-medium" x-text="u.rol.nombre"></td>
 
-                            <td class="px-4 py-5 align-middle font-medium whitespace-nowrap"
+                            <td class="px-4 py-3 align-middle font-medium whitespace-nowrap"
                                 x-text="u.celular || '—'"></td>
 
-                            <td class="px-4 py-5 align-middle font-medium whitespace-nowrap"
+                            <td class="px-4 py-3 align-middle font-medium whitespace-nowrap"
                                 x-text="formatearCumple(u.fecha_nacimiento)"></td>
 
-                            <td class="px-4 py-5 align-middle font-medium"
+                            <td class="px-4 py-3 align-middle font-medium"
                                 x-text="formatearFecha(u.ultimo_acceso)"></td>
 
-                            <td class="px-8 py-5 align-middle text-right whitespace-nowrap">
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
                                 {% call acciones() %}
                                     {{ accion('ver', atributos='@click="abrirDetalle(u)"') }}
                                     {{ accion('editar', atributos='@click="abrirEdicion(u)"') }}

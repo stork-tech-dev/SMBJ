@@ -74,17 +74,17 @@
                     <template x-for="r in roles" :key="r.id">
                         <tr class="border-t border-borde transition-shadow hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!r.activo && 'opacity-60'">
-                            <td class="px-8 py-5 align-middle">
+                            <td class="px-8 py-3 align-middle">
                                 <span class="font-medium" x-text="r.nombre"></span>
                             </td>
-                            <td class="px-4 py-5 align-middle" x-text="r.descripcion || '—'"></td>
-                            <td class="px-4 py-5 align-middle text-center font-medium" x-text="r.cantidad_usuarios"></td>
-                            <td class="px-4 py-5 align-middle">
+                            <td class="px-4 py-3 align-middle" x-text="r.descripcion || '—'"></td>
+                            <td class="px-4 py-3 align-middle text-center font-medium" x-text="r.cantidad_usuarios"></td>
+                            <td class="px-4 py-3 align-middle">
                                 <span class="text-xs font-medium"
                                       :class="r.activo ? 'text-success' : 'text-danger'"
                                       x-text="r.activo ? 'Activo' : 'Inactivo'"></span>
                             </td>
-                            <td class="px-8 py-5 align-middle text-right whitespace-nowrap">
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
                                 {# Mismos botones que el resto de las tablas; solo
                                    cambian las etiquetas, que acá son distintas. #}
                                 {% call acciones() %}
@@ -99,12 +99,19 @@
                                     {{ accion('activar',
                                               atributos='x-show="!r.activo" x-cloak
                                                          @click="confirmarEstado(r)" title="Activar"') }}
-                                    {# Eliminar es distinto de desactivar (borra el
-                                       rol): conserva su etiqueta para no confundirse
-                                       con la papelera de baja. Los roles del sistema
-                                       no se eliminan. #}
-                                    {{ accion('borrar', texto='Eliminar',
-                                              atributos='x-show="!r.es_sistema" @click="confirmarBaja(r)"') }}
+                                    {# Acá había una segunda papelera, "Eliminar", que
+                                       borraba el rol de verdad. Se sacó: en un rol
+                                       nuevo (no es de sistema) aparecían las DOS
+                                       papeleras en la misma fila y se leían como dos
+                                       formas de hacer lo mismo, además de que ninguna
+                                       otra pantalla del sistema ofrece borrado duro.
+
+                                       El endpoint DELETE /api/v1/roles/{id} sigue
+                                       existiendo, igual que `confirmarBaja()` y
+                                       `eliminar()` en roles.js. Si se decide volver a
+                                       exponerlo, que no sea otra papelera en la fila:
+                                       va adentro del modal de edición, donde no
+                                       compite con la baja. #}
                                 {% endcall %}
                             </td>
                         </tr>

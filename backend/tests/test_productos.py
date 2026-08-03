@@ -267,6 +267,23 @@ def test_no_hay_dos_variantes_con_el_mismo_sufijo(db, autor, producto):
         servicio.agregar_variante(db, autor, producto.id, sufijo="R")
 
 
+def test_la_variante_guarda_ubicacion_y_stock_minimo(db, autor, producto):
+    """
+    Los dos campos existen en `VarianteCrear` desde siempre, pero la pantalla
+    los perdía: el alta se hacía con un `window.prompt()` que solo mandaba el
+    sufijo, así que entraban en NULL y 0 sin que nadie lo notara. Ahora que hay
+    formulario, este test cuida que lleguen hasta la base.
+    """
+    variante = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R",
+        ubicacion_deposito="Estante 3 - Fila B", stock_minimo=7,
+    )
+
+    db.refresh(variante)
+    assert variante.ubicacion_deposito == "Estante 3 - Fila B"
+    assert variante.stock_minimo == 7
+
+
 def test_el_verificador_se_guarda_con_la_variante(db, producto):
     from app.core.codigos import digito_verificador
 

@@ -176,6 +176,33 @@ def test_el_logo_de_soleil_se_lee_sobre_su_sidebar():
         )
 
 
+def test_los_colores_admiten_el_modificador_de_opacidad():
+    """
+    Los colores de Tailwind no pueden definirse como `var(--x)` a secas.
+
+    La variable guarda un hex completo (`#f60509`) y Tailwind necesita los
+    canales sueltos para inyectar el alfa, así que `bg-danger/15` quedaba
+    TRANSPARENTE y `border-danger/40` caía al gris por defecto — sin error
+    ni aviso. Los badges de estado se veían sin fondo en todo el sistema.
+
+    Se resuelve envolviendo cada color en `color-mix` con `<alpha-value>`,
+    que Tailwind reemplaza por la opacidad pedida (o por 1 si no hay
+    modificador). Este test impide volver a la forma que falla en silencio.
+    """
+    config = (RAIZ / "templates" / "components" / "_tailwind_config.html").read_text()
+    bloque = re.search(r"colors:\s*\{(.*?)\n\s*\},", config, flags=re.S)
+
+    assert bloque, "no se encontró el bloque `colors` de la config"
+    cuerpo = bloque.group(1)
+
+    directas = re.findall(r"['\"]?([\w-]+)['\"]?:\s*'var\(--", cuerpo)
+    assert not directas, (
+        "estos colores usan `var(--x)` a secas y rompen el modificador de "
+        f"opacidad: {directas}"
+    )
+    assert "<alpha-value>" in config
+
+
 def test_las_variables_de_marca_existen_en_root():
     """`:root` es la instalación de Mallorca: el resto solo la sobrescribe."""
     raiz = _bloque(":root", CSS.read_text())

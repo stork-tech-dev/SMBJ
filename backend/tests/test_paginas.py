@@ -6,6 +6,8 @@ que la navegación respete la sesión: un error de template solo aparece al
 pedir la página, y sin estos tests se descubriría recién en el navegador.
 """
 
+import re
+
 from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO, ROL_VENDEDOR, Modulo
 
 PAGINAS_CON_SESION = ["/", "/usuarios", "/roles"]
@@ -139,6 +141,97 @@ def test_el_logo_del_sidebar_se_dimensiona_por_ancho(client, crear_usuario):
 
     assert "[&>svg]:w-full" in cabecera
     assert "[&>svg]:h-full" not in cabecera
+
+
+def test_todas_las_tablas_usan_el_mismo_alto_de_fila():
+    """
+    Las tablas de los listados están escritas a mano en cada plantilla, no
+    con el macro `components/table.html`, así que el alto de fila puede
+    divergir de una pantalla a otra sin que nada falle.
+
+    El valor (`py-3`, 0.75rem) es además el que ya usaba el macro: las
+    tablas escritas a mano venían con `py-5` y se veían más aireadas que
+    las del componente.
+    """
+    from pathlib import Path
+
+    paginas = Path(__file__).resolve().parents[1] / "app" / "templates" / "pages"
+    celdas = re.compile(r"<td[^>]*\bclass=\"[^\"]*?\bpy-(\d+)\b")
+
+    altos = {}
+    for plantilla in sorted(paginas.rglob("listado.html")):
+        for alto in celdas.findall(plantilla.read_text()):
+            altos.setdefault(alto, []).append(plantilla.name)
+
+    # `py-16` es la fila de "Sin resultados", que no es una fila de datos.
+    de_datos = {k: v for k, v in altos.items() if k != "16"}
+    assert list(de_datos) == ["3"], f"hay altos de fila distintos entre tablas: {de_datos}"
+
+
+def test_en_edicion_el_proveedor_se_muestra_como_dato_y_no_como_select(client, crear_usuario):
+    """
+    El proveedor no se puede cambiar al editar, y no es una regla de la
+    pantalla: `ProductoActualizar` no tiene el campo y `actualizar_producto()`
+    tampoco lo recibe, porque movería la base del precio sin dejar rastro.
+
+    Antes eso se resolvía con el select deshabilitado, que se veía igual que
+    uno roto: no se desplegaba y nada explicaba por qué. Ahora en edición se
+    muestra el nombre con su motivo, y el desplegable existe solo en el alta.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert ':disabled="!!form.id"' not in html, "volvió el select deshabilitado"
+    assert 'x-text="nombreProveedor()"' in html, "falta el proveedor como dato fijo"
+    assert "No se cambia" in html, "falta la explicación de por qué no se cambia"
+
+
+def test_los_dos_selectores_de_categoria_muestran_el_camino_completo(client, crear_usuario):
+    """
+    El filtro del listado y el selector del formulario tienen que decir lo
+    mismo. El del formulario mostraba solo la hoja con sangría de puntos
+    ("· · Deportivas"), y dos ramas distintas pueden tener hojas con el mismo
+    nombre: al elegir, no había forma de saber cuál se había elegido.
+
+    Los dos usan `rutaCategoria()`, que arma "Calzado - Zapatillas -
+    Deportivas" con la lista que ya está en memoria.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+    assert html.count('x-text="rutaCategoria(c)"') == 2, (
+        "los dos selectores de categoría tienen que usar el camino completo"
+    )
+    # La sangría con puntos era lo que los hacía distintos.
+    assert ".repeat(" not in html
+
+
+def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario):
+    """
+    El alta de variante se hacía con `window.prompt()`: no validaba el sufijo,
+    no dejaba cargar la ubicación ni el stock mínimo —que el endpoint sí
+    acepta— y no avisaba de que la primera variante elimina la BASE, con lo
+    que el código ya impreso queda sin producto.
+
+    Un prompt no falla ningún test por sí solo, así que la regresión se cuida
+    acá: si alguien lo reintroduce, esto se pone en rojo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "window.prompt" not in html and "prompt(" not in html
+
+    # Los tres campos del formulario, incluidos los dos que el prompt perdía.
+    for campo in ('id="va-sufijo"', 'id="va-ubicacion"', 'id="va-stock-min"'):
+        assert campo in html, f"falta {campo} en el modal de variante"
+
+    # El aviso de que se pierde el código de la BASE.
+    assert "deja de existir" in html
 
 
 def test_el_header_oculta_el_buscador_y_muestra_la_campanita(client, crear_usuario):
@@ -276,6 +369,28 @@ def test_orden_de_las_secciones_de_configuracion(client, crear_usuario):
         for u in ("/usuarios", "/roles", "/puntos-de-venta", "/dispositivos")
     ]
     assert posiciones == sorted(posiciones), "las secciones no están en orden"
+
+
+def test_roles_tiene_una_sola_papelera_por_fila(client, crear_usuario):
+    """
+    En un rol nuevo —no es de sistema, así que se podía eliminar— aparecían
+    DOS papeleras en la misma fila: la de baja, con el title "Desactivar", y
+    otra con la etiqueta "Eliminar". Se leían como dos formas de hacer lo
+    mismo, y ninguna otra pantalla del sistema ofrece borrado duro.
+
+    Se cuenta sobre la plantilla porque las filas las arma Alpine en el
+    navegador: en el HTML del servidor existe una sola, la del <template>.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/roles").text
+    fila = html.split("<template")[1].split("</template>")[0]
+
+    assert fila.count("Desactivar") == 1
+    assert "Eliminar" not in fila, "volvió la segunda papelera"
+    # La baja/alta sí sigue: son dos íconos excluyentes, nunca simultáneos.
+    assert 'x-show="r.activo"' in fila and 'x-show="!r.activo"' in fila
 
 
 def test_roles_sigue_siendo_exclusivo_de_cuenta_maestra(client, crear_usuario, roles, dar_permiso):

@@ -109,6 +109,12 @@ function abmRoles() {
             };
         },
 
+        // SIN USO DESDE LA PANTALLA. El botón "Eliminar" se sacó del listado:
+        // en un rol nuevo convivía con la papelera de baja y se leían como
+        // dos formas de hacer lo mismo. Se conserva —junto con eliminar()—
+        // porque el borrado real sigue existiendo en la API y puede volver a
+        // exponerse, pero desde el modal de edición, no como otra papelera
+        // en la fila.
         confirmarBaja(rol) {
             this.confirmacion = {
                 abierta: true,

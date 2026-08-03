@@ -14,6 +14,20 @@
 <script>
     // Los colores apuntan a las CSS variables de custom.css: el modo
     // oscuro se resuelve ahí y ningún template repite un hex.
+    //
+    // No van como `var(--x)` a secas porque así el modificador de opacidad
+    // de Tailwind (`bg-danger/15`) NO funciona: para inyectar el alfa,
+    // Tailwind necesita los canales sueltos, y la variable guarda un hex
+    // completo. El resultado era que `/15` quedaba transparente y `/40`
+    // caía al gris por defecto —en silencio, sin error—, así que los
+    // badges de estado se veían sin fondo.
+    //
+    // `color-mix` sí opera sobre el color ya resuelto. Tailwind reemplaza
+    // `<alpha-value>` por la opacidad pedida, o por 1 cuando no hay
+    // modificador: ahí `calc(1 * 100%)` da el color puro.
+    const conAlfa = (variable) =>
+        `color-mix(in srgb, var(${variable}) calc(<alpha-value> * 100%), transparent)`;
+
     tailwind.config = {
         darkMode: 'class',
         theme: {
@@ -28,24 +42,24 @@
             },
             extend: {
                 colors: {
-                    primary: 'var(--color-primary)',
-                    'primary-hover': 'var(--color-primary-hover)',
-                    accent: 'var(--color-accent)',
-                    welcome: 'var(--color-welcome)',
-                    bg: 'var(--color-bg)',
-                    surface: 'var(--color-surface)',
-                    'surface-alt': 'var(--color-surface-alt)',
-                    borde: 'var(--color-border)',
-                    'borde-campo': 'var(--color-input-border)',
-                    texto: 'var(--color-text)',
-                    'texto-muted': 'var(--color-text-muted)',
-                    'texto-disabled': 'var(--color-text-disabled)',
-                    'texto-header': 'var(--color-text-header)',
-                    'texto-invert': 'var(--color-text-invert)',
-                    danger: 'var(--color-danger)',
-                    success: 'var(--color-success)',
-                    'sidebar-bg': 'var(--color-sidebar-bg)',
-                    'sidebar-text': 'var(--color-sidebar-text)',
+                    primary: conAlfa('--color-primary'),
+                    'primary-hover': conAlfa('--color-primary-hover'),
+                    accent: conAlfa('--color-accent'),
+                    welcome: conAlfa('--color-welcome'),
+                    bg: conAlfa('--color-bg'),
+                    surface: conAlfa('--color-surface'),
+                    'surface-alt': conAlfa('--color-surface-alt'),
+                    borde: conAlfa('--color-border'),
+                    'borde-campo': conAlfa('--color-input-border'),
+                    texto: conAlfa('--color-text'),
+                    'texto-muted': conAlfa('--color-text-muted'),
+                    'texto-disabled': conAlfa('--color-text-disabled'),
+                    'texto-header': conAlfa('--color-text-header'),
+                    'texto-invert': conAlfa('--color-text-invert'),
+                    danger: conAlfa('--color-danger'),
+                    success: conAlfa('--color-success'),
+                    'sidebar-bg': conAlfa('--color-sidebar-bg'),
+                    'sidebar-text': conAlfa('--color-sidebar-text'),
                 },
                 fontFamily: {
                     sans: ['Archivo', 'system-ui', 'sans-serif'],
