@@ -141,6 +141,31 @@ def test_el_logo_del_sidebar_se_dimensiona_por_ancho(client, crear_usuario):
     assert "[&>svg]:h-full" not in cabecera
 
 
+def test_el_header_oculta_el_buscador_y_muestra_la_campanita(client, crear_usuario):
+    """
+    El buscador global ("Rectangle 50" del Figma) queda oculto hasta que
+    exista el módulo que lo implemente, y en su lugar aparece la campanita
+    de notificaciones ("Grupo 88").
+
+    Que el buscador esté comentado en la plantilla no alcanza: un `{# #}` mal
+    cerrado deja el markup vivo sin que falle nada, y ya pasó una vez en este
+    proyecto. Por eso se comprueba sobre el HTML renderizado.
+    """
+    crear_usuario("juan", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    html = client.get("/").text
+
+    assert "buscador-global" not in html, "el buscador se sigue renderizando"
+    assert 'placeholder="Buscar…"' not in html
+
+    # La campanita está, y está inerte a propósito: todavía no hay módulo
+    # de notificaciones detrás.
+    assert "Notificaciones" in html, "falta la campanita"
+    campana = html.split("Notificaciones")[0].rsplit("<button", 1)[1]
+    assert "disabled" in campana, "la campanita tiene que estar deshabilitada"
+
+
 def test_sidebar_se_filtra_por_permisos(client, crear_usuario, roles, dar_permiso):
     """
     El sidebar usa la misma `resolver_permiso` que la API: un vendedor sin

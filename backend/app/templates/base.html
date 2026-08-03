@@ -172,21 +172,22 @@
                 {{ icono('menu', clases='w-6 h-6') }}
             </button>
 
-            {# Buscador global. hx-* queda listo para el módulo que lo implemente.
+            {# El buscador global ("Rectangle 50" del Figma) queda oculto hasta
+               que exista el módulo que lo implemente: un campo que no busca
+               nada es peor que no tenerlo. El markup se conserva comentado
+               para no volver a escribirlo, con el `id` que espera el atajo F2
+               de app.js —que ya usa `?.focus()`, así que sin el campo no
+               rompe nada—.
 
-               Oculto por debajo de sm: en 320px la fila es hamburguesa +
-               buscador + tema + usuario, y el buscador quedaba en ~60px
-               —inservible— además de empujar el header a lo ancho. Todavía
-               no está implementado, así que no se pierde ninguna función;
-               cuando lo esté hay que darle su propia entrada en mobile. #}
-            <div class="hidden sm:block w-full max-w-md min-w-0">
-                <label for="buscador-global" class="sr-only">Buscar</label>
-                <input id="buscador-global"
-                       type="search"
-                       placeholder="Buscar…"
-                       class="w-full h-control px-5 text-sm bg-surface border border-borde rounded-search
-                              text-texto focus:outline-none focus:border-primary">
-            </div>
+               <div class="hidden sm:block w-full max-w-md min-w-0">
+                   <label for="buscador-global" class="sr-only">Buscar</label>
+                   <input id="buscador-global"
+                          type="search"
+                          placeholder="Buscar…"
+                          class="w-full h-control px-5 text-sm bg-surface border border-borde
+                                 rounded-search text-texto focus:outline-none focus:border-primary">
+               </div>
+            #}
 
             {# Toggle de modo claro/oscuro: sin recargar la página. #}
             <button type="button"
@@ -196,6 +197,20 @@
                            text-texto-muted hover:text-primary hover:border-primary transition-colors">
                 <span x-show="!dark" aria-hidden="true">☾</span>
                 <span x-show="dark" x-cloak aria-hidden="true">☀</span>
+            </button>
+
+            {# Campanita de notificaciones ("Grupo 88" del Figma). Va sin borde
+               —a diferencia del toggle— porque en el diseño es solo el ícono.
+
+               TODAVÍA NO HACE NADA: es el lugar reservado para el módulo de
+               notificaciones. Se deja `disabled` a propósito, para que quede
+               claro que no responde en vez de parecer un botón roto; al
+               implementarlo hay que sacarlo y colgarle el panel acá. #}
+            <button type="button" disabled
+                    aria-label="Notificaciones (no disponible todavía)"
+                    class="h-control w-control grid place-items-center rounded-input
+                           text-texto-muted opacity-60 cursor-not-allowed">
+                {{ icono('campana', clases='w-[22px] h-[22px]') }}
             </button>
 
             {# Badge del usuario logueado, con menú de sesión. #}
