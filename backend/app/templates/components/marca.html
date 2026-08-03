@@ -14,19 +14,26 @@
    oscuro, y por eso se lee igual sobre el dorado del sidebar que sobre el
    fondo claro del login. Se incrusta igual, para no tener dos mecanismos.
 
+   `ajuste` decide qué dimensión manda y cuál sale del SVG:
+     'alto'  → se fija el alto (sidebar, header). Es el default.
+     'ancho' → se fija el ancho (login, donde el diseño da 366px).
+   Los dos logos tienen proporciones distintas, así que fijar las dos
+   dimensiones a la vez deformaría uno de ellos.
+
    Uso:
      {% from "components/marca.html" import marca %}
      {{ marca(letra_empresa) }}
+     {{ marca(letra_empresa, clases='w-full', ajuste='ancho') }}
    =========================================================================== #}
 
-{% macro marca(letra, clases='h-12') %}
-    {% if letra == 'M' %}
-        <span class="{{ clases }} inline-block [&>svg]:h-full [&>svg]:w-auto">
+{% macro marca(letra, clases='h-12', ajuste='alto') %}
+    {% set encaje = '[&>svg]:h-full [&>svg]:w-auto' if ajuste == 'alto'
+                    else '[&>svg]:w-full [&>svg]:h-auto' %}
+    <span class="{{ clases }} inline-block {{ encaje }}">
+        {% if letra == 'M' %}
             {% include "components/logo_mallorca.svg" %}
-        </span>
-    {% else %}
-        <span class="{{ clases }} inline-block [&>svg]:h-full [&>svg]:w-auto">
+        {% else %}
             {% include "components/logo_soleil.svg" %}
-        </span>
-    {% endif %}
+        {% endif %}
+    </span>
 {% endmacro %}

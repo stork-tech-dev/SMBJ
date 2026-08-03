@@ -1,0 +1,72 @@
+{# ===========================================================================
+   Macro: campo de las pantallas de autenticación (diseño "DesktopLogin1"
+   y "DesktopLogin2" del Figma).
+
+   Label arriba, input debajo y, si hay error, el label y el borde en rojo
+   con un mensaje al pie. Antes este bloque de clases estaba copiado seis
+   veces entre login.html y cambiar_password.html; con el estado de error
+   habrían sido seis lugares donde mantener lo mismo (Principio 2: DRY).
+
+   Parámetros:
+     id        id del input y destino del `for` del label.
+     etiqueta  texto visible del label.
+     modelo    expresión de `x-model` (Alpine). Por defecto, el id.
+     tipo      type del input.
+     error     expresión Alpine que evalúa a true cuando el campo está mal:
+               pinta el label y el borde en rojo. Vacío = sin estado de error.
+     mensaje   expresión Alpine con el TEXTO del error. Va aparte de `error`
+               porque un mismo fallo puede marcar varios campos y el mensaje
+               tiene que aparecer una sola vez: al fallar el login se marcan
+               usuario y contraseña, pero el texto va solo bajo el primero.
+     ayuda     texto fijo debajo del campo (ej. "Mínimo 8 caracteres").
+     atributos atributos sueltos: required, minlength, autofocus…
+
+   Uso:
+     {% from "components/campo_auth.html" import campo %}
+     {{ campo('username', 'Usuario', error='error', mensaje='error',
+              atributos='required autofocus autocomplete="username"') }}
+   =========================================================================== #}
+
+{% macro campo(id, etiqueta, modelo=None, tipo='text', error='', mensaje='',
+               ayuda='', atributos='') %}
+    {% set modelo = modelo or id %}
+    {# El color va SIEMPRE en una sola clase, elegida con un ternario, y nunca
+       apilando `text-danger` encima de `text-texto-disabled`. Apiladas quedan
+       las dos puestas y gana la que Tailwind haya emitido última en la hoja
+       —un orden que el template no controla— así que el rojo aparecía en el
+       borde pero no en el label. #}
+    <div class="flex flex-col gap-1">
+        <label for="{{ id }}"
+               class="text-base font-semibold {% if not error %}text-texto-disabled{% endif %}"
+               {% if error %}:class="{{ error }} ? 'text-danger' : 'text-texto-disabled'"{% endif %}>
+            {{ etiqueta }}
+        </label>
+
+        <input id="{{ id }}" type="{{ tipo }}" x-model="{{ modelo }}"
+               class="w-full h-control px-3 text-base bg-surface text-texto
+                      border rounded-input focus:outline-none
+                      {% if not error %}border-borde-campo focus:border-primary{% endif %}"
+               {% if error %}
+                   {# El borde rojo pisa al de foco: mientras el error siga
+                      en pie, tener el cursor en el campo no lo disimula. #}
+                   :class="{{ error }}
+                           ? 'border-danger focus:border-danger'
+                           : 'border-borde-campo focus:border-primary'"
+                   :aria-invalid="{{ error }} ? 'true' : 'false'"
+               {% endif %}
+               {% if mensaje %}aria-describedby="{{ id }}-error"{% endif %}
+               {{ atributos|safe }}>
+
+        {% if ayuda %}
+            <span class="text-xs text-texto-muted">{{ ayuda }}</span>
+        {% endif %}
+
+        {% if mensaje %}
+            {# `role="alert"` hace que un lector de pantalla lo anuncie al
+               aparecer: si no, el error solo existiría para quien lo ve. #}
+            <span id="{{ id }}-error" role="alert" x-show="{{ mensaje }}" x-cloak
+                  class="text-xs font-semibold text-danger"
+                  x-text="{{ mensaje }}"></span>
+        {% endif %}
+    </div>
+{% endmacro %}

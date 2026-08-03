@@ -1,13 +1,19 @@
 {# ===========================================================================
-   Layout de las pantallas de autenticación (login, cambio de contraseña,
-   reseteo). Sin sidebar ni header: todavía no hay sesión.
+   Layout de las pantallas de autenticación (login, cambio de contraseña).
+   Sin sidebar ni header: todavía no hay sesión.
+
+   Sigue el diseño "DesktopLogin1" del Figma: una sola columna centrada
+   sobre el color de la marca, con el logo y la bajada arriba y una tarjeta
+   blanca con el formulario. Antes eran dos columnas (panel de marca a la
+   izquierda, formulario a la derecha) y hacía falta un segundo logo para
+   móvil; ahora el mismo logo sirve en todos los anchos.
 
    Comparte los tokens del design system con base.html a través de
    custom.css, así que el modo oscuro funciona igual acá.
    =========================================================================== #}
-<!DOCTYPE html>
 {# Igual que en base.html: la paleta sale de la empresa instalada. El login
    también tiene que verse con los colores de la marca correcta. #}
+<!DOCTYPE html>
 <html lang="es"
       data-empresa="{{ letra_empresa|default('S') }}"
       x-data="temaApp()"
@@ -40,38 +46,42 @@
     <script src="https://unpkg.com/alpinejs@3.x/dist/cdn.min.js" defer></script>
 </head>
 
-<body class="bg-bg text-texto font-light antialiased">
+{# El fondo es el del sidebar y no el `primary`: en Mallorca son el mismo
+   azul, pero en Soleil el sidebar es dorado y el botón naranja, y el login
+   tiene que anticipar el color del panel al que se entra. #}
+<body class="min-h-screen bg-sidebar-bg font-light antialiased
+             flex items-center justify-center px-4 py-10">
 
 {% from "components/toast.html" import contenedor_toasts %}
 {% from "components/marca.html" import marca %}
 
-<div class="min-h-screen grid lg:grid-cols-2">
+{# 27rem = 432px, el ancho de la tarjeta en el Figma. Debajo de eso la
+   columna ocupa lo que haya, así que en un teléfono de 320px no aparece
+   scroll horizontal (Principio 6). #}
+<div class="w-full max-w-[27rem]">
 
-    {# Panel de marca. Oculto por debajo de lg: en un celular ocuparía media
-       pantalla. El logo para esas anchuras va arriba del formulario. #}
-    <div class="hidden lg:flex flex-col justify-center px-16 bg-sidebar-bg text-white">
-        <div class="text-white">
-            {{ marca(letra_empresa|default('S'), clases='h-20') }}
-        </div>
-        <p class="mt-4 text-lg font-light opacity-90">Gestión comercial</p>
+    {# Marca. El diseño le fija el ANCHO (366px sobre 432 de tarjeta), no el
+       alto: los dos logos tienen proporciones distintas y así ninguno se
+       deforma. `text-white` es para el de Mallorca, que hereda currentColor;
+       el de Soleil trae sus propios colores y lo ignora. #}
+    <div class="text-white">
+        {{ marca(letra_empresa|default('S'), clases='w-[85%]', ajuste='ancho') }}
+
+        {# Bajada alineada a la derecha dentro del mismo ancho del logo, como
+           en el diseño: los dos bloques terminan en la misma vertical.
+
+           El tamaño baja en pantallas chicas porque con el tracking del
+           diseño (0.22em, que es lo que le da el aire) el texto no entra en
+           una línea abajo de 640px y se partía en dos, desalineado. #}
+        <p class="w-[85%] mt-3 text-right font-light text-white
+                  text-base tracking-[0.15em] sm:text-xl sm:tracking-[0.22em]">
+            Gestión Comercial
+        </p>
     </div>
 
-    <div class="flex items-center justify-center px-6 py-12">
-        <div class="w-full max-w-sm">
-
-            {# Marca para móvil y tablet. `lg:hidden` es el complemento exacto
-               del `hidden lg:flex` del panel: cada logo aparece donde el otro
-               no está, así que nunca se ven los dos.
-
-               Va en `text-primary` y no en blanco porque el SVG hereda
-               `currentColor` (ver components/marca.html): acá el fondo es
-               claro, y el blanco del panel quedaría invisible. #}
-            <div class="lg:hidden mb-8 flex justify-center text-primary">
-                {{ marca(letra_empresa|default('S'), clases='h-14') }}
-            </div>
-
-            {% block formulario_auth %}{% endblock %}
-        </div>
+    <div class="mt-12 bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]
+                px-6 py-10 sm:px-14 sm:py-12">
+        {% block formulario_auth %}{% endblock %}
     </div>
 </div>
 

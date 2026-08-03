@@ -21,8 +21,9 @@ def test_sin_sesion_redirige_al_login(client):
 def test_login_se_renderiza(client):
     resp = client.get("/login")
     assert resp.status_code == 200
-    assert "Ingresar" in resp.text
-    assert "¿Olvidaste tu contraseña?" in resp.text
+    assert "Iniciar Sesión" in resp.text
+    assert "¿Olvidé mi contraseña?" in resp.text
+    assert "RECUPERAR" in resp.text
 
 
 def test_con_sesion_activa_login_manda_al_dashboard(client, crear_usuario):
@@ -743,7 +744,12 @@ def test_un_local_dado_de_baja_no_se_saluda(client, db, crear_usuario):
     assert "Bienvenido a" not in resp.text
 
 
-def test_el_saludo_va_antes_del_titulo_ingresar(client, db, crear_usuario):
+def test_el_saludo_va_arriba_del_formulario(client, db, crear_usuario):
+    """
+    El saludo tiene que leerse antes de empezar a tipear, no después. Se
+    ancla en el primer campo porque el diseño no tiene título: la tarjeta
+    arranca directamente con "Usuario".
+    """
     punto = _local(db, crear_usuario)
     uuid = _dispositivo(db, activo=True, punto_de_venta_id=punto.id)
     db.commit()
@@ -751,7 +757,7 @@ def test_el_saludo_va_antes_del_titulo_ingresar(client, db, crear_usuario):
     client.cookies.set("device_uuid", uuid)
     html = client.get("/login").text
 
-    assert html.find("Bienvenido a Patio Olmos") < html.find(">Ingresar</h1>")
+    assert html.find("Bienvenido a Patio Olmos") < html.find('for="username"')
 
 
 def test_el_formato_de_moneda_no_vuelve_a_redondear():
@@ -916,13 +922,14 @@ def test_el_estado_del_dispositivo_no_lo_tapa_la_falta_de_local():
 
 def test_las_pantallas_de_auth_muestran_la_marca_en_todo_ancho(client, crear_usuario):
     """
-    Regresión: el panel de marca es `hidden lg:flex` y el logo vivía solo
-    ahí, así que por debajo de 1024px —celulares y tablets— la pantalla de
-    login quedaba sin ninguna identificación de la empresa.
+    Regresión: antes el logo vivía dentro de un panel `hidden lg:flex`, así
+    que por debajo de 1024px la pantalla quedaba sin ninguna identificación
+    de la empresa, y hubo que agregar un segundo logo solo para móvil.
 
-    Se verifican las dos variantes complementarias: la del panel y la de
-    móvil. Cada una aparece donde la otra no, de modo que hay logo en todo
-    ancho y nunca se ven duplicados.
+    Con el diseño "DesktopLogin1" la columna es una sola y el logo es **uno**,
+    centrado, visible en todo ancho. Se cuidan las dos cosas: que esté, y que
+    no vuelva a haber una copia condicionada por breakpoint que haya que
+    mantener en paralelo.
     """
     crear_usuario("admin", ROL_CUENTA_MAESTRA, ultimo_acceso=None)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
@@ -932,11 +939,57 @@ def test_las_pantallas_de_auth_muestran_la_marca_en_todo_ancho(client, crear_usu
     for url in ("/login", "/cambiar-password"):
         html = client.get(url, follow_redirects=True).text
 
-        assert "hidden lg:flex" in html, f"{url}: falta el panel de escritorio"
-        assert "lg:hidden mb-8" in html, f"{url}: falta la marca de móvil"
+        assert html.count('role="img"') == 1, f"{url}: tiene que haber un solo logo"
+        assert "hidden lg:flex" not in html, f"{url}: volvió el panel de dos columnas"
 
-        # El logo de móvil va sobre fondo claro: en blanco sería invisible.
-        bloque = html.split("lg:hidden mb-8")[1][:120]
-        assert "text-primary" in html.split("lg:hidden")[0][-200:] or "text-primary" in bloque, (
-            f"{url}: la marca de móvil no toma el color de marca"
-        )
+        # La tarjeta blanca del diseño, con el ancho de 432px del Figma.
+        assert "rounded-[10px]" in html, f"{url}: falta la tarjeta"
+        assert "max-w-[27rem]" in html, f"{url}: falta el ancho del diseño"
+
+
+def test_el_login_no_tiene_el_boton_de_modo_oscuro(client):
+    """
+    El diseño no lo incluye. El tema se elige desde adentro del sistema y la
+    preferencia queda guardada, así que el próximo login ya la respeta.
+    """
+    html = client.get("/login").text
+
+    assert "alternar()" not in html
+    assert "Cambiar a modo oscuro" not in html
+
+
+def test_el_error_de_login_no_revela_cual_de_los_dos_campos_fallo(client):
+    """
+    El diseño (DesktopLogin2) pone "Lo sentimos, usuario incorrecto" bajo el
+    campo Usuario. No se puede implementar literalmente: `autenticar_usuario`
+    devuelve SIEMPRE el mismo mensaje genérico justamente para no revelar si
+    un usuario existe, y distinguirlo acá abriría la enumeración de usuarios.
+
+    La adaptación marca los dos campos con el mismo estado `error`. Este test
+    cuida que nadie "complete" el diseño más adelante rompiendo eso.
+    """
+    html = client.get("/login").text
+
+    # El texto lo pone la API en tiempo de ejecución; la pantalla no puede
+    # traer escrita una versión que señale un campo.
+    assert "usuario incorrecto" not in html.lower()
+    assert "contraseña incorrecta" not in html.lower()
+
+    # Un único estado de error, compartido por los dos campos. El binding
+    # está partido en varias líneas en el macro, así que se compara sobre el
+    # HTML con los espacios colapsados.
+    plano = " ".join(html.split())
+    assert plano.count("error ? 'border-danger") == 2, (
+        "los dos campos tienen que marcarse con el mismo estado"
+    )
+
+
+def test_el_error_de_login_se_muestra_en_el_formulario_y_no_como_toast(client):
+    """
+    Antes un 401 iba a `window.toast`, que se desvanece a los segundos y
+    aparece lejos del campo. El diseño lo pide dentro del formulario.
+    """
+    html = client.get("/login").text
+
+    assert "this.error = e.message" in html
+    assert "window.toast(e.message" not in html

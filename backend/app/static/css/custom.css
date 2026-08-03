@@ -29,6 +29,11 @@
     --color-text-header: #737c7c;      /* headers de tabla */
     --color-text-invert: #ffffff;
 
+    /* Borde de los campos de formulario. Más marcado que --color-border,
+       que es para separadores de tabla: un input tiene que verse como una
+       caja donde se escribe, no como una línea divisoria. */
+    --color-input-border: #bcbec0;
+
     /* --- Estados --- */
     --color-danger: #f60509;           /* pendiente / error */
     --color-success: #00bf29;          /* autorizado / éxito */
@@ -139,6 +144,7 @@ canvas {
     --color-text-disabled: #6b727d;
     --color-text-header: #98a1ad;
     --color-text-invert: #14181d;
+    --color-input-border: #3f4854;
 
     --color-danger: #ff5c5f;
     --color-success: #34d95a;
