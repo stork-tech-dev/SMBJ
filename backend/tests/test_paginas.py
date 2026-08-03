@@ -94,6 +94,53 @@ def test_historial_se_renderiza(client, crear_usuario):
     assert "Historial de accesos" in resp.text
 
 
+def test_la_cabecera_del_sidebar_identifica_la_cuenta_logueada(client, crear_usuario):
+    """
+    Según el grupo "HeaderLateral" del Figma: el logo centrado y, debajo, el
+    nombre de quien está operando alineado al borde DERECHO del logo. El
+    nombre importa: en un local con varias personas usando la misma máquina,
+    es lo que dice de quién es la sesión antes de tocar nada.
+    """
+    crear_usuario("juan", ROL_CUENTA_MAESTRA, nombre="Juan Pérez")
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    html = client.get("/").text
+    cabecera = html.split('id="sidebar-nav"')[1].split("<nav")[0]
+
+    assert 'role="img"' in cabecera, "el logo no está en la cabecera del sidebar"
+    assert "Juan Pérez" in cabecera, "falta el nombre de la cuenta logueada"
+    assert cabecera.index('role="img"') < cabecera.index("Juan Pérez"), (
+        "el nombre tiene que ir DEBAJO del logo"
+    )
+    assert "justify-center" in cabecera, "el bloque dejó de estar centrado"
+
+    # El nombre se alinea a la derecha DEL LOGO, no del sidebar: por eso el
+    # `text-right` va en el mismo contenedor que le da el ancho al logo.
+    assert "text-right" in cabecera.split("Juan Pérez")[0].rsplit("<p", 1)[1]
+
+
+def test_el_logo_del_sidebar_se_dimensiona_por_ancho(client, crear_usuario):
+    """
+    Regresión: con el alto fijo, el logo de Soleil —un triángulo mucho más
+    ancho que el de Mallorca— se desbordaba de los 290px del sidebar. Se
+    dimensiona por ancho para que los dos entren sin deformarse.
+
+    La clase sale de una variable del macro, así que Jinja la emite escapada
+    (`[&amp;&gt;svg]`). El navegador la decodifica y el selector funciona
+    igual, pero acá hay que deshacer el escape para compararla.
+    """
+    import html as escape_html
+
+    crear_usuario("juan", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    pagina = escape_html.unescape(client.get("/").text)
+    cabecera = pagina.split('id="sidebar-nav"')[1].split("<nav")[0]
+
+    assert "[&>svg]:w-full" in cabecera
+    assert "[&>svg]:h-full" not in cabecera
+
+
 def test_sidebar_se_filtra_por_permisos(client, crear_usuario, roles, dar_permiso):
     """
     El sidebar usa la misma `resolver_permiso` que la API: un vendedor sin

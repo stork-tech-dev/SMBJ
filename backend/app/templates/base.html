@@ -97,14 +97,45 @@
                   transition-transform duration-200 ease-out
                   lg:static lg:z-auto lg:translate-x-0 lg:overflow-visible"
            :class="nav ? 'translate-x-0' : '-translate-x-full'">
-        <div class="h-header flex items-center justify-between px-8 shrink-0">
-            <a href="/" class="text-white" aria-label="Inicio">
-                {{ marca(letra_empresa|default('S'), clases='h-12') }}
-            </a>
+        {# Cabecera del sidebar, según el grupo "HeaderLateral" del Figma: el
+           logo ocupa el ancho del bloque y el nombre de la cuenta va debajo,
+           alineado al borde DERECHO del logo (no centrado).
 
-            {# Cerrar el cajón sin depender del overlay ni del teclado. #}
+           El espacio es menor por debajo de lg porque ahí el sidebar es un
+           cajón sobre la pantalla del teléfono: el aire del diseño de
+           escritorio dejaría las opciones fuera de la vista.
+
+           En escritorio el aire es proporcional al alto de la ventana. Con
+           valores fijos el menú entraba en un monitor pero no en una notebook
+           de 768px, donde las últimas opciones caían abajo del pliegue. Los
+           `calc` están calibrados para dar los valores del Figma en un
+           monitor de 1024 y ceder al achicarse la pantalla. #}
+        <div class="relative shrink-0 flex justify-center pt-12 pb-10
+                    lg:pt-[clamp(1rem,calc(20vh-100px),6rem)]
+                    lg:pb-[clamp(0.75rem,calc(14vh-75px),3.5rem)]">
+
+            {# 78% es la proporción del diseño: el logo mide 209px y queda
+               centrado con ~28px a cada lado, o sea un sidebar de ~268px. Va
+               en porcentaje y no en píxeles para que acompañe si cambia
+               `--sidebar-width`, que acá son 290px.
+
+               El logo se dimensiona por ANCHO y no por alto: el de Soleil es
+               un triángulo mucho más ancho que el de Mallorca, y fijando el
+               alto se desbordaría del sidebar. #}
+            <div class="w-[78%]">
+                <a href="/" class="block text-white" aria-label="Inicio">
+                    {{ marca(letra_empresa|default('S'), clases='w-full', ajuste='ancho') }}
+                </a>
+
+                <p class="mt-2.5 truncate text-right text-sm font-semibold text-sidebar-text">
+                    {{ usuario_actual.nombre|default('Invitado') }}
+                </p>
+            </div>
+
+            {# Cerrar el cajón sin depender del overlay ni del teclado. Va
+               absoluto para no correr el logo de su centro. #}
             <button type="button" @click="nav = false" aria-label="Cerrar menú"
-                    class="lg:hidden -mr-2 p-2 text-white/80 hover:text-white">
+                    class="lg:hidden absolute top-4 right-4 p-2 text-white/80 hover:text-white">
                 {{ icono('cerrar', clases='w-6 h-6') }}
             </button>
         </div>
