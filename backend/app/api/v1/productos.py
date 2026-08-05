@@ -28,6 +28,7 @@ from app.schemas.productos import (
     ProductoEstado,
     ProductoResponse,
     VarianteCrear,
+    VarianteEditar,
     VarianteListadoResponse,
     VarianteResponse,
 )
@@ -276,6 +277,43 @@ def agregar_variante(
             autor,
             producto_id,
             sufijo=datos.sufijo,
+            descripcion_sufijo=datos.descripcion_sufijo,
+            ubicacion_deposito=datos.ubicacion_deposito,
+            stock_minimo=datos.stock_minimo,
+            ip_origen=ip_de_request(request),
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+
+    db.commit()
+    return variante
+
+
+@router.patch(
+    "/variantes/{variante_id}",
+    response_model=VarianteResponse,
+    summary="Editar una variante",
+)
+def editar_variante(
+    variante_id: int,
+    datos: VarianteEditar,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_permiso(Modulo.PRODUCTOS, "editar")),
+):
+    """
+    Cambia el nombre de la variante, su ubicación y su stock mínimo.
+
+    El sufijo no se toca: forma parte del código impreso en la etiqueta.
+    """
+    try:
+        variante = servicio.editar_variante(
+            db,
+            autor,
+            variante_id,
+            descripcion_sufijo=datos.descripcion_sufijo,
             ubicacion_deposito=datos.ubicacion_deposito,
             stock_minimo=datos.stock_minimo,
             ip_origen=ip_de_request(request),

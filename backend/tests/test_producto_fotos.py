@@ -40,7 +40,8 @@ def producto(db, autor):
     return servicio_productos.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
         precio_usd=Decimal("10"),
-    )
+        descripcion="Producto de prueba",
+)
 
 
 @pytest.fixture(autouse=True)

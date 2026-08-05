@@ -122,6 +122,35 @@ def _validar_proveedor(db: Session, proveedor_id: int) -> Proveedor:
     return proveedor
 
 
+def _validar_descripcion(descripcion: str) -> str:
+    """
+    La descripción es obligatoria y no puede quedar vacía.
+
+    `normalizar_texto` colapsa espacios y devuelve None si no queda nada,
+    así que sin este control un valor de solo espacios llegaría como NULL a
+    una columna NOT NULL: reventaría con un error de base en vez de decir
+    qué está mal.
+    """
+    limpia = normalizar_texto(descripcion)
+    if not limpia:
+        raise ReglaDeNegocio("La descripción del producto es obligatoria")
+    return limpia
+
+
+def _validar_nombre_variante(descripcion_sufijo: str) -> str:
+    """
+    El nombre de la variante es obligatorio y no puede quedar vacío.
+
+    Mismo criterio que `_validar_descripcion` del producto: sin esto, un
+    valor de solo espacios llegaría como NULL y lo rechazaría el CHECK de la
+    tabla con un error de base en vez de decir qué falta.
+    """
+    limpio = normalizar_texto(descripcion_sufijo)
+    if not limpio:
+        raise ReglaDeNegocio("El nombre de la variante es obligatorio")
+    return limpio
+
+
 def _validar_descuento(db: Session, descuento: Decimal | None) -> Decimal:
     """
     El descuento del producto no puede pasar el tope global.
@@ -171,7 +200,11 @@ def _letra_empresa(db: Session) -> str:
 
 
 def _crear_variante(
-    db: Session, producto: Producto, sufijo: str | None, es_base: bool
+    db: Session,
+    producto: Producto,
+    sufijo: str | None,
+    es_base: bool,
+    descripcion_sufijo: str | None = None,
 ) -> Variante:
     """
     Crea una variante y le congela el código.
@@ -194,6 +227,10 @@ def _crear_variante(
     variante = Variante(
         producto_id=producto.id,
         sufijo=sufijo,
+        # Va acá y no asignado después: el CHECK que lo ata a `es_base` se
+        # evalúa en el flush de esta función, así que setearlo más tarde
+        # llegaría tarde.
+        descripcion_sufijo=descripcion_sufijo,
         es_base=es_base,
         codigo_completo=codigo,
         verificador=digito_verificador(codigo),
@@ -210,6 +247,7 @@ def agregar_variante(
     autor: Usuario,
     producto_id: int,
     sufijo: str,
+    descripcion_sufijo: str,
     ubicacion_deposito: str | None = None,
     stock_minimo: int = 0,
     ip_origen: str | None = None,
@@ -244,7 +282,10 @@ def agregar_variante(
         db.delete(base)
         db.flush()
 
-    variante = _crear_variante(db, producto, sufijo=sufijo, es_base=False)
+    variante = _crear_variante(
+        db, producto, sufijo=sufijo, es_base=False,
+        descripcion_sufijo=_validar_nombre_variante(descripcion_sufijo),
+    )
 
     variante.ubicacion_deposito = normalizar_texto(ubicacion_deposito)
     variante.stock_minimo = stock_minimo
@@ -259,6 +300,54 @@ def agregar_variante(
         accion="variante.crear",
         entidad="variantes",
         entidad_id=variante.id,
+        estado_nuevo=variante,
+        ip_origen=ip_origen,
+    )
+    return variante
+
+
+def editar_variante(
+    db: Session,
+    autor: Usuario,
+    variante_id: int,
+    descripcion_sufijo: str | None = None,
+    ubicacion_deposito: str | None = None,
+    stock_minimo: int | None = None,
+    ip_origen: str | None = None,
+) -> Variante:
+    """
+    Edita lo que se puede cambiar de una variante.
+
+    El SUFIJO NO ESTÁ, y no es un olvido: entra en `codigo_completo`, que se
+    congela al crear la variante porque la etiqueta ya se imprimió y está
+    pegada a la mercadería. Cambiarlo dejaría sin producto a lo que hay en el
+    depósito. Lo mismo vale para el dígito verificador, que se deriva de él.
+    """
+    variante = obtener_variante(db, variante_id)
+    antes = snapshot(variante)
+
+    if variante.es_base and descripcion_sufijo is not None:
+        raise ReglaDeNegocio("La variante BASE no lleva nombre: no es variante de nada")
+
+    if descripcion_sufijo is not None:
+        variante.descripcion_sufijo = _validar_nombre_variante(descripcion_sufijo)
+    if ubicacion_deposito is not None:
+        variante.ubicacion_deposito = normalizar_texto(ubicacion_deposito)
+    if stock_minimo is not None:
+        if stock_minimo < 0:
+            raise ReglaDeNegocio("El stock mínimo no puede ser negativo")
+        variante.stock_minimo = stock_minimo
+
+    variante.updated_at = ahora_db()
+    db.flush()
+
+    registrar_auditoria(
+        db,
+        usuario_id=autor.id,
+        accion="variante.editar",
+        entidad="variantes",
+        entidad_id=variante.id,
+        estado_anterior=antes,
         estado_nuevo=variante,
         ip_origen=ip_origen,
     )
@@ -391,9 +480,20 @@ def listar_variantes(
         select(func.count()).select_from(consulta.order_by(None).subquery())
     ).scalar_one()
 
+    # Alfabético por la columna Descripción, que es como se lee la tabla.
+    #
+    # `lower()` para que no dependa de la mayúscula inicial, y el código
+    # como desempate: las variantes de un mismo producto comparten
+    # descripción, así que sin esto quedarían en orden arbitrario entre
+    # ellas y el paginado podría repetir o saltear filas.
+    # La descripción es NOT NULL desde la migración 0012, así que no hace
+    # falta ningún COALESCE. El índice `ix_productos_descripcion_lower` está
+    # creado sobre esta MISMA expresión: cambiarla acá lo deja sin usar.
+    orden = func.lower(Producto.descripcion)
+
     filas = (
         db.execute(
-            consulta.order_by(Variante.codigo_completo)
+            consulta.order_by(orden, Variante.codigo_completo)
             .limit(tamano)
             .offset((pagina - 1) * tamano)
         )
@@ -410,7 +510,7 @@ def crear_producto(
     categoria_id: int,
     proveedor_id: int,
     precio_usd: Decimal,
-    descripcion: str | None = None,
+    descripcion: str,
     sku_proveedor: str | None = None,
     descuento_producto: Decimal | None = None,
     peso_gramos: Decimal | None = None,
@@ -436,7 +536,7 @@ def crear_producto(
     producto = Producto(
         sku=_siguiente_sku(db),
         sku_proveedor=normalizar_texto(sku_proveedor),
-        descripcion=normalizar_texto(descripcion),
+        descripcion=_validar_descripcion(descripcion),
         categoria_id=categoria_id,
         proveedor_id=proveedor_id,
         precio_usd=Decimal(precio_usd),
@@ -496,7 +596,7 @@ def editar_producto(
         producto.categoria_id = categoria_id
 
     if descripcion is not None:
-        producto.descripcion = normalizar_texto(descripcion)
+        producto.descripcion = _validar_descripcion(descripcion)
     if sku_proveedor is not None:
         producto.sku_proveedor = normalizar_texto(sku_proveedor)
 

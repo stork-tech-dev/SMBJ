@@ -20,7 +20,9 @@ class ProductoCrear(BaseModel):
     categoria_id: int
     proveedor_id: int
     precio_usd: Decimal = Field(gt=0, description="Precio en dólares, mayor a cero")
-    descripcion: str | None = None
+    # Obligatoria: es por donde se lee y se ordena el catálogo. `min_length`
+    # sobre el valor ya sin espacios, para que " " no pase por descripción.
+    descripcion: str = Field(min_length=1, description="Cómo se identifica el producto")
     sku_proveedor: str | None = Field(default=None, max_length=30)
     descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
     peso_gramos: Decimal | None = Field(default=None, gt=0)
@@ -35,7 +37,10 @@ class ProductoEditar(BaseModel):
     """
 
     categoria_id: int | None = None
-    descripcion: str | None = None
+    # Opcional porque la edición es parcial: no mandarla es "no la cambies".
+    # Pero mandarla vacía sería dejar el producto sin identificación, y la
+    # columna ya no lo admite.
+    descripcion: str | None = Field(default=None, min_length=1)
     sku_proveedor: str | None = Field(default=None, max_length=30)
     precio_usd: Decimal | None = Field(default=None, gt=0)
     descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
@@ -61,8 +66,27 @@ class ProductoEstado(BaseModel):
 
 class VarianteCrear(BaseModel):
     sufijo: str = Field(min_length=1, max_length=1, description="Un carácter alfanumérico")
+    # Cómo se nombra la variante en pantalla ("Rojo", "Talle 42"). Obligatoria:
+    # es lo que reemplaza al "variante R" que no dice nada.
+    descripcion_sufijo: str = Field(
+        min_length=1, max_length=60, description="Nombre legible de la variante"
+    )
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
     stock_minimo: int = Field(default=0, ge=0)
+
+
+class VarianteEditar(BaseModel):
+    """
+    Lo único editable de una variante.
+
+    `sufijo`, `codigo_completo` y `verificador` NO están: el código se congela
+    al crearse porque la etiqueta ya se imprimió y está pegada a la
+    mercadería. Cambiarlo dejaría sin producto a lo que hay en el depósito.
+    """
+
+    descripcion_sufijo: str | None = Field(default=None, min_length=1, max_length=60)
+    ubicacion_deposito: str | None = Field(default=None, max_length=100)
+    stock_minimo: int | None = Field(default=None, ge=0)
 
 
 class VarianteResponse(BaseModel):
@@ -71,6 +95,7 @@ class VarianteResponse(BaseModel):
     id: int
     producto_id: int
     sufijo: str | None
+    descripcion_sufijo: str | None
     es_base: bool
     codigo_completo: str
     verificador: str
@@ -116,7 +141,7 @@ class ProductoResponse(BaseModel):
     id: int
     sku: str
     sku_proveedor: str | None
-    descripcion: str | None
+    descripcion: str
     categoria_id: int
     categoria: CategoriaResumen
     proveedor_id: int
@@ -149,7 +174,7 @@ class ProductoResumen(BaseModel):
 
     id: int
     sku: str
-    descripcion: str | None
+    descripcion: str
     categoria: CategoriaResumen
     proveedor: ProveedorResumen
     # Crudos: el formato lo pone el frontend (Principio 1).
@@ -171,6 +196,7 @@ class VarianteListadoResponse(BaseModel):
     id: int
     producto_id: int
     sufijo: str | None
+    descripcion_sufijo: str | None
     es_base: bool
     codigo_completo: str
     verificador: str

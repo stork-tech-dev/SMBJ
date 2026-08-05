@@ -83,6 +83,7 @@ def test_los_sku_no_se_repiten(db, autor, config, categoria, proveedor):
         servicio.crear_producto(
             db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"),
+            descripcion="Producto de prueba",
         ).sku
         for _ in range(20)
     }
@@ -99,7 +100,7 @@ def test_el_sku_no_lo_puede_mandar_el_cliente(client, db, autor, config, categor
         "/api/v1/productos",
         json={
             "categoria_id": categoria.id, "proveedor_id": proveedor.id,
-            "precio_usd": "10", "sku": "ZZ999",
+            "precio_usd": "10", "sku": "ZZ999", "descripcion": "Producto de prueba",
         },
         headers=login("admin"),
     )
@@ -129,7 +130,8 @@ def test_el_precio_redondea_hacia_arriba(db, autor, config, categoria, proveedor
     p = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
         precio_usd=Decimal("10.001"),
-    )
+        descripcion="Producto de prueba",
+)
     # 10,001 × 1.000 = 10.001 → un peso arriba de 10.000, sube a 11.000.
     assert p.precio_venta == Decimal("11000")
 
@@ -150,7 +152,8 @@ def test_el_ejemplo_del_cliente(db, autor, config, categoria):
     p = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
         precio_usd=Decimal("5.33"),
-    )
+        descripcion="Producto de prueba",
+)
 
     # 5,33 × 1.400 = 7.462 → siguiente múltiplo de 1.000.
     assert p.precio_venta == Decimal("8000")
@@ -196,11 +199,13 @@ def test_la_cascada_solo_toca_los_productos_del_proveedor(db, autor, config, cat
     mio = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
         precio_usd=Decimal("10"),
-    )
+        descripcion="Producto de prueba",
+)
     ajeno = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=otro.id,
         precio_usd=Decimal("10"),
-    )
+        descripcion="Producto de prueba",
+)
 
     servicio_proveedores.cambiar_dolar(db, autor, proveedor.id, Decimal("2000"))
 
@@ -235,13 +240,13 @@ def test_el_codigo_de_la_base_es_letra_mas_sku(db, producto, config):
 
 
 def test_el_codigo_de_una_variante_incluye_el_sufijo(db, autor, producto, config):
-    variante = servicio.agregar_variante(db, autor, producto.id, sufijo="R")
+    variante = servicio.agregar_variante(db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R")
     assert variante.codigo_completo == f"S{producto.sku}R"
     assert variante.es_base is False
 
 
 def test_la_primera_variante_real_reemplaza_la_base(db, autor, producto):
-    servicio.agregar_variante(db, autor, producto.id, sufijo="R")
+    servicio.agregar_variante(db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R")
 
     db.refresh(producto)
     assert producto.tiene_variantes is True
@@ -258,13 +263,13 @@ def test_no_se_divide_en_variantes_un_producto_con_stock(db, autor, producto):
     db.flush()
 
     with pytest.raises(ReglaDeNegocio, match="stock cargado"):
-        servicio.agregar_variante(db, autor, producto.id, sufijo="R")
+        servicio.agregar_variante(db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R")
 
 
 def test_no_hay_dos_variantes_con_el_mismo_sufijo(db, autor, producto):
-    servicio.agregar_variante(db, autor, producto.id, sufijo="R")
+    servicio.agregar_variante(db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R")
     with pytest.raises(ReglaDeNegocio, match="Ya existe una variante"):
-        servicio.agregar_variante(db, autor, producto.id, sufijo="R")
+        servicio.agregar_variante(db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R")
 
 
 def test_la_variante_guarda_ubicacion_y_stock_minimo(db, autor, producto):
@@ -275,7 +280,7 @@ def test_la_variante_guarda_ubicacion_y_stock_minimo(db, autor, producto):
     formulario, este test cuida que lleguen hasta la base.
     """
     variante = servicio.agregar_variante(
-        db, autor, producto.id, sufijo="R",
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R",
         ubicacion_deposito="Estante 3 - Fila B", stock_minimo=7,
     )
 
@@ -303,6 +308,7 @@ def test_el_descuento_no_puede_superar_el_tope_configurado(db, autor, config, ca
         servicio.crear_producto(
             db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"), descuento_producto=Decimal("50"),
+            descripcion="Producto de prueba",
         )
 
 
@@ -310,7 +316,8 @@ def test_el_descuento_dentro_del_tope_se_acepta(db, autor, config, categoria, pr
     p = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
         precio_usd=Decimal("10"), descuento_producto=Decimal("25"),
-    )
+        descripcion="Producto de prueba",
+)
     assert p.descuento_producto == Decimal("25")
 
 
@@ -323,6 +330,7 @@ def test_no_se_carga_un_producto_de_un_proveedor_inactivo(db, autor, config, cat
         servicio.crear_producto(
             db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"),
+            descripcion="Producto de prueba",
         )
 
 
@@ -331,6 +339,7 @@ def test_la_categoria_debe_existir(db, autor, config, proveedor):
         servicio.crear_producto(
             db, autor, categoria_id=999999, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"),
+            descripcion="Producto de prueba",
         )
 
 
@@ -379,7 +388,8 @@ def test_el_alta_por_la_api_devuelve_la_variante_base(client, db, autor, config,
     db.commit()
     resp = client.post(
         "/api/v1/productos",
-        json={"categoria_id": categoria.id, "proveedor_id": proveedor.id, "precio_usd": "10"},
+        json={"categoria_id": categoria.id, "proveedor_id": proveedor.id,
+              "precio_usd": "10", "descripcion": "Producto de prueba"},
         headers=login("admin"),
     )
 
@@ -456,7 +466,7 @@ def test_el_preview_coincide_con_lo_que_se_guarda(client, db, autor, config, cat
         "/api/v1/productos",
         json={
             "categoria_id": categoria.id, "proveedor_id": proveedor.id,
-            "precio_usd": "10.001",
+            "precio_usd": "10.001", "descripcion": "Producto de prueba",
         },
         headers=headers,
     ).json()
@@ -659,7 +669,7 @@ def catalogo(db, autor, config, categoria, proveedor):
         precio_usd=Decimal("20"), descripcion="Zapatilla con luces",
     )
     for sufijo in ("R", "N", "V"):
-        servicio.agregar_variante(db, autor, luces.id, sufijo=sufijo)
+        servicio.agregar_variante(db, autor, luces.id, sufijo=sufijo, descripcion_sufijo=f"Color {sufijo}")
     db.flush()
     return liso, luces
 
@@ -763,3 +773,181 @@ def test_el_listado_de_variantes_por_la_api(client, db, catalogo, login):
     # que YA es una variante solo agregarían peso.
     assert "variantes" not in fila["producto"]
     assert "fotos" not in fila["producto"]
+
+
+def test_el_listado_va_alfabetico_por_descripcion(db, autor, config, categoria, proveedor):
+    """
+    La tabla se lee por la columna Descripción, así que ese es el orden.
+
+    Los dos casos que lo pueden romper:
+      - Mayúsculas: "alfajor" tiene que ir antes que "Alpargata", no después.
+        Sin `lower()` el orden depende de la mayúscula inicial.
+      - Variantes hermanas: comparten descripción, y sin un desempate
+        quedarían en orden arbitrario — con paginado eso repite o saltea filas.
+
+    Se usan nombres sin acentos ni ñ a propósito. Dónde va la "ñ" lo decide
+    la colación de PostgreSQL —después de la n, como corresponde en
+    castellano— y no este código; compararlo contra el `sorted()` de Python,
+    que ordena por punto de código y la manda al final de todo, probaría una
+    diferencia entre dos algoritmos ajenos en vez de nuestro ORDER BY.
+    """
+    for nombre in ["zapato", "Alpargata", "alfajor", "Mocasin"]:
+        servicio.crear_producto(
+            db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+            precio_usd=Decimal("10"), descripcion=nombre,
+        )
+    multi = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Mocasín",
+    )
+    for sufijo in ("V", "R", "N"):
+        servicio.agregar_variante(db, autor, multi.id, sufijo=sufijo, descripcion_sufijo=f"Color {sufijo}")
+    db.flush()
+
+    filas, _ = servicio.listar_variantes(db)
+    visible = [f.producto.descripcion for f in filas]
+
+    # Lo que se ve en la columna, ordenado sin distinguir mayúsculas.
+    assert visible == sorted(visible, key=str.lower)
+
+    # Y "alfajor" antes que "Alpargata": es el caso que delata la falta de lower().
+    assert visible.index("alfajor") < visible.index("Alpargata")
+
+    # Las tres hermanas quedan juntas y en orden estable por su código.
+    codigos = [f.codigo_completo for f in filas if f.producto_id == multi.id]
+    assert codigos == sorted(codigos)
+
+
+def test_la_descripcion_es_obligatoria(db, autor, config, categoria, proveedor):
+    """
+    Sin descripción la fila solo se identifica por su SKU, que no dice qué
+    es. Y es la columna por la que se ordena el catálogo.
+    """
+    with pytest.raises(ReglaDeNegocio, match="descripción"):
+        servicio.crear_producto(
+            db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+            precio_usd=Decimal("10"), descripcion="   ",
+        )
+
+
+def test_no_se_puede_dejar_sin_descripcion_al_editar(db, autor, producto):
+    """
+    La edición es parcial —no mandarla es "no la cambies"— pero mandarla
+    vacía dejaría el producto sin identificación.
+    """
+    with pytest.raises(ReglaDeNegocio, match="descripción"):
+        servicio.editar_producto(db, autor, producto.id, descripcion="  ")
+
+    db.refresh(producto)
+    assert producto.descripcion == "Zapatilla running"
+
+
+def test_existe_el_indice_del_orden_alfabetico(db):
+    """
+    El listado ordena por `lower(descripcion)`. Con varios miles de
+    productos, sin un índice sobre esa MISMA expresión cada página obliga a
+    ordenar el catálogo entero para quedarse con 50 filas.
+
+    Se comprueba contra la base y no contra el archivo de migración: lo que
+    importa es que el índice exista donde se consulta.
+    """
+    from sqlalchemy import text
+
+    fila = db.execute(
+        text("SELECT indexdef FROM pg_indexes WHERE indexname = :n"),
+        {"n": "ix_productos_descripcion_lower"},
+    ).scalar_one_or_none()
+
+    assert fila is not None, "falta el índice del orden alfabético"
+    assert "lower(descripcion)" in fila.lower()
+
+
+# ============================================================================
+# NOMBRE DE LA VARIANTE
+# ============================================================================
+
+
+def test_el_nombre_de_la_variante_es_obligatorio(db, autor, producto):
+    """
+    Es lo que reemplaza al "variante R" que no dice nada: dejarlo vacío
+    anula el propósito.
+    """
+    with pytest.raises(ReglaDeNegocio, match="nombre de la variante"):
+        servicio.agregar_variante(
+            db, autor, producto.id, sufijo="R", descripcion_sufijo="   "
+        )
+
+
+def test_la_base_no_lleva_nombre_de_variante(db, producto):
+    """La BASE no es variante de nada, así que no tiene qué nombrar."""
+    base = producto.variantes[0]
+    assert base.es_base is True
+    assert base.descripcion_sufijo is None
+
+
+def test_no_se_le_puede_poner_nombre_a_la_base(db, autor, producto):
+    base = producto.variantes[0]
+
+    with pytest.raises(ReglaDeNegocio, match="BASE"):
+        servicio.editar_variante(db, autor, base.id, descripcion_sufijo="Rojo")
+
+
+def test_editar_una_variante_cambia_lo_editable(db, autor, producto):
+    variante = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R"
+    )
+
+    servicio.editar_variante(
+        db, autor, variante.id,
+        descripcion_sufijo="Rojo furioso",
+        ubicacion_deposito="Estante 3",
+        stock_minimo=7,
+    )
+
+    db.refresh(variante)
+    assert variante.descripcion_sufijo == "Rojo furioso"
+    assert variante.ubicacion_deposito == "Estante 3"
+    assert variante.stock_minimo == 7
+
+
+def test_editar_una_variante_no_toca_su_codigo(db, autor, producto):
+    """
+    El código se congela al crearse: la etiqueta ya está impresa y pegada a
+    la mercadería. Cambiarlo dejaría sin producto a lo que hay en depósito.
+    """
+    variante = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R"
+    )
+    codigo, verificador = variante.codigo_completo, variante.verificador
+
+    servicio.editar_variante(db, autor, variante.id, descripcion_sufijo="Rojo")
+
+    db.refresh(variante)
+    assert variante.codigo_completo == codigo
+    assert variante.verificador == verificador
+    assert variante.sufijo == "R"
+
+
+def test_editar_una_variante_queda_auditado(db, autor, producto):
+    from app.models.auditoria import Auditoria
+    from sqlalchemy import select as sa_select
+
+    variante = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R"
+    )
+    servicio.editar_variante(db, autor, variante.id, descripcion_sufijo="Rojo")
+
+    acciones = db.execute(
+        sa_select(Auditoria.accion).where(Auditoria.entidad == "variantes")
+    ).scalars().all()
+    assert "variante.editar" in acciones
+
+
+def test_el_listado_devuelve_el_nombre_de_la_variante(db, autor, producto):
+    servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Rojo"
+    )
+
+    filas, _ = servicio.listar_variantes(db)
+
+    assert [f.descripcion_sufijo for f in filas] == ["Rojo"]

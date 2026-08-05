@@ -41,7 +41,14 @@ function abmProductos() {
         // el sistema no tiene forma de saberlo.
         variante: {
             abierto: false, guardando: false, reemplazaBase: false,
-            sufijo: '', ubicacion_deposito: '', stock_minimo: 0,
+            sufijo: '', descripcion_sufijo: '', ubicacion_deposito: '', stock_minimo: 0,
+        },
+
+        // Edición de una variante ya creada. El sufijo NO está: entra en el
+        // código, que se congela porque la etiqueta ya se imprimió.
+        edicionVariante: {
+            abierto: false, guardando: false, id: null, codigo: '',
+            descripcion_sufijo: '', ubicacion_deposito: '', stock_minimo: 0,
         },
 
         // Valores informativos del formulario. null = todavía sin datos
@@ -227,6 +234,7 @@ function abmProductos() {
                 // producto ya tiene variantes, no hay BASE que perder.
                 reemplazaBase: variantes.some((v) => v.es_base),
                 sufijo: '',
+                descripcion_sufijo: '',
                 ubicacion_deposito: '',
                 stock_minimo: 0,
             };
@@ -264,6 +272,54 @@ function abmProductos() {
             return base + sufijo;
         },
 
+        /* --- Edición de una variante --- */
+
+        abrirEdicionVariante(v) {
+            this.edicionVariante = {
+                abierto: true,
+                guardando: false,
+                id: v.id,
+                // Solo informativo: el código no se edita.
+                codigo: v.codigo_completo + v.verificador,
+                descripcion_sufijo: v.descripcion_sufijo || '',
+                ubicacion_deposito: v.ubicacion_deposito || '',
+                stock_minimo: v.stock_minimo,
+            };
+        },
+
+        async guardarEdicionVariante() {
+            const e = this.edicionVariante;
+            e.guardando = true;
+            try {
+                const resp = await fetch('/api/v1/productos/variantes/' + e.id, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        descripcion_sufijo: e.descripcion_sufijo,
+                        // El backend normaliza; '' sería guardar una ubicación
+                        // vacía en vez de ninguna.
+                        ubicacion_deposito: e.ubicacion_deposito || null,
+                        stock_minimo: Number(e.stock_minimo) || 0,
+                    }),
+                });
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo guardar la variante');
+                }
+                window.toast('Variante actualizada', 'exito');
+                e.abierto = false;
+                // Se recarga el panel para ver el cambio sin cerrarlo.
+                await this.abrirProducto(this.detalle.producto.id,
+                                         { varianteId: this.detalle.varianteId });
+                this.cargar();
+            } catch (err) {
+                window.toast(err.message, 'error');
+            } finally {
+                e.guardando = false;
+            }
+        },
+
         async guardarVariante() {
             const sufijo = (this.variante.sufijo || '').trim().toUpperCase();
             if (!sufijo) return;
@@ -278,6 +334,7 @@ function abmProductos() {
                         credentials: 'same-origin',
                         body: JSON.stringify({
                             sufijo,
+                            descripcion_sufijo: this.variante.descripcion_sufijo,
                             // El backend normaliza el texto; mandar '' sería
                             // guardar una ubicación vacía en vez de ninguna.
                             ubicacion_deposito: this.variante.ubicacion_deposito || null,

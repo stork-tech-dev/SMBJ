@@ -293,6 +293,29 @@ def test_toda_pantalla_interna_tiene_como_volver():
         )
 
 
+def test_la_tabla_nombra_las_variantes_con_su_descripcion(client, crear_usuario):
+    """
+    Antes decía "variante R", que no dice si la R es de rojo, de rebajado o
+    del talle. Ahora muestra el texto que se carga al crear la variante.
+
+    Y tiene que existir la edición: las variantes creadas antes de esto no
+    tienen nombre, y sin editarlas habría que borrarlas —lo que invalida la
+    etiqueta ya impresa— para poder ponérselo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert 'x-text="v.descripcion_sufijo"' in html
+    assert "'variante ' + v.sufijo" not in html, "volvió el texto armado con el sufijo"
+
+    # El campo en el alta y el modal de edición.
+    assert 'id="va-nombre"' in html
+    assert 'id="ev-nombre"' in html
+    assert "guardarEdicionVariante()" in html
+
+
 def test_ver_abre_el_panel_acotado_a_la_variante_de_la_fila(client, crear_usuario):
     """
     El listado es por variante, así que "ver" se toca sobre un código

@@ -60,7 +60,11 @@ class Producto(Base):
     # unicidad: dos proveedores pueden usar el mismo.
     sku_proveedor: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
 
-    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Obligatoria: es la columna por la que se lee y se ordena el catálogo.
+    # Sin ella la fila solo se identifica por el SKU, que no dice qué es.
+    # Tiene un índice sobre `lower(descripcion)` —la misma expresión del
+    # ORDER BY del listado— creado en la migración 0012.
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False)
 
     categoria_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("categorias.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -161,6 +165,12 @@ class Variante(Base):
     # NULL en la variante BASE, un carácter en las reales.
     sufijo: Mapped[str | None] = mapped_column(String(1), nullable=True)
 
+    # Cómo se llama esta variante en pantalla: "Rojo", "Talle 42". El sufijo
+    # es el carácter que entra en el código y viaja en la etiqueta; esto es
+    # solo el nombre legible, y va donde antes decía "variante R".
+    # NULL en la BASE, obligatoria en las reales (lo ata el CHECK de abajo).
+    descripcion_sufijo: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
     es_base: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     codigo_completo: Mapped[str] = mapped_column(
@@ -193,6 +203,14 @@ class Variante(Base):
         CheckConstraint(
             "(es_base AND sufijo IS NULL) OR (NOT es_base AND sufijo IS NOT NULL)",
             name="ck_variantes_base_sin_sufijo",
+        ),
+        # Espeja al de arriba: la BASE no es variante de nada, así que no
+        # lleva nombre; las reales lo llevan siempre. Con el CHECK, que sea
+        # obligatorio no depende de que el servicio se acuerde de validarlo.
+        CheckConstraint(
+            "(es_base AND descripcion_sufijo IS NULL)"
+            " OR (NOT es_base AND descripcion_sufijo IS NOT NULL)",
+            name="ck_variantes_base_sin_descripcion_sufijo",
         ),
         CheckConstraint("stock_minimo >= 0", name="ck_variantes_stock_minimo_no_negativo"),
     )

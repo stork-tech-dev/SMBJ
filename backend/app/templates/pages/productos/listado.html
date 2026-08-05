@@ -145,13 +145,13 @@
                             </td>
 
                             <td class="px-4 py-3 align-middle font-medium">
-                                <span x-text="v.producto.descripcion || v.producto.sku"></span>
-                                {# El sufijo es lo único que distingue a las
-                                   filas hermanas: sin esto, tres variantes del
-                                   mismo producto se leen idénticas. #}
+                                <span x-text="v.producto.descripcion"></span>
+                                {# Lo que distingue a las filas hermanas. Antes
+                                   decía "variante R", que no dice si la R es de
+                                   rojo, de rebajado o del talle. #}
                                 <span x-show="!v.es_base" x-cloak
                                       class="ml-2 text-xs text-texto-muted"
-                                      x-text="'variante ' + v.sufijo"></span>
+                                      x-text="v.descripcion_sufijo"></span>
                             </td>
 
                             {# Camino completo, por el mismo motivo que en el
@@ -306,10 +306,21 @@
                                     <span class="font-mono font-medium"
                                           x-text="v.codigo_completo + v.verificador"></span>
                                     <span class="ml-2 text-xs text-texto-muted"
-                                          x-text="v.es_base ? 'BASE' : 'Variante ' + v.sufijo"></span>
+                                          x-text="v.es_base ? 'BASE' : v.descripcion_sufijo"></span>
                                 </div>
-                                <span class="text-sm text-texto-muted"
-                                      x-text="'Stock: ' + v.stock_actual"></span>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-sm text-texto-muted"
+                                          x-text="'Stock: ' + v.stock_actual"></span>
+                                    {# La BASE no se edita: no tiene sufijo, así
+                                       que no tiene nombre que corregir. #}
+                                    <button type="button" x-show="!v.es_base" x-cloak
+                                            @click="abrirEdicionVariante(v)"
+                                            class="min-h-toque min-w-toque grid place-items-center
+                                                   text-texto-muted hover:text-primary"
+                                            aria-label="Editar variante">
+                                        {{ icono('lapiz', clases='w-4 h-4') }}
+                                    </button>
+                                </div>
                             </div>
 
                             {# El SVG lo genera el backend: el checksum módulo
@@ -400,6 +411,17 @@
                     </div>
 
                     <div class="flex flex-col gap-1">
+                        <label for="va-nombre" class="text-sm font-semibold text-texto-header">
+                            Descripción del sufijo<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        {# Es lo que se lee en el listado en lugar del sufijo:
+                           "Rojo" dice más que "variante R". #}
+                        <input id="va-nombre" x-model="variante.descripcion_sufijo"
+                               required maxlength="60" placeholder="Rojo"
+                               class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
                         <label for="va-stock-min" class="text-sm font-semibold text-texto-header">
                             Stock mínimo
                         </label>
@@ -407,7 +429,7 @@
                                x-model="variante.stock_minimo" class="campo-linea">
                     </div>
 
-                    <div class="sm:col-span-2 flex flex-col gap-1">
+                    <div class="flex flex-col gap-1">
                         <label for="va-ubicacion" class="text-sm font-semibold text-texto-header">
                             Ubicación en depósito
                         </label>
@@ -443,6 +465,77 @@
         </div>
     </div>
 
+    {# ---------- Modal: editar variante ----------
+       Solo lo que se puede cambiar. El SUFIJO no está: entra en
+       `codigo_completo`, que se congela al crear la variante porque la
+       etiqueta ya se imprimió y está pegada a la mercadería. #}
+    <div x-show="edicionVariante.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @click.self="edicionVariante.abierto = false"
+         @keydown.escape.window="edicionVariante.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-editar-variante">
+
+        <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
+                <div>
+                    <h2 id="titulo-editar-variante" class="text-lg font-black text-welcome">
+                        Editar variante
+                    </h2>
+                    <p class="mt-1 text-sm text-texto-muted font-mono"
+                       x-text="edicionVariante.codigo"></p>
+                </div>
+                <button type="button" @click="edicionVariante.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-2">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardarEdicionVariante()" class="px-6 sm:px-10 pb-8 pt-4">
+                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="ev-nombre" class="text-sm font-semibold text-texto-header">
+                            Descripción del sufijo<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="ev-nombre" x-model="edicionVariante.descripcion_sufijo"
+                               required maxlength="60" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="ev-stock-min" class="text-sm font-semibold text-texto-header">
+                            Stock mínimo
+                        </label>
+                        <input id="ev-stock-min" type="number" min="0" step="1"
+                               x-model="edicionVariante.stock_minimo" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="ev-ubicacion" class="text-sm font-semibold text-texto-header">
+                            Ubicación en depósito
+                        </label>
+                        <input id="ev-ubicacion" x-model="edicionVariante.ubicacion_deposito"
+                               maxlength="100" class="campo-linea">
+                    </div>
+                </div>
+
+                <p class="mt-5 text-xs text-texto-disabled">
+                    El sufijo y el código no se editan: la etiqueta ya está impresa.
+                </p>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" @click="edicionVariante.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit"
+                            :disabled="edicionVariante.guardando || !edicionVariante.descripcion_sufijo"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="edicionVariante.guardando ? 'Guardando…' : 'Guardar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     {# ---------- Modal de alta / edición ---------- #}
     <div x-show="form.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
@@ -468,9 +561,12 @@
                 <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
                     <div class="sm:col-span-2 flex flex-col gap-1">
                         <label for="pr-desc" class="text-sm font-semibold text-texto-header">
-                            Descripción
+                            Descripción<span class="text-danger ml-0.5">*</span>
                         </label>
-                        <input id="pr-desc" x-model="form.descripcion" class="campo-linea">
+                        {# Obligatoria: es por donde se lee y se ordena el
+                           catálogo, y la columna es NOT NULL desde 0012. #}
+                        <input id="pr-desc" x-model="form.descripcion" required
+                               class="campo-linea">
                     </div>
 
                     {# Categoría ocupa la fila entera: muestra el camino
