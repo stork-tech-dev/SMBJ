@@ -23,6 +23,7 @@ from app.core.codigos import (
     CodigoInvalido,
     armar_codigo_completo,
     codificar_sku,
+    codigo_es_valido,
     digito_verificador,
 )
 from app.core.utils import ahora_db, normalizar_texto, redondear_hacia_arriba
@@ -314,6 +315,88 @@ def listar_productos(
 
     filas = (
         db.execute(consulta.order_by(Producto.sku).limit(tamano).offset((pagina - 1) * tamano))
+        .unique()
+        .scalars()
+        .all()
+    )
+    return list(filas), total
+
+
+def listar_variantes(
+    db: Session,
+    busqueda: str | None = None,
+    categoria_id: int | None = None,
+    proveedor_id: int | None = None,
+    estacionalidad: str | None = None,
+    activo: bool | None = None,
+    precio_desde: Decimal | None = None,
+    precio_hasta: Decimal | None = None,
+    pagina: int = 1,
+    tamano: int = 50,
+) -> tuple[list[Variante], int]:
+    """
+    Listado a nivel VARIANTE, que es lo que efectivamente tiene stock y
+    etiqueta. `listar_productos()` sigue existiendo para el formulario y el
+    detalle, que sí trabajan sobre el producto entero.
+
+    Los filtros son todos del producto y viajan por el join sin cambios.
+
+    `busqueda` es un solo campo que resuelve las tres formas en que alguien
+    puede referirse a un artículo:
+
+      1. Con el código de la etiqueta, que incluye el dígito verificador
+         (`SAB123R7`). Si el texto pasa la validación del dígito se le saca
+         el último carácter y se busca el código EXACTO: es el caso del
+         lector, y es el único que puede resolver a una sola fila.
+      2. Con el SKU del producto (`AB123`), que trae todas sus variantes.
+      3. Con parte de la descripción.
+
+    El paso 1 es lo que hace que el dígito verificador sirva para algo: un
+    código mal tipeado no valida, así que cae a la búsqueda por texto y no
+    se resuelve por accidente a otra variante.
+    """
+    consulta = select(Variante).join(Producto, Variante.producto_id == Producto.id)
+
+    if busqueda:
+        texto = busqueda.strip().upper()
+
+        if codigo_es_valido(texto):
+            # El dígito no se persiste: la columna guarda el cuerpo.
+            consulta = consulta.where(Variante.codigo_completo == texto[:-1])
+        else:
+            patron = f"%{texto}%"
+            consulta = consulta.where(
+                Variante.codigo_completo.ilike(patron)
+                | Producto.sku.ilike(patron)
+                | Producto.descripcion.ilike(patron)
+            )
+
+    if categoria_id is not None:
+        # Misma regla que en el listado de productos: incluye la descendencia.
+        from app.services.categorias import rama_de_ids
+
+        consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
+    if proveedor_id is not None:
+        consulta = consulta.where(Producto.proveedor_id == proveedor_id)
+    if estacionalidad:
+        consulta = consulta.where(Producto.estacionalidad == estacionalidad)
+    if activo is not None:
+        consulta = consulta.where(Producto.activo.is_(activo))
+    if precio_desde is not None:
+        consulta = consulta.where(Producto.precio_venta >= precio_desde)
+    if precio_hasta is not None:
+        consulta = consulta.where(Producto.precio_venta <= precio_hasta)
+
+    total = db.execute(
+        select(func.count()).select_from(consulta.order_by(None).subquery())
+    ).scalar_one()
+
+    filas = (
+        db.execute(
+            consulta.order_by(Variante.codigo_completo)
+            .limit(tamano)
+            .offset((pagina - 1) * tamano)
+        )
         .unique()
         .scalars()
         .all()

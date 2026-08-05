@@ -637,3 +637,129 @@ def test_el_filtro_por_rama_funciona_desde_la_api(client, db, autor, config, pro
     )
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
+
+
+# ============================================================================
+# LISTADO A NIVEL VARIANTE
+# ============================================================================
+
+
+@pytest.fixture
+def catalogo(db, autor, config, categoria, proveedor):
+    """
+    Dos productos: uno sin variantes (solo su BASE) y otro dividido en tres.
+    Son 4 filas de listado en total.
+    """
+    liso = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Zapatilla lisa",
+    )
+    luces = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("20"), descripcion="Zapatilla con luces",
+    )
+    for sufijo in ("R", "N", "V"):
+        servicio.agregar_variante(db, autor, luces.id, sufijo=sufijo)
+    db.flush()
+    return liso, luces
+
+
+def test_un_producto_con_variantes_ocupa_una_fila_por_cada_una(db, catalogo):
+    """
+    Es el punto del cambio: la fila es la unidad que tiene stock y etiqueta,
+    no el producto. Dos productos —uno con BASE y otro con tres variantes—
+    son cuatro filas, no dos.
+    """
+    filas, total = servicio.listar_variantes(db)
+
+    assert total == 4
+    assert len(filas) == 4
+
+
+def test_buscar_por_el_codigo_de_la_etiqueta_trae_una_sola_fila(db, catalogo):
+    """
+    El caso del lector: entrega el código CON dígito verificador, y la
+    columna guarda el cuerpo sin él. Tiene que resolver a una única fila,
+    porque es lo que permite descontar stock sin preguntar nada más.
+    """
+    _, luces = catalogo
+    objetivo = next(v for v in luces.variantes if v.sufijo == "R")
+
+    filas, total = servicio.listar_variantes(db, busqueda=objetivo.codigo_con_verificador)
+
+    assert total == 1
+    assert filas[0].id == objetivo.id
+
+
+def test_buscar_el_codigo_sin_el_digito_verificador_tambien_funciona(db, catalogo):
+    """Quien lo tipea mirando la pantalla puede omitir el último carácter."""
+    _, luces = catalogo
+    objetivo = next(v for v in luces.variantes if v.sufijo == "R")
+
+    filas, total = servicio.listar_variantes(db, busqueda=objetivo.codigo_completo)
+
+    assert total == 1
+    assert filas[0].id == objetivo.id
+
+
+def test_un_codigo_con_el_digito_equivocado_no_cae_en_otra_variante(db, catalogo):
+    """
+    Esto es PARA LO QUE EXISTE el dígito verificador. Un carácter mal
+    tipeado no puede resolver por accidente a otro artículo: sería
+    descontarle stock al equivocado sin que nadie se entere.
+    """
+    _, luces = catalogo
+    objetivo = next(v for v in luces.variantes if v.sufijo == "R")
+    otro = "0" if objetivo.verificador != "0" else "1"
+
+    filas, total = servicio.listar_variantes(db, busqueda=objetivo.codigo_completo + otro)
+
+    assert total == 0, [f.codigo_completo for f in filas]
+
+
+def test_buscar_por_sku_trae_todas_las_variantes_del_producto(db, catalogo):
+    """El SKU identifica al producto, así que trae sus tres filas."""
+    _, luces = catalogo
+
+    filas, total = servicio.listar_variantes(db, busqueda=luces.sku)
+
+    assert total == 3
+    assert {f.sufijo for f in filas} == {"R", "N", "V"}
+
+
+def test_buscar_por_descripcion_sigue_funcionando(db, catalogo):
+    filas, total = servicio.listar_variantes(db, busqueda="luces")
+
+    assert total == 3
+    assert all(f.producto.descripcion == "Zapatilla con luces" for f in filas)
+
+
+def test_el_paginado_cuenta_variantes_y_no_productos(db, catalogo):
+    """
+    `total` es lo que la pantalla muestra como "N códigos encontrados": si
+    contara productos, el número no coincidiría con las filas visibles.
+    """
+    _, luces = catalogo
+
+    filas, total = servicio.listar_variantes(db, busqueda=luces.sku, tamano=2)
+
+    assert total == 3
+    assert len(filas) == 2
+
+
+def test_el_listado_de_variantes_por_la_api(client, db, catalogo, login):
+    """La fila trae lo que la tabla necesita sin pedir el producto aparte."""
+    db.commit()
+
+    resp = client.get("/api/v1/productos/variantes", headers=login("admin"))
+
+    assert resp.status_code == 200
+    datos = resp.json()
+    assert datos["total"] == 4
+
+    fila = datos["resultados"][0]
+    assert {"codigo_completo", "verificador", "stock_actual", "producto"} <= set(fila)
+    # El producto va resumido: sin `variantes` ni `fotos`, que en una fila
+    # que YA es una variante solo agregarían peso.
+    assert "variantes" not in fila["producto"]
+    assert "fotos" not in fila["producto"]

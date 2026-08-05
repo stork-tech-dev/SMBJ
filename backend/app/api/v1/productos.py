@@ -28,6 +28,7 @@ from app.schemas.productos import (
     ProductoEstado,
     ProductoResponse,
     VarianteCrear,
+    VarianteListadoResponse,
     VarianteResponse,
 )
 from app.services import producto_fotos as servicio_fotos
@@ -108,6 +109,51 @@ def precio_preview(
     return PrecioPreview(
         dolar_proveedor=proveedor.dolar_actual,
         precio_venta=servicio.calcular_precio_venta(db, precio_usd, proveedor.dolar_actual),
+    )
+
+
+@router.get(
+    "/variantes",
+    response_model=RespuestaPaginada[VarianteListadoResponse],
+    summary="Listado a nivel variante (lo que tiene stock y etiqueta)",
+)
+def listar_variantes(
+    busqueda: str | None = Query(
+        default=None, description="Código de etiqueta, SKU o parte de la descripción"
+    ),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    estacionalidad: str | None = Query(default=None),
+    activo: bool | None = Query(default=None),
+    precio_desde: Decimal | None = Query(default=None),
+    precio_hasta: Decimal | None = Query(default=None),
+    pagina: int = Query(default=1, ge=1),
+    tamano: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.PRODUCTOS, "ver")),
+):
+    """
+    Una fila por variante: es lo que tiene stock y lo que dice la etiqueta.
+    El listado de productos (`GET /productos`) sigue existiendo para el
+    formulario y el detalle, que trabajan sobre el producto entero.
+
+    Va declarado ANTES de `/{producto_id}`, igual que `/precio-preview`: si
+    no, FastAPI intentaría leer "variantes" como un id y devolvería 422.
+    """
+    filas, total = servicio.listar_variantes(
+        db,
+        busqueda=busqueda,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        estacionalidad=estacionalidad,
+        activo=activo,
+        precio_desde=precio_desde,
+        precio_hasta=precio_hasta,
+        pagina=pagina,
+        tamano=tamano,
+    )
+    return RespuestaPaginada[VarianteListadoResponse](
+        total=total, pagina=pagina, tamano=tamano, resultados=filas
     )
 
 

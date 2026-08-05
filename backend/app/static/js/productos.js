@@ -15,17 +15,25 @@ function abmProductos() {
     return {
         ESTACIONES,
 
-        productos: [],
+        // Filas del listado. Son VARIANTES, no productos: un producto con
+        // tres variantes ocupa tres filas, porque cada una tiene su stock y
+        // su etiqueta.
+        variantes: [],
         categorias: [],
         proveedores: [],
         total: 0,
         cargando: false,
 
+        // Un solo campo de texto que resuelve las tres formas de nombrar un
+        // artículo: el código de la etiqueta, el SKU o parte de la
+        // descripción. Lo desambigua el backend (ver `listar_variantes`).
         filtros: {
-            descripcion: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
+            busqueda: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
         },
 
-        detalle: { abierto: false, producto: null },
+        // `varianteId` acota el panel al código desde el que se abrió; en
+        // null muestra todas las variantes del producto.
+        detalle: { abierto: false, producto: null, varianteId: null },
 
         // Alta de variante. `reemplazaBase` se resuelve al abrir el modal y
         // sirve para avisar ANTES de confirmar que el código de la BASE va a
@@ -125,13 +133,16 @@ function abmProductos() {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
 
-                const resp = await fetch('/api/v1/productos?' + params, {
+                // Listado a nivel VARIANTE: cada fila es lo que tiene stock y
+                // lo que dice una etiqueta. `/productos` sigue existiendo para
+                // el detalle y el formulario, que trabajan sobre el producto.
+                const resp = await fetch('/api/v1/productos/variantes?' + params, {
                     credentials: 'same-origin',
                 });
                 if (!resp.ok) throw new Error('No se pudo cargar el listado');
 
                 const datos = await resp.json();
-                this.productos = datos.resultados;
+                this.variantes = datos.resultados;
                 this.total = datos.total;
             } catch (e) {
                 window.toast(e.message, 'error');
@@ -156,15 +167,53 @@ function abmProductos() {
 
         limpiar() {
             this.filtros = {
-                descripcion: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
+                busqueda: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
             };
             this.cargar();
         },
 
         /* --- Detalle --- */
 
-        abrirDetalle(p) {
-            this.detalle = { abierto: true, producto: p };
+        /**
+         * La fila trae un resumen del producto, no el producto entero: le
+         * faltan `variantes` y `fotos`, que son lo que muestra el panel. Se
+         * pide el detalle completo en vez de engordar cada fila del listado
+         * con las variantes hermanas y las fotos de todas.
+         *
+         * `varianteId` acota el panel a la fila desde la que se abrió: se
+         * hizo clic en un código concreto, así que mostrar también sus
+         * hermanas obliga a buscar de nuevo cuál era. En null (al agregar
+         * una variante) se muestran todas.
+         */
+        async abrirProducto(productoId, { editar = false, varianteId = null } = {}) {
+            try {
+                const resp = await fetch('/api/v1/productos/' + productoId, {
+                    credentials: 'same-origin',
+                });
+                if (!resp.ok) throw new Error('No se pudo abrir el producto');
+                const producto = await resp.json();
+
+                if (editar) this.abrirEdicion(producto);
+                else this.detalle = { abierto: true, producto, varianteId };
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
+
+        /**
+         * Variantes que muestra el panel: la elegida, o todas si se entró
+         * sin elegir ninguna.
+         */
+        variantesVisibles() {
+            const todas = this.detalle.producto?.variantes || [];
+            if (!this.detalle.varianteId) return todas;
+            return todas.filter((v) => v.id === this.detalle.varianteId);
+        },
+
+        /** Cuántas hermanas quedan fuera de la vista, para poder decirlo. */
+        variantesOcultas() {
+            const todas = this.detalle.producto?.variantes || [];
+            return this.detalle.varianteId ? todas.length - 1 : 0;
         },
 
         /* --- Alta de variante --- */

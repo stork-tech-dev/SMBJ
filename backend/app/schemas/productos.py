@@ -134,3 +134,48 @@ class ProductoResponse(BaseModel):
     fotos: list[FotoResponse]
     created_at: datetime
     updated_at: datetime
+
+
+class ProductoResumen(BaseModel):
+    """
+    Datos del producto que necesita una fila del listado de variantes.
+
+    No es `ProductoResponse` recortado: ese trae `variantes` y `fotos`, que
+    acá sobran —la fila YA es una variante— y harían que cada fila cargara
+    todas sus hermanas.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sku: str
+    descripcion: str | None
+    categoria: CategoriaResumen
+    proveedor: ProveedorResumen
+    # Crudos: el formato lo pone el frontend (Principio 1).
+    precio_usd: Decimal
+    precio_venta: Decimal
+    estacionalidad: str
+    stock_infinito: bool
+    activo: bool
+
+
+class VarianteListadoResponse(BaseModel):
+    """
+    Una fila del listado de /productos, que es una VARIANTE: lo que tiene
+    stock, código de barras y etiqueta propia.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    producto_id: int
+    sufijo: str | None
+    es_base: bool
+    codigo_completo: str
+    verificador: str
+    stock_actual: int
+    stock_minimo: int
+    ubicacion_deposito: str | None
+    activo: bool
+    producto: ProductoResumen

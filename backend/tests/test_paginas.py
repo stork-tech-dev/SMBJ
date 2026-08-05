@@ -188,6 +188,66 @@ def test_en_edicion_el_proveedor_se_muestra_como_dato_y_no_como_select(client, c
     assert "No se cambia" in html, "falta la explicación de por qué no se cambia"
 
 
+def test_el_buscador_de_productos_no_promete_lo_que_no_hace(client, crear_usuario):
+    """
+    Regresión: el label accesible decía "SKU o descripción" pero el campo
+    estaba atado a `filtros.descripcion`, que en el backend busca solo sobre
+    `Producto.descripcion`. Ni el SKU ni el código de la etiqueta encontraban
+    nada, y nada lo delataba.
+
+    Ahora es un solo campo `busqueda` que el backend desambigua en las tres
+    formas. Este test ata el texto visible a lo que el campo realmente manda.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert 'x-model="filtros.busqueda"' in html
+    assert "filtros.descripcion" not in html, "el buscador volvió al filtro de descripción"
+
+    # Lo que dice el label y el placeholder tiene que ser lo que resuelve.
+    assert html.count("Código, SKU o descripción") == 2
+
+
+def test_la_tabla_de_productos_lista_variantes(client, crear_usuario):
+    """
+    Cada fila es una variante: es lo que tiene stock propio y lo que dice la
+    etiqueta. El SKU no es columna porque no aparece impreso en ningún lado.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert 'x-for="v in variantes"' in html
+    # El código va con el dígito verificador, como en la etiqueta.
+    assert "v.codigo_completo + v.verificador" in html
+    assert ">Stock</th>" in html
+    # El contador cuenta variantes, así que no puede decir "productos".
+    assert "códigos encontrados" in html
+
+
+def test_ver_abre_el_panel_acotado_a_la_variante_de_la_fila(client, crear_usuario):
+    """
+    El listado es por variante, así que "ver" se toca sobre un código
+    concreto. Mostrar además las hermanas obligaba a buscar de nuevo cuál
+    era la que se había tocado.
+
+    El panel sigue cargando el producto entero —lo necesita para las fotos y
+    para dar de alta variantes— pero muestra solo la elegida, y avisa cuántas
+    quedan fuera para no dar a entender que es la única.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "varianteId: v.id" in html, "'ver' no le pasa la variante de la fila"
+    assert 'x-for="v in variantesVisibles()"' in html, "el panel sigue listando todas"
+    assert "variantesOcultas()" in html, "falta el aviso de las variantes restantes"
+
+
 def test_los_dos_selectores_de_categoria_muestran_el_camino_completo(client, crear_usuario):
     """
     El filtro del listado y el selector del formulario tienen que decir lo

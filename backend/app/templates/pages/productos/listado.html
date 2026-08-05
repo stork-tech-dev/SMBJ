@@ -25,10 +25,15 @@
 
     {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
-        <label class="sr-only" for="f-texto">SKU o descripción</label>
-        <input id="f-texto" type="text" x-model="filtros.descripcion"
-               @input.debounce.400ms="cargar()" placeholder="Descripción"
-               class="h-control w-full sm:w-[13.75rem] px-4 text-sm font-semibold bg-surface
+        {# Un solo campo para las tres formas de nombrar un artículo: el código
+           de la etiqueta (con o sin dígito verificador), el SKU del producto o
+           parte de la descripción. Antes el label prometía "SKU o descripción"
+           pero estaba atado al filtro de descripción, así que ni el código ni
+           el SKU encontraban nada. Lo desambigua `listar_variantes`. #}
+        <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
+        <input id="f-texto" type="text" x-model="filtros.busqueda"
+               @input.debounce.400ms="cargar()" placeholder="Código, SKU o descripción"
+               class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
                       border-2 border-borde rounded-input text-texto
                       placeholder:text-texto-disabled focus:outline-none focus:border-primary">
 
@@ -93,7 +98,10 @@
 
         <p class="text-sm text-texto-muted">
             <span x-text="total"></span>
-            <span x-text="total === 1 ? 'producto encontrado' : 'productos encontrados'"></span>
+            {# "códigos" y no "productos": el total cuenta variantes, y un
+               producto con tres variantes son tres filas. Decir "productos"
+               haría que el número no coincidiera con lo que se ve. #}
+            <span x-text="total === 1 ? 'código encontrado' : 'códigos encontrados'"></span>
         </p>
     </div>
 
@@ -101,69 +109,101 @@
     <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full border-collapse text-base">
+                {# Cada fila es una VARIANTE, no un producto: es lo que tiene
+                   stock propio y lo que dice una etiqueta. Un producto con
+                   tres variantes ocupa tres filas.
+
+                   El SKU no va como columna: no aparece en ninguna etiqueta,
+                   así que nadie lo puede tipear mirando la mercadería. Se ve
+                   en el detalle y sirve para buscar. #}
                 <thead>
                     <tr>
-                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">SKU</th>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Descripción</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Categoría</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Proveedor</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Stock</th>
                         <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">USD</th>
                         <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Precio</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
                 </thead>
                 <tbody>
-                    <template x-for="p in productos" :key="p.id">
+                    <template x-for="v in variantes" :key="v.id">
                         <tr class="border-t border-borde transition-shadow
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
-                            :class="!p.activo && 'opacity-60'">
+                            :class="!v.producto.activo && 'opacity-60'">
 
+                            {# Con el dígito verificador: es exactamente lo que
+                               está impreso en la etiqueta, así que se puede
+                               comparar carácter por carácter. #}
                             <td class="px-8 py-3 align-middle whitespace-nowrap">
-                                <span class="font-mono font-medium" x-text="p.sku"></span>
-                                <span x-show="!p.activo" x-cloak
+                                <span class="font-mono font-medium"
+                                      x-text="v.codigo_completo + v.verificador"></span>
+                                <span x-show="!v.producto.activo" x-cloak
                                       class="ml-2 text-xs font-medium text-danger">Inactivo</span>
                             </td>
 
                             <td class="px-4 py-3 align-middle font-medium">
-                                <span x-text="p.descripcion || '—'"></span>
-                                <span x-show="p.tiene_variantes" x-cloak
+                                <span x-text="v.producto.descripcion || v.producto.sku"></span>
+                                {# El sufijo es lo único que distingue a las
+                                   filas hermanas: sin esto, tres variantes del
+                                   mismo producto se leen idénticas. #}
+                                <span x-show="!v.es_base" x-cloak
                                       class="ml-2 text-xs text-texto-muted"
-                                      x-text="'(' + p.variantes.length + ' variantes)'"></span>
+                                      x-text="'variante ' + v.sufijo"></span>
                             </td>
 
                             {# Camino completo, por el mismo motivo que en el
                                filtro: el nombre de la hoja puede repetirse
                                entre ramas. #}
                             <td class="px-4 py-3 align-middle text-sm"
-                                x-text="rutaCategoria(p.categoria)"></td>
-                            <td class="px-4 py-3 align-middle" x-text="p.proveedor.nombre"></td>
+                                x-text="rutaCategoria(v.producto.categoria)"></td>
+                            <td class="px-4 py-3 align-middle" x-text="v.producto.proveedor.nombre"></td>
+
+                            <td class="px-4 py-3 align-middle text-right whitespace-nowrap">
+                                <span x-show="v.producto.stock_infinito" x-cloak
+                                      class="text-texto-muted">∞</span>
+                                <span x-show="!v.producto.stock_infinito"
+                                      :class="v.stock_actual <= v.stock_minimo && 'text-danger font-medium'"
+                                      x-text="v.stock_actual"></span>
+                            </td>
 
                             {# La API manda los números crudos: el formato de
                                moneda lo pone el frontend (Principio 1). #}
                             <td class="px-4 py-3 align-middle text-right whitespace-nowrap"
-                                x-text="usd(p.precio_usd)"></td>
+                                x-text="usd(v.producto.precio_usd)"></td>
                             <td class="px-4 py-3 align-middle text-right font-medium whitespace-nowrap"
-                                x-text="pesos(p.precio_venta)"></td>
+                                x-text="pesos(v.producto.precio_venta)"></td>
 
+                            {# Las acciones son del PRODUCTO, no de la variante:
+                               precio, categoría y descripción son compartidos
+                               por todas sus filas hermanas. #}
                             <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
                                 {% call acciones() %}
-                                    {{ accion('ver', atributos='@click="abrirDetalle(p)"') }}
-                                    {{ accion('editar', atributos='@click="abrirEdicion(p)"') }}
+                                    {# "ver" abre el panel acotado a ESTE código:
+                                       es la fila que se tocó. #}
+                                    {{ accion('ver',
+                                              atributos='@click="abrirProducto(v.producto_id,
+                                                                  { varianteId: v.id })"') }}
+                                    {{ accion('editar',
+                                              atributos='@click="abrirProducto(v.producto_id,
+                                                                  { editar: true })"') }}
                                     {{ accion('borrar',
-                                              atributos='x-show="p.activo"
-                                                         @click="cambiarEstado(p, false)"
-                                                         title="Desactivar"') }}
+                                              atributos='x-show="v.producto.activo"
+                                                         @click="cambiarEstado(v.producto, false)"
+                                                         title="Desactivar producto"') }}
                                     {{ accion('activar',
-                                              atributos='x-show="!p.activo" x-cloak
-                                                         @click="cambiarEstado(p, true)"
-                                                         title="Activar"') }}
+                                              atributos='x-show="!v.producto.activo" x-cloak
+                                                         @click="cambiarEstado(v.producto, true)"
+                                                         title="Activar producto"') }}
                                 {% endcall %}
                             </td>
                         </tr>
                     </template>
 
-                    <tr x-show="!productos.length && !cargando">
-                        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">
+                    <tr x-show="!variantes.length && !cargando">
+                        <td colspan="8" class="px-8 py-16 text-center text-texto-muted">
                             Sin resultados.
                         </td>
                     </tr>
@@ -251,10 +291,15 @@
                    class="mt-3 text-sm text-texto-muted">Sin fotos cargadas.</p>
 
                 {# ---------- Variantes ---------- #}
-                <p class="mt-8 text-sm font-semibold text-texto-header">Variantes y códigos</p>
+                {# Se muestra SOLO el código desde el que se abrió el panel:
+                   se hizo clic en una fila concreta, y listar también las
+                   hermanas obliga a buscar de nuevo cuál era. Las otras se
+                   ven desde su propia fila. #}
+                <p class="mt-8 text-sm font-semibold text-texto-header"
+                   x-text="detalle.varianteId ? 'Código' : 'Variantes y códigos'"></p>
 
                 <div class="mt-3 space-y-3">
-                    <template x-for="v in (detalle.producto?.variantes || [])" :key="v.id">
+                    <template x-for="v in variantesVisibles()" :key="v.id">
                         <div class="border border-borde rounded-input p-4">
                             <div class="flex flex-wrap items-center justify-between gap-2">
                                 <div>
@@ -274,6 +319,16 @@
                         </div>
                     </template>
                 </div>
+
+                {# Que el producto tiene hermanas no se calla: sin esto, el
+                   panel parecería decir que este es el único código. #}
+                <p x-show="variantesOcultas() > 0" x-cloak
+                   class="mt-3 text-xs text-texto-muted">
+                    Este producto tiene
+                    <span x-text="variantesOcultas()"></span>
+                    <span x-text="variantesOcultas() === 1 ? 'variante más' : 'variantes más'"></span>,
+                    cada una con su propia fila en el listado.
+                </p>
 
                 <div class="flex flex-wrap justify-end gap-3 mt-6">
                     <button type="button" @click="abrirVariante()"
