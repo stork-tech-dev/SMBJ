@@ -60,21 +60,24 @@
    scroll horizontal (Principio 6). #}
 <div class="w-full max-w-[27rem]">
 
-    {# Marca. El diseño le fija el ANCHO (366px sobre 432 de tarjeta), no el
-       alto: los dos logos tienen proporciones distintas y así ninguno se
-       deforma. `text-white` es para el de Mallorca, que hereda currentColor;
-       el de Soleil trae sus propios colores y lo ignora. #}
-    <div class="text-white">
+    {# Marca centrada, logo y bajada. El diseño le fija al logo el ANCHO
+       (366px sobre 432 de tarjeta) y no el alto: los dos logos tienen
+       proporciones distintas y así ninguno se deforma. `text-white` es para
+       el de Mallorca, que hereda currentColor; el de Soleil trae sus propios
+       colores y lo ignora. #}
+    <div class="flex flex-col items-center text-white">
         {{ marca(letra_empresa|default('S'), clases='w-[85%]', ajuste='ancho') }}
 
-        {# Bajada alineada a la derecha dentro del mismo ancho del logo, como
-           en el diseño: los dos bloques terminan en la misma vertical.
-
-           El tamaño baja en pantallas chicas porque con el tracking del
+        {# El tamaño baja en pantallas chicas porque con el tracking del
            diseño (0.22em, que es lo que le da el aire) el texto no entra en
-           una línea abajo de 640px y se partía en dos, desalineado. #}
-        <p class="w-[85%] mt-3 text-right font-light text-white
-                  text-base tracking-[0.15em] sm:text-xl sm:tracking-[0.22em]">
+           una línea abajo de 640px y se partía en dos.
+
+           `tracking` agrega el espacio DESPUÉS de cada letra, incluida la
+           última, así que un texto centrado queda corrido a la izquierda por
+           medio espacio. El `indent` lo compensa. #}
+        <p class="mt-3 text-center font-light text-white
+                  text-base tracking-[0.15em] indent-[0.15em]
+                  sm:text-xl sm:tracking-[0.22em] sm:indent-[0.22em]">
             Gestión Comercial
         </p>
     </div>

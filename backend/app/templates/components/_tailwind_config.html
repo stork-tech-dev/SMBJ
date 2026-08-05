@@ -82,9 +82,14 @@
                     pill: '15px',
                     search: '25px',
                 },
+                // De CSS variables, por el mismo motivo que las alturas de
+                // control de más abajo: el valor vive en UN solo lugar
+                // (custom.css). Antes estaban acá como literales y también
+                // allá como variables, y las dos copias podían divergir sin
+                // que nada fallara.
                 spacing: {
-                    sidebar: '18.125rem',  // 290px
-                    header: '5.9375rem',   // 95px
+                    sidebar: 'var(--sidebar-width)',
+                    header: 'var(--header-height)',
                 },
                 maxWidth: {
                     layout: '90rem',  // 1440px

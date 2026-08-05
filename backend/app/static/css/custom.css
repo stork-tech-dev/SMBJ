@@ -56,12 +56,16 @@
     --alto-boton: 2.1875rem;   /* 35px — botones */
     --toque-min: 0px;          /* sin mínimo forzado en mouse */
 
-    /* --- Geometría --- */
+    /* --- Geometría ---
+       `--sidebar-width` y `--header-height` son la ÚNICA fuente de esos dos
+       valores: la config de Tailwind los consume con var() para generar
+       `w-sidebar` y `h-header`. Antes estaban escritos también allá, y
+       cambiar uno solo dejaba al otro mintiendo sin que fallara nada. */
     --radius-input: 5px;
     --radius-pill: 15px;
     --radius-search: 25px;
     --sidebar-width: 290px;
-    --header-height: 95px;
+    --header-height: 75px;
     --layout-max: 1440px;
 }
 

@@ -2,16 +2,13 @@
    append-only y no tiene endpoints de edición ni borrado. #}
 {% extends "base.html" %}
 
+{% from "components/encabezado.html" import encabezado %}
+
 {% block contenido %}
 <div x-data="historialAccesos({{ usuario.id }})" x-init="cargar()">
 
-    <nav class="text-sm text-texto-muted mb-2">
-        <a href="/usuarios" class="hover:text-primary">Usuarios</a>
-        <span class="mx-1" aria-hidden="true">/</span>
-        <span>Historial</span>
-    </nav>
-
-    <h1 class="text-xl font-semibold">Historial de accesos de {{ usuario.nombre }}</h1>
+    {% call encabezado('Accesos: ' ~ usuario.nombre, volver_url='/usuarios',
+                       volver_texto='Usuarios') %}{% endcall %}
 
     {# ---------- Filtros ---------- #}
     <div class="flex flex-wrap items-end gap-4 mt-6">

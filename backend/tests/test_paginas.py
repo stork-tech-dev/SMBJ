@@ -93,7 +93,11 @@ def test_historial_se_renderiza(client, crear_usuario):
 
     resp = client.get(f"/usuarios/{admin.id}/historial")
     assert resp.status_code == 200
-    assert "Historial de accesos" in resp.text
+    # El título dice de quién es el historial: al pasar al encabezado común
+    # se acortó ("Accesos: X") porque ese estilo es mucho más grande y el
+    # texto largo partía en dos líneas.
+    assert "Accesos:" in resp.text
+    assert admin.nombre in resp.text
 
 
 def test_la_cabecera_del_sidebar_identifica_la_cuenta_logueada(client, crear_usuario):
@@ -226,6 +230,67 @@ def test_la_tabla_de_productos_lista_variantes(client, crear_usuario):
     assert ">Stock</th>" in html
     # El contador cuenta variantes, así que no puede decir "productos".
     assert "códigos encontrados" in html
+
+
+def test_el_alto_del_header_y_el_ancho_del_sidebar_viven_en_un_solo_lugar():
+    """
+    Los dos valores estaban escritos por duplicado: como variable CSS en
+    custom.css y como literal en la config de Tailwind. La variable no la
+    usaba nadie, así que cambiar el alto tocando solo la config dejaba a la
+    otra copia mintiendo — y eso no falla en ningún lado, simplemente queda
+    un valor viejo esperando a confundir.
+
+    Ahora la config los consume con var(). Este test impide volver al
+    literal, que es un cambio que nada más delataría.
+    """
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1] / "app"
+    config = (raiz / "templates" / "components" / "_tailwind_config.html").read_text()
+    css = (raiz / "static" / "css" / "custom.css").read_text()
+
+    bloque = re.search(r"spacing:\s*\{(.*?)\}", config, flags=re.S).group(1)
+    for token in ("sidebar", "header"):
+        assert f"{token}: 'var(--" in bloque, (
+            f"`{token}` volvió a un literal en la config en vez de la variable"
+        )
+
+    # Y la variable tiene que existir de verdad, o `var()` no resuelve nada.
+    assert "--sidebar-width:" in css
+    assert "--header-height:" in css
+
+
+def test_toda_pantalla_interna_tiene_como_volver():
+    """
+    Una pantalla a la que se llega desde otra tiene que ofrecer el camino de
+    vuelta, y siempre el mismo: el botón del macro `encabezado`.
+
+    `/roles/{id}/permisos` tenía en su lugar un breadcrumb propio —enlazaba
+    bien, pero no se parecía al resto y pasaba desapercibido—, y lo mismo las
+    dos pantallas de usuario. `dolar_masivo` tenía las dos cosas a la vez.
+
+    Se excluye `index.html` (el home, que no cuelga de nada) y las pantallas
+    que se abren desde el sidebar, que no tienen "anterior".
+    """
+    from pathlib import Path
+
+    paginas = Path(__file__).resolve().parents[1] / "app" / "templates" / "pages"
+    # Las que se alcanzan desde otra pantalla, no desde el menú.
+    internas = [
+        "roles/permisos.html",
+        "usuarios/permisos.html",
+        "usuarios/historial.html",
+        "proveedores/dolar_masivo.html",
+        "categorias/arbol.html",
+    ]
+
+    for relativa in internas:
+        contenido = (paginas / relativa).read_text()
+        assert "volver_url=" in contenido, f"{relativa}: no ofrece cómo volver"
+        # Un breadcrumb propio al lado del botón serían dos caminos iguales.
+        assert 'aria-hidden="true">/<' not in contenido, (
+            f"{relativa}: tiene un breadcrumb además del botón de volver"
+        )
 
 
 def test_ver_abre_el_panel_acotado_a_la_variante_de_la_fila(client, crear_usuario):

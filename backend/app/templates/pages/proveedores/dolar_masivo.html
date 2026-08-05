@@ -8,11 +8,9 @@
 {% block contenido %}
 <div x-data="dolarMasivo()" x-init="cargar()">
 
-    <nav class="text-sm text-texto-muted mb-2">
-        <a href="/proveedores" class="hover:text-primary">Proveedores</a>
-        <span class="mx-1" aria-hidden="true">/</span>
-        <span>Cambio masivo del dólar</span>
-    </nav>
+    {# Acá había además un breadcrumb que enlazaba al mismo lugar que el
+       botón de volver del encabezado: dos caminos idénticos, uno encima
+       del otro. #}
     {% call encabezado('Cambio masivo', volver_url='/proveedores', volver_texto='Proveedores') %}{% endcall %}
 
     <div class="grid gap-6 mt-8 lg:grid-cols-2">
