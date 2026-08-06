@@ -101,7 +101,14 @@ function dolarMasivo() {
                     this.errores = r.errores;
                     window.toast(`${r.errores.length} error(es): no se aplicó ningún cambio`, 'error');
                 } else {
-                    window.toast(`Importación aplicada: ${r.aplicados} proveedor(es)`, 'exito');
+                    // Las filas cuyo valor ya era el mismo se saltean, y hay
+                    // que decirlo: si no, subir 10 filas y leer "2 aplicados"
+                    // parece que 8 se perdieron.
+                    let mensaje = `Importación aplicada: ${r.aplicados} proveedor(es)`;
+                    if (r.sin_cambios) {
+                        mensaje += ` · ${r.sin_cambios} sin cambios (mismo valor)`;
+                    }
+                    window.toast(mensaje, 'exito', 6000);
                     this.archivo = null;
                     this.cargar();
                 }

@@ -107,8 +107,27 @@
 
         {# ================= IMPORTAR EXCEL ================= #}
         <section class="bg-surface rounded-[20px] tarjeta p-8">
-            <h2 class="text-lg font-semibold">Importar desde Excel</h2>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 class="text-lg font-semibold">Importar desde Excel</h2>
+
+                {# Descarga directa con `download`: no hace falta manejar el
+                   blob en JavaScript. El archivo lo arma el backend con los
+                   proveedores activos y su dólar actual, en el mismo formato
+                   que espera la importación. #}
+                <a href="/api/v1/proveedores/dolar/plantilla" download
+                   class="h-control px-4 inline-flex items-center gap-2 rounded-input
+                          border border-borde text-sm font-semibold text-texto-muted
+                          hover:border-primary hover:text-primary">
+                    {{ icono('box', clases='w-4 h-4') }} Descargar Excel
+                </a>
+            </div>
+
             <p class="mt-2 text-sm text-texto-muted">
+                Descargá la plantilla, cambiá el valor de los proveedores que quieras y
+                subila. Las filas que dejes sin modificar se saltean: no se registran
+                en el historial ni recalculan precios.
+            </p>
+            <p class="mt-1 text-xs text-texto-disabled">
                 Archivo <code>.xlsx</code> con columnas <code>proveedor_id</code> y
                 <code>dolar_nuevo</code>. Es todo o nada: si alguna fila falla, no se
                 aplica ningún cambio.

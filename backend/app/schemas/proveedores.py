@@ -92,4 +92,7 @@ class ImportarErrorItem(BaseModel):
 
 class ImportarResultado(BaseModel):
     aplicados: int
+    # Filas correctas cuyo valor ya era el mismo: se leyeron bien y se
+    # saltearon. Se informan para que no parezcan filas perdidas.
+    sin_cambios: int = 0
     errores: list[ImportarErrorItem]

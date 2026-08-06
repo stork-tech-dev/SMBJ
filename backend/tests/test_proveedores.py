@@ -354,3 +354,191 @@ def test_no_quedan_referencias_a_razon_social():
         if "razon_social" in p.read_text()
     ]
     assert not con_referencias, con_referencias
+
+
+# ============================================================================
+# PLANTILLA DESCARGABLE
+# ============================================================================
+
+
+def _hoja_datos(contenido: bytes):
+    """Filas de la primera hoja de la plantilla, con el encabezado."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(BytesIO(contenido))
+    return list(wb["Dolar"].iter_rows(values_only=True))
+
+
+def test_la_plantilla_se_puede_importar_tal_cual(db, autor, proveedor):
+    """
+    Es LA garantía del cambio: el formato que se baja y el que se sube son el
+    mismo. Si alguna de las dos puntas cambia sin la otra, esto se pone en
+    rojo antes de que el usuario descubra que su archivo no entra.
+    """
+    contenido = servicio.generar_plantilla_dolar(db)
+
+    resultado = servicio.importar_dolar(db, autor, contenido)
+
+    assert resultado["errores"] == []
+    # Se leyó bien y no aplicó nada, porque el valor es el mismo que ya
+    # tenía: la plantilla se baja con los valores actuales.
+    assert resultado["aplicados"] == 0
+    assert resultado["sin_cambios"] == 1
+
+
+def test_la_plantilla_no_trae_proveedores_inactivos(db, autor, proveedor):
+    """
+    La importación es todo-o-nada y rechaza los inactivos. Con uno solo, el
+    archivo bajado sin tocar fallaría entero.
+    """
+    otro = servicio.crear_proveedor(
+        db, autor, nombre="Mayorista Baja", dolar_actual=Decimal("1000")
+    )
+    servicio.cambiar_estado(db, autor, otro.id, EstadoProveedor.INHABILITADO)
+    db.flush()
+
+    nombres = [f[1] for f in _hoja_datos(servicio.generar_plantilla_dolar(db))[1:]]
+
+    assert otro.nombre not in nombres
+    assert proveedor.nombre in nombres
+
+
+def test_la_plantilla_trae_el_valor_actual_y_no_viene_vacia(db, proveedor):
+    """
+    `dolar_nuevo` va con el valor actual, no en blanco: una fila con
+    `proveedor_id` y sin valor NO la saltea el lector —solo saltea las filas
+    del todo vacías— y terminaría en "dolar_nuevo inválido o vacío".
+    """
+    filas = _hoja_datos(servicio.generar_plantilla_dolar(db))
+
+    assert filas[0] == ("proveedor_id", "nombre", "dolar_nuevo")
+    fila = filas[1]
+    assert fila[0] == proveedor.id
+    assert Decimal(str(fila[2])) == proveedor.dolar_actual
+
+
+def test_la_columna_nombre_no_rompe_la_lectura(db, proveedor):
+    """
+    Está para que el archivo se pueda leer a ojo. El lector ubica las
+    columnas por nombre e ignora las de más, así que no lo molesta — y este
+    test lo deja fijado por si alguien cambia esa regla.
+    """
+    registros = servicio._leer_excel(servicio.generar_plantilla_dolar(db))
+
+    assert len(registros) == 1
+    assert int(registros[0]["proveedor_id"]) == proveedor.id
+
+
+def test_la_plantilla_lleva_una_hoja_de_instrucciones(db, proveedor):
+    """
+    Las instrucciones van en OTRA hoja: el lector usa `wb.active` y toma todo
+    lo que sigue al encabezado como datos, así que un texto arriba de la
+    tabla rompería la importación.
+    """
+    from openpyxl import load_workbook
+
+    wb = load_workbook(BytesIO(servicio.generar_plantilla_dolar(db)))
+
+    assert wb.sheetnames[0] == "Dolar"
+    assert "Instrucciones" in wb.sheetnames
+
+
+def test_la_plantilla_por_la_api(client, db, autor, proveedor, login):
+    db.commit()
+
+    resp = client.get("/api/v1/proveedores/dolar/plantilla", headers=login("admin"))
+
+    assert resp.status_code == 200
+    assert "spreadsheetml" in resp.headers["content-type"]
+    assert "dolar-proveedores-" in resp.headers["content-disposition"]
+    # Y lo descargado es un xlsx de verdad, no una respuesta vacía.
+    assert _hoja_datos(resp.content)[0][0] == "proveedor_id"
+
+
+# ============================================================================
+# SALTEO DE VALORES IGUALES
+# ============================================================================
+
+
+def test_poner_el_mismo_valor_no_deja_entrada_en_el_historial(db, autor, proveedor):
+    """
+    El historial existe para registrar cambios. Una entrada "1.400 → 1.400"
+    no es un cambio: es ruido en la pantalla donde se va a buscar cuándo se
+    movió el precio.
+    """
+    antes = len(servicio.historial_dolar(db, proveedor.id))
+
+    servicio.cambiar_dolar(db, autor, proveedor.id, proveedor.dolar_actual)
+
+    assert len(servicio.historial_dolar(db, proveedor.id)) == antes
+
+
+def test_el_salteo_compara_despues_de_redondear(db, autor, proveedor):
+    """
+    `_validar_dolar` redondea antes de guardar. Comparando sin redondear,
+    1400.000 se vería distinto de 1400.00 y el salteo no aplicaría.
+    """
+    antes = len(servicio.historial_dolar(db, proveedor.id))
+
+    servicio.cambiar_dolar(db, autor, proveedor.id, Decimal("1000.000"))
+
+    assert proveedor.dolar_actual == Decimal("1000.00")
+    assert len(servicio.historial_dolar(db, proveedor.id)) == antes
+
+
+def test_un_valor_distinto_si_se_registra(db, autor, proveedor):
+    """El salteo no puede tragarse un cambio real."""
+    antes = len(servicio.historial_dolar(db, proveedor.id))
+
+    servicio.cambiar_dolar(db, autor, proveedor.id, Decimal("2000"))
+
+    assert len(servicio.historial_dolar(db, proveedor.id)) == antes + 1
+    assert proveedor.dolar_actual == Decimal("2000.00")
+
+
+def test_el_masivo_saltea_los_que_ya_estaban_en_ese_valor(db, autor, proveedor):
+    """
+    Poner a todos en el mismo valor no puede dejar una entrada por proveedor:
+    solo por los que efectivamente se movieron.
+    """
+    otro = servicio.crear_proveedor(
+        db, autor, nombre="Otro proveedor", dolar_actual=Decimal("1500")
+    )
+    db.flush()
+    antes_p = len(servicio.historial_dolar(db, proveedor.id))
+    antes_o = len(servicio.historial_dolar(db, otro.id))
+
+    # `proveedor` ya está en 1000; `otro` está en 1500.
+    servicio.cambio_masivo(
+        db, autor, proveedor_ids=None, modalidad="valor", valor=Decimal("1000")
+    )
+
+    assert len(servicio.historial_dolar(db, proveedor.id)) == antes_p
+    assert len(servicio.historial_dolar(db, otro.id)) == antes_o + 1
+
+
+def test_el_import_informa_cuantas_filas_salteo(db, autor, proveedor):
+    """
+    No se descartan en silencio: quien sube 10 filas y ve "2 aplicados"
+    necesita saber que las otras 8 se leyeron bien, no que se perdieron.
+    """
+    otro = servicio.crear_proveedor(
+        db, autor, nombre="Otro proveedor", dolar_actual=Decimal("1500")
+    )
+    db.flush()
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    hoja = wb.active
+    hoja.append(["proveedor_id", "dolar_nuevo"])
+    hoja.append([proveedor.id, float(proveedor.dolar_actual)])  # igual → saltea
+    hoja.append([otro.id, 3000])                                # distinto → aplica
+    buffer = BytesIO()
+    wb.save(buffer)
+
+    resultado = servicio.importar_dolar(db, autor, buffer.getvalue())
+
+    assert resultado["errores"] == []
+    assert resultado["aplicados"] == 1
+    assert resultado["sin_cambios"] == 1

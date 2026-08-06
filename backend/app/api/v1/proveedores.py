@@ -10,7 +10,17 @@ Acceso (vía resolver_permiso sobre el módulo PROVEEDORES):
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -92,6 +102,39 @@ def cambio_masivo(
 
     db.commit()
     return resultado
+
+
+@router.get(
+    "/dolar/plantilla",
+    response_class=Response,
+    summary="Descargar la plantilla Excel con el dólar actual de cada proveedor",
+)
+def descargar_plantilla_dolar(
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.PROVEEDORES, "editar", Recurso.DOLAR_CAMBIO_MASIVO)),
+):
+    """
+    Excel listo para editar y volver a subir por `/dolar/importar`.
+
+    Mismo permiso que la importación: es la puerta de entrada al mismo
+    circuito, y quien no puede aplicar el cambio tampoco necesita el archivo
+    con los valores de todos los proveedores.
+
+    Va declarado ANTES de `/{proveedor_id}`, igual que el resto de las rutas
+    de `/dolar`: si no, FastAPI leería "dolar" como un id.
+    """
+    from datetime import date
+
+    contenido = servicio.generar_plantilla_dolar(db)
+    nombre = f"dolar-proveedores-{date.today().isoformat()}.xlsx"
+
+    return Response(
+        content=contenido,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
 
 
 @router.post(

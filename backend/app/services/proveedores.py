@@ -308,13 +308,28 @@ def _aplicar_cambio_dolar(
     autor: Usuario,
     origen: OrigenCambioDolar,
     ip_origen: str | None,
-) -> ProveedorDolarHistorial:
+) -> ProveedorDolarHistorial | None:
     """
     Núcleo compartido por el cambio individual, el masivo y el de Excel:
     valida, actualiza, historiza y audita, todo en la misma transacción.
+
+    Devuelve None cuando el valor nuevo es igual al que ya tenía: en ese
+    caso no hace NADA —ni historial, ni auditoría, ni recálculo—.
+
+    El historial existe para registrar cambios, y una entrada
+    "1.400 → 1.400" no es un cambio: es ruido que ensucia justo la pantalla
+    donde se va a buscar cuándo se movió el precio. Aparecía sobre todo al
+    importar el Excel completo habiendo editado dos filas, pero la razón
+    vale igual para el cambio individual y el masivo, así que la regla va
+    en el punto por el que pasan los tres.
     """
     valor_nuevo = _validar_dolar(valor_nuevo)
     valor_anterior = proveedor.dolar_actual
+
+    # Se compara DESPUÉS de `_validar_dolar`, que redondea: sin eso, 1400.00
+    # y 1400.000 se verían distintos y el salteo no aplicaría.
+    if valor_nuevo == valor_anterior:
+        return None
 
     registro = ProveedorDolarHistorial(
         proveedor_id=proveedor.id,
@@ -464,6 +479,83 @@ def cambio_masivo(
 # ============================================================================
 
 
+# Nombres de las columnas que entiende el importador. Se usan tanto para leer
+# como para generar la plantilla: si alguna vez cambian, cambian en un solo
+# lugar y las dos puntas siguen coincidiendo.
+COL_ID = "proveedor_id"
+COL_VALOR = "dolar_nuevo"
+COL_NOMBRE = "nombre"
+
+
+def generar_plantilla_dolar(db: Session) -> bytes:
+    """
+    Excel con todos los proveedores activos y su dólar actual, en el mismo
+    formato que espera `importar_dolar`.
+
+    Existe porque sin esto la importación es inusable: hay que armar el
+    archivo a mano y averiguar el `id` interno de cada proveedor, que no se
+    muestra en ninguna pantalla.
+
+    Tres decisiones que hacen que el archivo se pueda subir tal como se baja:
+
+    - `dolar_nuevo` viene con el valor ACTUAL, no vacío. Una fila con
+      `proveedor_id` y sin valor no la saltea el lector —solo saltea las
+      filas del todo vacías— y termina en el error "dolar_nuevo inválido o
+      vacío".
+    - Solo proveedores ACTIVOS. La importación es todo-o-nada y rechaza los
+      inactivos, así que incluir uno haría fallar el archivo entero.
+    - La columna `nombre` es para poder leer el archivo. El lector ubica las
+      columnas por nombre e ignora las de más, así que no lo molesta.
+    """
+    from openpyxl import Workbook
+
+    proveedores = list(
+        db.execute(
+            select(Proveedor)
+            .where(Proveedor.estado == EstadoProveedor.ACTIVO)
+            .order_by(Proveedor.nombre)
+        )
+        .scalars()
+        .all()
+    )
+
+    wb = Workbook()
+    hoja = wb.active
+    hoja.title = "Dolar"
+    hoja.append([COL_ID, COL_NOMBRE, COL_VALOR])
+
+    for p in proveedores:
+        hoja.append([p.id, p.nombre, float(p.dolar_actual)])
+
+    hoja.column_dimensions["A"].width = 14
+    hoja.column_dimensions["B"].width = 38
+    hoja.column_dimensions["C"].width = 14
+
+    # Las instrucciones van en OTRA hoja: el lector usa `wb.active` y toma
+    # todo lo que sigue al encabezado como datos, así que un texto suelto
+    # arriba de la tabla rompería la importación.
+    ayuda = wb.create_sheet("Instrucciones")
+    for linea in (
+        ["Cómo usar esta plantilla"],
+        [],
+        ["1. Cambiá el valor de la columna dolar_nuevo en los proveedores que quieras."],
+        ["2. Subí el archivo en Proveedores → Cambio masivo del dólar."],
+        [],
+        ["Las filas que dejes sin modificar se saltean: no se registran en el"],
+        ["historial ni recalculan precios. No hace falta borrarlas."],
+        [],
+        ["No cambies los encabezados ni la columna proveedor_id."],
+        ["La importación es todo o nada: si una fila falla, no se aplica ningún cambio."],
+    ):
+        ayuda.append(linea)
+    ayuda.column_dimensions["A"].width = 90
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    wb.close()
+    return buffer.getvalue()
+
+
 def _leer_excel(contenido: bytes) -> list[dict]:
     """
     Lee un .xlsx con columnas `proveedor_id` y `dolar_nuevo`.
@@ -488,11 +580,11 @@ def _leer_excel(contenido: bytes) -> list[dict]:
     # Encabezado: se ubican las columnas por nombre, en cualquier orden.
     encabezado = [str(c).strip().lower() if c is not None else "" for c in filas[0]]
     try:
-        col_id = encabezado.index("proveedor_id")
-        col_valor = encabezado.index("dolar_nuevo")
+        col_id = encabezado.index(COL_ID)
+        col_valor = encabezado.index(COL_VALOR)
     except ValueError as exc:
         raise ReglaDeNegocio(
-            "El Excel debe tener las columnas 'proveedor_id' y 'dolar_nuevo'"
+            f"El Excel debe tener las columnas '{COL_ID}' y '{COL_VALOR}'"
         ) from exc
 
     registros = []
@@ -564,11 +656,21 @@ def importar_dolar(
 
     # Todo-o-nada: un solo error aborta la importación completa.
     if errores:
-        return {"aplicados": 0, "errores": errores}
+        return {"aplicados": 0, "sin_cambios": 0, "errores": errores}
 
+    # Las filas cuyo valor no cambia se cuentan aparte, no se descartan en
+    # silencio: alguien que sube 10 filas y ve "2 aplicados" necesita saber
+    # que las otras 8 se leyeron bien y se saltearon a propósito, y no que
+    # se perdieron.
+    aplicados = 0
+    sin_cambios = 0
     for proveedor, valor in validos:
-        _aplicar_cambio_dolar(
+        registro = _aplicar_cambio_dolar(
             db, proveedor, valor, autor, OrigenCambioDolar.IMPORTACION_EXCEL, ip_origen
         )
+        if registro is None:
+            sin_cambios += 1
+        else:
+            aplicados += 1
 
-    return {"aplicados": len(validos), "errores": []}
+    return {"aplicados": aplicados, "sin_cambios": sin_cambios, "errores": []}
