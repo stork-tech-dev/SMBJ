@@ -293,6 +293,70 @@ def test_toda_pantalla_interna_tiene_como_volver():
         )
 
 
+def test_el_formato_del_dolar_no_vuelve_a_redondear():
+    """
+    El dólar se muestra sin decimales cuando no los tiene, PERO no con
+    `maximumFractionDigits: 0`: ese modificador aplica su propio redondeo
+    half-expand y 1.385,50 se mostraría "1.386" — un número que nadie
+    guardó. Es el mismo defecto que ya tuvo el precio en pesos.
+
+    Y vive en app.js, no copiado en cada pantalla: estaba duplicado en
+    proveedores.js y dolar_masivo.js, y cualquier ajuste tenía que hacerse
+    dos veces para que no divergieran.
+    """
+    from pathlib import Path
+
+    js = Path(__file__).resolve().parents[1] / "app" / "static" / "js"
+    app = (js / "app.js").read_text()
+
+    assert "window.formatearDolar" in app, "el formateo del dólar no está en app.js"
+    assert "Number.isInteger" in app, "sin isInteger, el redondeo lo hace Intl"
+
+    # Ninguna pantalla puede volver a implementarlo por su cuenta. Se busca
+    # `minimumFractionDigits`, que es lo que usa el formateo de NÚMEROS:
+    # `toLocaleString` a secas también lo usa `formatearFecha`, que sí es
+    # propia de cada pantalla y no tiene nada que ver.
+    for pantalla in ("proveedores.js", "dolar_masivo.js"):
+        contenido = (js / pantalla).read_text()
+        assert "formatearDolar: window.formatearDolar" in contenido, (
+            f"{pantalla} no delega el formateo del dólar"
+        )
+        assert "minimumFractionDigits" not in contenido, (
+            f"{pantalla} volvió a formatear números por su cuenta"
+        )
+
+
+def test_el_dolar_se_cambia_desde_editar_y_no_desde_ver(client, crear_usuario):
+    """
+    La ficha ("Ver") es de consulta: muestra el valor actual del dólar pero
+    no deja cambiarlo ni abre el historial. Las dos cosas son acciones y
+    viven en el modal de edición.
+
+    El cambio de dólar además va en su propio bloque, con botón aparte: no
+    entra en "Finalizar" porque recalcula el precio de venta de TODOS los
+    productos del proveedor, y eso no puede pasar de arrastre al guardar un
+    teléfono.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/proveedores").text
+
+    # Se comprueba por identificadores y no recortando el HTML: los
+    # marcadores de cada modal (`ficha.abierta`, `form.abierto`) aparecen
+    # varias veces cada uno y cualquier recorte queda a merced del orden.
+
+    # La ficha muestra el valor actual…
+    assert "ficha.proveedor?.dolar_actual" in html
+    # …pero ya no tiene el campo de cambio ni la tabla de historial.
+    assert 'id="fc-dolar"' not in html, "el cambio de dólar volvió a la ficha"
+    assert "ficha.historial" not in html, "el historial volvió a la ficha"
+
+    # Los dos bloques viven ahora en la edición.
+    assert 'id="pv-nuevo-dolar"' in html, "falta el cambio de dólar en la edición"
+    assert "form.historial" in html, "falta el historial en la edición"
+
+
 def test_la_tabla_muestra_el_precio_efectivo_y_marca_el_propio(client, crear_usuario):
     """
     El precio que se muestra es el efectivo —el de la variante si tiene, el

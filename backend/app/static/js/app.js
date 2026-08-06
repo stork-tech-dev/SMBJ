@@ -29,6 +29,28 @@ function temaApp() {
  * Dispara un toast desde cualquier lugar: window.toast('Guardado', 'exito').
  * Tipos: 'exito' | 'error' | 'info'.
  */
+/**
+ * Valor del dólar para mostrar: sin decimales cuando no los tiene.
+ *
+ * `Number.isInteger` y no `maximumFractionDigits: 0`: ese modificador
+ * aplica su PROPIO redondeo half-expand, así que 1234,49 se mostraría
+ * "1.234" y 1400,50 se mostraría "1.401" — números que nadie guardó. Acá lo
+ * que se muestra tiene que ser exactamente lo que hay en la base.
+ *
+ * Vive en app.js porque la usan la pantalla de proveedores y la de cambio
+ * masivo: estaba copiada en las dos y cualquier ajuste tenía que hacerse
+ * dos veces para que no divergieran (Principio 2).
+ */
+window.formatearDolar = function (v) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    const decimales = Number.isInteger(n) ? 0 : 2;
+    return n.toLocaleString('es-AR', {
+        minimumFractionDigits: decimales,
+        maximumFractionDigits: decimales,
+    });
+};
+
 window.toast = function (mensaje, tipo = 'info', duracion = 4000) {
     window.dispatchEvent(
         new CustomEvent('toast', { detail: { mensaje, tipo, duracion } })

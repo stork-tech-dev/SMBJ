@@ -11,22 +11,24 @@ function abmProveedores() {
         cargando: false,
         filtros: { nombre: '', estado: '', dolar_desde: '', dolar_hasta: '' },
 
+        // El cambio de dólar y su historial viven en el FORMULARIO, no en la
+        // ficha: la ficha es de consulta y muestra el valor actual sin más.
         form: {
             abierto: false, guardando: false, id: null,
             nombre: '', contacto: '', telefono: '', email: '', direccion: '', notas: '',
             dolar_actual: '',
+            historial: [], nuevoDolar: '', guardandoDolar: false,
         },
 
-        ficha: { abierta: false, proveedor: null, historial: [], nuevoDolar: '', guardandoDolar: false },
+        ficha: { abierta: false, proveedor: null },
 
         baja: { abierta: false, proveedor: null, estado: 'desactivado', advertencia: '', procesando: false },
 
         /* --- Presentación --- */
 
-        formatearDolar(v) {
-            if (v === null || v === undefined || v === '') return '—';
-            return Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        },
+        // Delega en el helper global: estaba copiado acá y en la otra
+        // pantalla, y las dos copias tenían que cambiar juntas.
+        formatearDolar: window.formatearDolar,
 
         formatearFecha(iso) {
             if (!iso) return '—';
@@ -82,16 +84,19 @@ function abmProveedores() {
                 abierto: true, guardando: false, id: null,
                 nombre: '', contacto: '', telefono: '', email: '', direccion: '', notas: '',
                 dolar_actual: '',
+                historial: [], nuevoDolar: '', guardandoDolar: false,
             };
         },
 
-        abrirEdicion(p) {
+        async abrirEdicion(p) {
             this.form = {
                 abierto: true, guardando: false, id: p.id,
                 nombre: p.nombre, contacto: p.contacto || '', telefono: p.telefono || '',
                 email: p.email || '', direccion: p.direccion || '', notas: p.notas || '',
                 dolar_actual: p.dolar_actual,
+                historial: [], nuevoDolar: '', guardandoDolar: false,
             };
+            await this.cargarHistorial(p.id);
         },
 
         async guardar() {
@@ -131,40 +136,44 @@ function abmProveedores() {
             }
         },
 
-        /* --- Ficha, dólar e historial --- */
+        /* --- Ficha: solo consulta --- */
 
-        async abrirFicha(p) {
-            this.ficha = { abierta: true, proveedor: p, historial: [], nuevoDolar: '', guardandoDolar: false };
-            await this.cargarHistorial(p.id);
+        abrirFicha(p) {
+            this.ficha = { abierta: true, proveedor: p };
         },
+
+        /* --- Dólar e historial: dentro de la edición --- */
 
         async cargarHistorial(id) {
             const resp = await fetch(`/api/v1/proveedores/${id}/dolar/historial`, { credentials: 'same-origin' });
-            if (resp.ok) this.ficha.historial = await resp.json();
+            if (resp.ok) this.form.historial = await resp.json();
         },
 
         async cambiarDolar() {
-            this.ficha.guardandoDolar = true;
+            this.form.guardandoDolar = true;
             try {
-                const resp = await fetch(`/api/v1/proveedores/${this.ficha.proveedor.id}/dolar`, {
+                const resp = await fetch(`/api/v1/proveedores/${this.form.id}/dolar`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ valor_nuevo: this.ficha.nuevoDolar }),
+                    body: JSON.stringify({ valor_nuevo: this.form.nuevoDolar }),
                 });
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
                     throw new Error(err.detail || 'No se pudo actualizar el dólar');
                 }
-                this.ficha.proveedor = await resp.json();
-                this.ficha.nuevoDolar = '';
-                await this.cargarHistorial(this.ficha.proveedor.id);
+                const actualizado = await resp.json();
+                this.form.dolar_actual = actualizado.dolar_actual;
+                this.form.nuevoDolar = '';
+                await this.cargarHistorial(this.form.id);
                 window.toast('Dólar actualizado', 'exito');
+                // Recarga la tabla: el cambio de dólar recalcula los precios
+                // de todos los productos del proveedor.
                 this.cargar();
             } catch (e) {
                 window.toast(e.message, 'error');
             } finally {
-                this.ficha.guardandoDolar = false;
+                this.form.guardandoDolar = false;
             }
         },
 

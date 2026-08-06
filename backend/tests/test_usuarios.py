@@ -470,10 +470,15 @@ def test_respuesta_no_expone_el_codigo_del_local(client, db, crear_usuario, role
 
     resp = client.get("/api/v1/usuarios", headers=login("admin"))
     assert resp.status_code == 200
-    assert "1234" not in resp.text
     assert "codigo_confirmacion" not in resp.text
 
     fila = next(u for u in resp.json()["resultados"] if u["username"] == "leandra")
+    # La igualdad exacta ES la comprobación: si el código viajara, el dict
+    # tendría una clave de más y esto fallaría.
+    #
+    # Antes había además un `assert "1234" not in resp.text`, que buscaba el
+    # código en el texto crudo de TODA la respuesta. Fallaba al azar: "1234"
+    # aparece en los microsegundos de un timestamp cada tantas corridas.
     assert fila["local_asignado"] == {"id": local.id, "nombre": "Patio Olmos"}
 
 

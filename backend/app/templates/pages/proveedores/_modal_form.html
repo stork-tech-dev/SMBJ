@@ -1,6 +1,15 @@
-{# Modal de alta / edición de proveedor. El dólar solo se edita en el alta:
-   en la edición se cambia desde la ficha, para que siempre pase por el
-   historial. #}
+{# Modal de alta / edición de proveedor.
+
+   El dólar tiene dos formas distintas según el caso:
+     - En el ALTA es un campo más del formulario: es el valor inicial y no
+       hay historial que registrar todavía.
+     - En la EDICIÓN es un bloque aparte con su propio botón, más el
+       historial. Cambiarlo recalcula el precio de venta de todos los
+       productos del proveedor, así que se confirma solo y no de arrastre
+       al guardar cualquier otro dato.
+
+   Antes los dos bloques estaban en la ficha ("Ver"), mezclados con datos
+   que solo se leen. #}
 {% from "components/icons.html" import icono %}
 
 <div x-show="form.abierto" x-cloak
@@ -60,6 +69,85 @@
                 <textarea id="pv-notas" x-model="form.notas" rows="2"
                           class="w-full px-2 py-1 text-base font-light bg-surface border-b border-texto-disabled
                                  focus:outline-none focus:border-primary resize-none"></textarea>
+            </div>
+
+            {# ---------- Dólar del proveedor, solo en la edición ----------
+
+               Va acá y no en la ficha porque cambiarlo es una acción, no una
+               consulta. Y va en un bloque aparte con su propio botón: no
+               entra en "Finalizar" a propósito. El cambio de dólar tiene un
+               efecto que el resto del formulario no tiene —recalcula el
+               precio de venta de TODOS los productos del proveedor— así que
+               se confirma solo, y no de arrastre al guardar un teléfono. #}
+            <div x-show="form.id" x-cloak class="sm:col-span-2 mt-2 p-5 bg-surface-alt rounded-input">
+                <div class="flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <p class="text-sm text-texto-disabled">Valor actual del dólar</p>
+                        <p class="text-[2.25rem] leading-tight font-black text-welcome"
+                           x-text="'$ ' + formatearDolar(form.dolar_actual)"></p>
+                    </div>
+                    {# `@submit` propio no se puede: este bloque está DENTRO del
+                       form de edición y anidar formularios no es válido. Por
+                       eso el botón es `type="button"` con @click. #}
+                    <div class="flex items-end gap-2">
+                        <div class="flex flex-col gap-1">
+                            <label for="pv-nuevo-dolar" class="text-sm font-semibold text-texto-header">
+                                Nuevo valor
+                            </label>
+                            <input id="pv-nuevo-dolar" type="number" step="0.01" min="0.01"
+                                   x-model="form.nuevoDolar"
+                                   @keydown.enter.prevent="form.nuevoDolar && cambiarDolar()"
+                                   class="h-control w-full sm:w-[8.125rem] px-3 bg-surface border-2
+                                          border-borde rounded-input focus:outline-none focus:border-primary">
+                        </div>
+                        <button type="button" @click="cambiarDolar()"
+                                :disabled="form.guardandoDolar || !form.nuevoDolar"
+                                class="h-control px-5 rounded-input bg-primary text-white text-base
+                                       font-medium hover:bg-primary-hover disabled:opacity-60">
+                            Actualizar
+                        </button>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-texto-disabled">
+                    Actualizar el dólar recalcula el precio en pesos de todos los productos
+                    de este proveedor.
+                </p>
+            </div>
+
+            {# ---------- Historial del dólar ---------- #}
+            <div x-show="form.id" x-cloak class="sm:col-span-2">
+                <h3 class="text-base font-semibold text-texto-header">Historial del dólar</h3>
+                <div class="mt-2 border border-borde rounded-input overflow-hidden
+                            max-h-64 overflow-y-auto">
+                    <table class="w-full border-collapse text-sm">
+                        <thead class="sticky top-0 bg-surface-alt">
+                            <tr>
+                                <th class="px-4 py-2 text-left font-semibold text-texto-header">Fecha</th>
+                                <th class="px-4 py-2 text-right font-semibold text-texto-header">Anterior</th>
+                                <th class="px-4 py-2 text-right font-semibold text-texto-header">Nuevo</th>
+                                <th class="px-4 py-2 text-left font-semibold text-texto-header">Origen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="h in form.historial" :key="h.id">
+                                <tr class="border-t border-borde">
+                                    <td class="px-4 py-2" x-text="formatearFecha(h.timestamp)"></td>
+                                    <td class="px-4 py-2 text-right"
+                                        x-text="'$ ' + formatearDolar(h.valor_anterior)"></td>
+                                    <td class="px-4 py-2 text-right font-medium"
+                                        x-text="'$ ' + formatearDolar(h.valor_nuevo)"></td>
+                                    <td class="px-4 py-2 text-texto-muted"
+                                        x-text="etiquetaOrigen(h.origen)"></td>
+                                </tr>
+                            </template>
+                            <tr x-show="!form.historial.length">
+                                <td colspan="4" class="px-4 py-6 text-center text-texto-muted">
+                                    Sin cambios registrados.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div class="sm:col-span-2 flex justify-end gap-3 mt-2">

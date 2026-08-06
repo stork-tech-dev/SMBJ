@@ -18,10 +18,9 @@ function dolarMasivo() {
         errores: [],
         importando: false,
 
-        formatearDolar(v) {
-            if (v === null || v === undefined || v === '') return '—';
-            return Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        },
+        // Delega en el helper global: estaba copiado acá y en la otra
+        // pantalla, y las dos copias tenían que cambiar juntas.
+        formatearDolar: window.formatearDolar,
 
         async cargar() {
             const resp = await fetch('/api/v1/proveedores?estado=activo', { credentials: 'same-origin' });
