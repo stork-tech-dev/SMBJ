@@ -71,14 +71,23 @@ def calcular_precio_venta(
 
 def recalcular_precios_de_proveedor(db: Session, proveedor_id: int) -> int:
     """
-    Recalcula el precio de venta de todos los productos de un proveedor.
+    Recalcula el precio de venta de todo lo que cuelga de un proveedor.
 
     La llama `_aplicar_cambio_dolar()` en el service de proveedores, que es
     el único punto por donde pasa un cambio de cotización —individual,
     masivo o por Excel—. Engancharse ahí y no en los tres endpoints es lo
     que evita que uno quede desincronizado.
 
-    Devuelve cuántos productos se actualizaron.
+    Son DOS cosas, no una: los productos y las variantes que tienen precio
+    propio. Las variantes con `precio_usd` propio no derivan del producto,
+    así que si esta función solo tocara productos, su precio en pesos
+    quedaría congelado al dólar viejo y se desfasaría en silencio — sin
+    error, sin aviso, y solo visible comparando contra el dólar del día.
+
+    Van las dos acá y no en dos enganches separados a propósito: dos puntos
+    de cascada es exactamente cómo se desincronizan.
+
+    Devuelve cuántas filas se actualizaron, sumando productos y variantes.
     """
     proveedor = db.get(Proveedor, proveedor_id)
     if proveedor is None:
@@ -96,9 +105,28 @@ def recalcular_precios_de_proveedor(db: Session, proveedor_id: int) -> int:
         )
         producto.updated_at = ahora_db()
 
-    if productos:
+    variantes = list(
+        db.execute(
+            select(Variante)
+            .join(Producto, Variante.producto_id == Producto.id)
+            .where(
+                Producto.proveedor_id == proveedor_id,
+                Variante.precio_usd.is_not(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    for variante in variantes:
+        variante.precio_venta = calcular_precio_venta(
+            db, variante.precio_usd, proveedor.dolar_actual
+        )
+        variante.updated_at = ahora_db()
+
+    if productos or variantes:
         db.flush()
-    return len(productos)
+    return len(productos) + len(variantes)
 
 
 # ============================================================================
@@ -313,6 +341,8 @@ def editar_variante(
     descripcion_sufijo: str | None = None,
     ubicacion_deposito: str | None = None,
     stock_minimo: int | None = None,
+    precio_usd: Decimal | None = None,
+    editar_precio: bool = False,
     ip_origen: str | None = None,
 ) -> Variante:
     """
@@ -337,6 +367,29 @@ def editar_variante(
         if stock_minimo < 0:
             raise ReglaDeNegocio("El stock mínimo no puede ser negativo")
         variante.stock_minimo = stock_minimo
+
+    # `editar_precio` distingue "no lo mandes" de "ponelo en NULL": None es
+    # ambiguo y NULL acá significa algo concreto —volver al precio del
+    # producto—, no "sin cambios".
+    if editar_precio:
+        if precio_usd is None:
+            variante.precio_usd = None
+            variante.precio_venta = None
+        else:
+            if Decimal(precio_usd) <= 0:
+                raise ReglaDeNegocio("El precio en dólares debe ser mayor a cero")
+
+            # Se resuelve TODO antes de asignar. Leer el proveedor y calcular
+            # el precio disparan consultas, y cada consulta hace autoflush:
+            # con `precio_usd` ya puesto y `precio_venta` todavía en NULL, el
+            # CHECK `ck_variantes_precio_completo` rechaza la fila a mitad de
+            # camino. Las dos asignaciones tienen que quedar pegadas.
+            nuevo_usd = Decimal(precio_usd)
+            dolar = variante.producto.proveedor.dolar_actual
+            nuevo_venta = calcular_precio_venta(db, nuevo_usd, dolar)
+
+            variante.precio_usd = nuevo_usd
+            variante.precio_venta = nuevo_venta
 
     variante.updated_at = ahora_db()
     db.flush()
@@ -471,10 +524,15 @@ def listar_variantes(
         consulta = consulta.where(Producto.estacionalidad == estacionalidad)
     if activo is not None:
         consulta = consulta.where(Producto.activo.is_(activo))
+
+    # Sobre el precio EFECTIVO: filtrar por `Producto.precio_venta` dejaría
+    # afuera justamente a las variantes que tienen precio propio, que son
+    # las que más motivo hay para buscar por precio.
+    precio_efectivo = func.coalesce(Variante.precio_venta, Producto.precio_venta)
     if precio_desde is not None:
-        consulta = consulta.where(Producto.precio_venta >= precio_desde)
+        consulta = consulta.where(precio_efectivo >= precio_desde)
     if precio_hasta is not None:
-        consulta = consulta.where(Producto.precio_venta <= precio_hasta)
+        consulta = consulta.where(precio_efectivo <= precio_hasta)
 
     total = db.execute(
         select(func.count()).select_from(consulta.order_by(None).subquery())

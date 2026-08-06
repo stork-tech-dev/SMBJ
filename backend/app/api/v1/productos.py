@@ -316,6 +316,11 @@ def editar_variante(
             descripcion_sufijo=datos.descripcion_sufijo,
             ubicacion_deposito=datos.ubicacion_deposito,
             stock_minimo=datos.stock_minimo,
+            precio_usd=datos.precio_usd,
+            # Distingue "no mandes el precio" de "ponelo en NULL", que acá
+            # significa volver al precio del producto. Mismo patrón que usan
+            # usuarios.py y admin_dispositivos.py.
+            editar_precio="precio_usd" in datos.model_fields_set,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:

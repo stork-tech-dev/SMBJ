@@ -182,6 +182,14 @@ class Variante(Base):
     # calcula el encoder al generar la imagen y no se persiste.
     verificador: Mapped[str] = mapped_column(String(1), nullable=False)
 
+    # Precio propio de la variante. NULL = usa el del producto.
+    #
+    # `precio_venta` es derivado, igual que en el producto: se calcula con
+    # `calcular_precio_venta()` y se recalcula en cascada cuando cambia el
+    # dólar del proveedor. Los dos van juntos o ninguno (lo ata un CHECK).
+    precio_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    precio_venta: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+
     stock_actual: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     stock_minimo: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
@@ -213,12 +221,45 @@ class Variante(Base):
             name="ck_variantes_base_sin_descripcion_sufijo",
         ),
         CheckConstraint("stock_minimo >= 0", name="ck_variantes_stock_minimo_no_negativo"),
+        CheckConstraint(
+            "precio_usd IS NULL OR precio_usd > 0",
+            name="ck_variantes_precio_usd_positivo",
+        ),
+        # `precio_venta` se deriva de `precio_usd`: uno sin el otro sería un
+        # número que nadie puede recalcular al cambiar la cotización.
+        CheckConstraint(
+            "(precio_usd IS NULL AND precio_venta IS NULL)"
+            " OR (precio_usd IS NOT NULL AND precio_venta IS NOT NULL)",
+            name="ck_variantes_precio_completo",
+        ),
     )
 
     @property
     def codigo_con_verificador(self) -> str:
         """Lo que se imprime en la etiqueta y se codifica en Code128."""
         return f"{self.codigo_completo}{self.verificador}"
+
+    # --- Precio efectivo ---------------------------------------------------
+    # La regla "el propio manda sobre el del producto" vive acá y en un solo
+    # lugar: la usan el listado, el detalle y cualquier pantalla futura. Si
+    # cada consumidor hiciera su propio COALESCE, alcanzaría con que uno se
+    # olvidara para mostrar un precio que no es el que se cobra.
+
+    @property
+    def tiene_precio_propio(self) -> bool:
+        return self.precio_usd is not None
+
+    @property
+    def precio_usd_efectivo(self) -> Decimal:
+        return self.precio_usd if self.precio_usd is not None else self.producto.precio_usd
+
+    @property
+    def precio_venta_efectivo(self) -> Decimal:
+        return (
+            self.precio_venta
+            if self.precio_venta is not None
+            else self.producto.precio_venta
+        )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
         return f"<Variante {self.id} {self.codigo_completo}>"

@@ -293,6 +293,36 @@ def test_toda_pantalla_interna_tiene_como_volver():
         )
 
 
+def test_la_tabla_muestra_el_precio_efectivo_y_marca_el_propio(client, crear_usuario):
+    """
+    El precio que se muestra es el efectivo —el de la variante si tiene, el
+    del producto si no— y lo resuelve el backend.
+
+    La marca importa: sin ella, cambiar el precio del producto y ver que
+    algunas filas no se movieron parece un error del sistema en vez de un
+    precio puesto a mano.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "v.precio_usd_efectivo" in html
+    assert "v.precio_venta_efectivo" in html
+    # Ya no puede mostrar el del producto directo: taparía el propio.
+    assert "v.producto.precio_usd" not in html
+    assert "v.producto.precio_venta" not in html
+
+    assert "v.tiene_precio_propio" in html, "falta la marca de precio propio"
+    assert 'id="ev-usd"' in html, "falta el campo de precio en el modal de variante"
+
+    # El panel del código de barras también muestra los precios: es donde se
+    # ve de dónde sale el que se cobra.
+    panel = html.split("variantesVisibles()")[1]
+    assert "usd(v.precio_usd_efectivo)" in panel
+    assert "pesos(v.precio_venta_efectivo)" in panel
+
+
 def test_la_tabla_nombra_las_variantes_con_su_descripcion(client, crear_usuario):
     """
     Antes decía "variante R", que no dice si la R es de rojo, de rebajado o

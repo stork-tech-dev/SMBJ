@@ -47,9 +47,14 @@ function abmProductos() {
         // Edición de una variante ya creada. El sufijo NO está: entra en el
         // código, que se congela porque la etiqueta ya se imprimió.
         edicionVariante: {
-            abierto: false, guardando: false, id: null, codigo: '',
+            abierto: false, guardando: false, id: null, codigo: '', proveedorId: null,
             descripcion_sufijo: '', ubicacion_deposito: '', stock_minimo: 0,
+            precio_usd: '',
         },
+
+        // Precio en pesos que resultaría del USD tipeado en el modal de
+        // variante. Lo calcula el backend, igual que el del producto.
+        previewVar: { precio_venta: null },
 
         // Valores informativos del formulario. null = todavía sin datos
         // suficientes (falta el proveedor o el precio).
@@ -281,10 +286,38 @@ function abmProductos() {
                 id: v.id,
                 // Solo informativo: el código no se edita.
                 codigo: v.codigo_completo + v.verificador,
+                proveedorId: this.detalle.producto.proveedor_id,
                 descripcion_sufijo: v.descripcion_sufijo || '',
                 ubicacion_deposito: v.ubicacion_deposito || '',
                 stock_minimo: v.stock_minimo,
+                // Vacío cuando no tiene precio propio: el placeholder dice
+                // que en ese caso usa el del producto.
+                precio_usd: v.precio_usd ?? '',
             };
+            this.previewVariante();
+        },
+
+        /** Precio en pesos del USD tipeado, resuelto por el backend. */
+        async previewVariante() {
+            const usd = Number(this.edicionVariante.precio_usd);
+            if (!usd || usd <= 0) {
+                this.previewVar = { precio_venta: null };
+                return;
+            }
+            try {
+                const params = new URLSearchParams({
+                    proveedor_id: this.edicionVariante.proveedorId,
+                    precio_usd: this.edicionVariante.precio_usd,
+                });
+                const resp = await fetch('/api/v1/productos/precio-preview?' + params, {
+                    credentials: 'same-origin',
+                });
+                if (!resp.ok) throw new Error();
+                this.previewVar = await resp.json();
+            } catch {
+                // Silencioso: es informativo y no puede trabar el formulario.
+                this.previewVar = { precio_venta: null };
+            }
         },
 
         async guardarEdicionVariante() {
@@ -297,6 +330,9 @@ function abmProductos() {
                     credentials: 'same-origin',
                     body: JSON.stringify({
                         descripcion_sufijo: e.descripcion_sufijo,
+                        // null explícito = volver al precio del producto. El
+                        // backend distingue esto de "no lo mandes".
+                        precio_usd: e.precio_usd === '' ? null : e.precio_usd,
                         // El backend normaliza; '' sería guardar una ubicación
                         // vacía en vez de ninguna.
                         ubicacion_deposito: e.ubicacion_deposito || null,

@@ -951,3 +951,136 @@ def test_el_listado_devuelve_el_nombre_de_la_variante(db, autor, producto):
     filas, _ = servicio.listar_variantes(db)
 
     assert [f.descripcion_sufijo for f in filas] == ["Rojo"]
+
+
+# ============================================================================
+# PRECIO PROPIO POR VARIANTE
+# ============================================================================
+
+
+@pytest.fixture
+def variante_con_precio(db, autor, producto):
+    """Una variante con precio propio (7 USD) sobre un producto de 10 USD."""
+    v = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Rojo"
+    )
+    servicio.editar_variante(db, autor, v.id, precio_usd=Decimal("7"), editar_precio=True)
+    db.flush()
+    return v
+
+
+def test_el_precio_propio_manda_sobre_el_del_producto(db, producto, variante_con_precio):
+    """El dólar del proveedor es 1.000: 7 USD → 7.000."""
+    assert producto.precio_usd == Decimal("10")
+    assert variante_con_precio.precio_usd == Decimal("7")
+    assert variante_con_precio.precio_venta == Decimal("7000")
+    assert variante_con_precio.precio_usd_efectivo == Decimal("7")
+    assert variante_con_precio.tiene_precio_propio is True
+
+
+def test_una_variante_sin_precio_propio_usa_el_del_producto(db, autor, producto):
+    v = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="N", descripcion_sufijo="Negro"
+    )
+
+    assert v.precio_usd is None
+    assert v.tiene_precio_propio is False
+    assert v.precio_usd_efectivo == producto.precio_usd
+    assert v.precio_venta_efectivo == producto.precio_venta
+
+
+def test_cambiar_el_precio_del_producto_no_pisa_el_de_la_variante(
+    db, autor, producto, variante_con_precio
+):
+    """Eso es lo que significa "prevalencia"."""
+    servicio.editar_producto(db, autor, producto.id, precio_usd=Decimal("20"))
+
+    db.refresh(variante_con_precio)
+    assert variante_con_precio.precio_usd == Decimal("7")
+    assert variante_con_precio.precio_venta == Decimal("7000")
+
+
+def test_limpiar_el_precio_devuelve_la_variante_al_del_producto(
+    db, autor, producto, variante_con_precio
+):
+    servicio.editar_variante(db, autor, variante_con_precio.id, editar_precio=True)
+
+    db.refresh(variante_con_precio)
+    assert variante_con_precio.precio_usd is None
+    assert variante_con_precio.precio_venta is None
+    assert variante_con_precio.precio_venta_efectivo == producto.precio_venta
+
+
+# --- LA CASCADA: lo más fácil de romper ------------------------------------
+
+
+def test_el_cambio_individual_de_dolar_recalcula_el_precio_propio(
+    db, autor, proveedor, variante_con_precio
+):
+    """
+    Una variante con precio propio NO deriva del producto, así que si la
+    cascada solo tocara productos, su precio en pesos quedaría congelado al
+    dólar viejo y se desfasaría en silencio.
+    """
+    servicio_proveedores.cambiar_dolar(db, autor, proveedor.id, Decimal("2000"))
+
+    db.refresh(variante_con_precio)
+    assert variante_con_precio.precio_venta == Decimal("14000")
+
+
+def test_el_cambio_masivo_por_valor_recalcula_el_precio_propio(
+    db, autor, proveedor, variante_con_precio
+):
+    servicio_proveedores.cambio_masivo(
+        db, autor, proveedor_ids=None, modalidad="valor", valor=Decimal("3000")
+    )
+
+    db.refresh(variante_con_precio)
+    assert variante_con_precio.precio_venta == Decimal("21000")
+
+
+def test_el_cambio_masivo_por_porcentaje_recalcula_el_precio_propio(
+    db, autor, proveedor, variante_con_precio
+):
+    servicio_proveedores.cambio_masivo(
+        db, autor, proveedor_ids=None, modalidad="porcentaje", valor=Decimal("100")
+    )
+
+    # 1000 + 100% = 2000 → 7 USD × 2000 = 14.000
+    db.refresh(variante_con_precio)
+    assert variante_con_precio.precio_venta == Decimal("14000")
+
+
+def test_la_cascada_cuenta_productos_y_variantes(db, proveedor, variante_con_precio):
+    """Un producto más una variante con precio propio: dos filas tocadas."""
+    assert servicio.recalcular_precios_de_proveedor(db, proveedor.id) == 2
+
+
+def test_el_filtro_de_precio_usa_el_efectivo(db, producto, variante_con_precio):
+    """
+    Filtrar por `Producto.precio_venta` dejaría afuera justamente a las
+    variantes con precio propio, que son las que más motivo hay para buscar
+    por precio.
+
+    El producto vale 10.000 y la variante 7.000: un rango de 6.000 a 8.000
+    tiene que encontrar la variante y no la BASE.
+    """
+    filas, total = servicio.listar_variantes(
+        db, precio_desde=Decimal("6000"), precio_hasta=Decimal("8000")
+    )
+
+    assert total == 1
+    assert filas[0].id == variante_con_precio.id
+
+
+def test_no_se_puede_dejar_un_precio_en_pesos_sin_su_origen(db, variante_con_precio):
+    """
+    Lo impide un CHECK: un precio en pesos sin el USD del que sale es un
+    número que nadie puede recalcular cuando cambie la cotización.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    variante_con_precio.precio_usd = None
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()

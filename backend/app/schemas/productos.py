@@ -87,6 +87,10 @@ class VarianteEditar(BaseModel):
     descripcion_sufijo: str | None = Field(default=None, min_length=1, max_length=60)
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
     stock_minimo: int | None = Field(default=None, ge=0)
+    # Precio propio de la variante. Mandarlo en NULL la devuelve al precio
+    # del producto; no mandarlo es "no lo toques". El endpoint distingue los
+    # dos casos con `model_fields_set`.
+    precio_usd: Decimal | None = Field(default=None, gt=0)
 
 
 class VarianteResponse(BaseModel):
@@ -103,6 +107,14 @@ class VarianteResponse(BaseModel):
     stock_minimo: int
     ubicacion_deposito: str | None
     activo: bool
+    # Precio propio; NULL = usa el del producto.
+    precio_usd: Decimal | None
+    precio_venta: Decimal | None
+    # Cuál de los dos precios manda lo resuelve el backend: es una regla de
+    # negocio, no formato de pantalla (Principio 1).
+    precio_usd_efectivo: Decimal
+    precio_venta_efectivo: Decimal
+    tiene_precio_propio: bool
 
 
 class FotoResponse(BaseModel):
@@ -204,4 +216,12 @@ class VarianteListadoResponse(BaseModel):
     stock_minimo: int
     ubicacion_deposito: str | None
     activo: bool
+    # Precio propio; NULL = usa el del producto.
+    precio_usd: Decimal | None
+    precio_venta: Decimal | None
+    # Cuál de los dos precios manda lo resuelve el backend: es una regla de
+    # negocio, no formato de pantalla (Principio 1).
+    precio_usd_efectivo: Decimal
+    precio_venta_efectivo: Decimal
+    tiene_precio_propio: bool
     producto: ProductoResumen

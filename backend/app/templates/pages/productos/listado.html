@@ -171,10 +171,22 @@
 
                             {# La API manda los números crudos: el formato de
                                moneda lo pone el frontend (Principio 1). #}
+                            {# El precio EFECTIVO: el propio de la variante si
+                               tiene, el del producto si no. Lo resuelve el
+                               backend, que es donde vive la regla.
+
+                               El asterisco marca las filas con precio propio:
+                               sin él, cambiar el precio del producto y ver que
+                               algunas no se movieron parece un error. #}
                             <td class="px-4 py-3 align-middle text-right whitespace-nowrap"
-                                x-text="usd(v.producto.precio_usd)"></td>
+                                :class="v.tiene_precio_propio && 'text-accent'">
+                                <span x-text="usd(v.precio_usd_efectivo)"></span>
+                                <span x-show="v.tiene_precio_propio" x-cloak
+                                      title="Precio propio de esta variante">*</span>
+                            </td>
                             <td class="px-4 py-3 align-middle text-right font-medium whitespace-nowrap"
-                                x-text="pesos(v.producto.precio_venta)"></td>
+                                :class="v.tiene_precio_propio && 'text-accent'"
+                                x-text="pesos(v.precio_venta_efectivo)"></td>
 
                             {# Las acciones son del PRODUCTO, no de la variante:
                                precio, categoría y descripción son compartidos
@@ -183,10 +195,16 @@
                                 {% call acciones() %}
                                     {# "ver" abre el panel acotado a ESTE código:
                                        es la fila que se tocó. #}
-                                    {{ accion('ver',
+                                    {# Los botones dicen sobre QUÉ actúan, no qué
+                                       hacen: uno abre el detalle de esta
+                                       variante y el otro edita el producto,
+                                       que es compartido por sus hermanas.
+                                       "Ver" y "Editar" no dejaban ver esa
+                                       diferencia. #}
+                                    {{ accion('ver', texto='Variante',
                                               atributos='@click="abrirProducto(v.producto_id,
                                                                   { varianteId: v.id })"') }}
-                                    {{ accion('editar',
+                                    {{ accion('editar', texto='Producto',
                                               atributos='@click="abrirProducto(v.producto_id,
                                                                   { editar: true })"') }}
                                     {{ accion('borrar',
@@ -321,6 +339,29 @@
                                         {{ icono('lapiz', clases='w-4 h-4') }}
                                     </button>
                                 </div>
+                            </div>
+
+                            {# Precios, a modo informativo: acá se ve de dónde
+                               sale el que se cobra. La aclaración aparece solo
+                               cuando el precio es propio, que es el caso en el
+                               que el de la fila no coincide con el del
+                               producto y da lugar a dudas. #}
+                            <div class="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1
+                                        text-sm text-texto-muted">
+                                <span>
+                                    USD
+                                    <span class="font-medium text-texto"
+                                          x-text="usd(v.precio_usd_efectivo)"></span>
+                                </span>
+                                <span>
+                                    Precio
+                                    <span class="font-medium text-texto"
+                                          x-text="pesos(v.precio_venta_efectivo)"></span>
+                                </span>
+                                <span x-show="v.tiene_precio_propio" x-cloak
+                                      class="text-xs text-accent">Precio propio de esta variante</span>
+                                <span x-show="!v.tiene_precio_propio && !v.es_base" x-cloak
+                                      class="text-xs text-texto-disabled">Precio del producto</span>
                             </div>
 
                             {# El SVG lo genera el backend: el checksum módulo
@@ -499,6 +540,41 @@
                         </label>
                         <input id="ev-nombre" x-model="edicionVariante.descripcion_sufijo"
                                required maxlength="60" class="campo-linea">
+                    </div>
+
+                    {# Precio propio de la variante, con el resultado en pesos
+                       al lado. Lo calcula el backend (`/precio-preview`), el
+                       mismo endpoint que usa el formulario de producto: el
+                       redondeo sale de la configuración y no puede replicarse
+                       acá sin que las dos versiones se separen. #}
+                    {# La aclaración va DEBAJO de la fila y no dentro de la
+                       celda del USD: adentro alarga esa celda y desalinea el
+                       precio en pesos, porque las dos se alinean entre sí.
+                       Es el mismo arreglo que usa la fila de precios del
+                       formulario de producto. #}
+                    <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                        <div class="flex flex-col gap-1">
+                            <label for="ev-usd" class="text-sm font-semibold text-texto-header">
+                                Precio USD propio
+                            </label>
+                            <input id="ev-usd" type="number" step="0.01" min="0.01"
+                                   x-model="edicionVariante.precio_usd"
+                                   @input.debounce.400ms="previewVariante()"
+                                   placeholder="Usa el del producto"
+                                   class="campo-linea">
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <span class="text-sm font-semibold text-texto-header">Precio Pesos</span>
+                            <p class="h-control flex items-center text-base font-medium text-texto"
+                               x-text="previewVar.precio_venta !== null
+                                       ? pesos(previewVar.precio_venta) : '—'"></p>
+                        </div>
+
+                        <p class="sm:col-span-2 -mt-3 text-xs text-texto-disabled">
+                            Vacío = usa el precio del producto. El precio en pesos lo calcula
+                            el sistema con el dólar del proveedor y el redondeo configurado.
+                        </p>
                     </div>
 
                     <div class="flex flex-col gap-1">
