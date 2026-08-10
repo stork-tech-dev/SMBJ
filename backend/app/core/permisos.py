@@ -57,6 +57,9 @@ class Recurso(str, Enum):
     VENTA_ANULAR = "venta.anular"
     STOCK_BAJA = "stock.baja"
     STOCK_AUDITORIA = "stock.auditoria"
+    # Autorizar un cambio por falla, que se hace sin código de cambio. Se
+    # asigna a roles o a usuarios sueltos desde la pantalla de permisos.
+    CAMBIO_FALLA_AUTORIZAR = "cambio.falla_autorizar"
 
     # recurso=NULL (ausencia de Recurso) = acceso general al módulo completo
 
@@ -116,6 +119,7 @@ LABEL_RECURSO: dict[Recurso, str] = {
     Recurso.VENTA_ANULAR: "Anular venta",
     Recurso.STOCK_BAJA: "Baja de stock",
     Recurso.STOCK_AUDITORIA: "Auditoría de inventario",
+    Recurso.CAMBIO_FALLA_AUTORIZAR: "Autorización de cambio por falla",
 }
 
 # A qué módulo pertenece cada recurso. Define la jerarquía del árbol de
@@ -137,6 +141,9 @@ MODULO_DE_RECURSO: dict[Recurso, Modulo] = {
     Recurso.VENTA_ANULAR: Modulo.VENTAS,
     Recurso.STOCK_BAJA: Modulo.PRODUCTOS,
     Recurso.STOCK_AUDITORIA: Modulo.PRODUCTOS,
+    # Los cambios cuelgan del flujo de ventas: los endpoints van junto a
+    # ventas y el recurso convive con VENTA_ANULAR y VENTA_DESCUENTO.
+    Recurso.CAMBIO_FALLA_AUTORIZAR: Modulo.VENTAS,
 }
 
 # Qué acciones tienen sentido en cada recurso. Las que no están listadas
@@ -162,6 +169,9 @@ ACCIONES_DE_RECURSO: dict[Recurso, tuple[str, ...]] = {
     Recurso.VENTA_ANULAR: ("eliminar",),
     Recurso.STOCK_BAJA: ("crear",),
     Recurso.STOCK_AUDITORIA: ("crear",),
+    # "crear": autorizar habilita a registrar el cambio, igual que
+    # VENTA_DESCUENTO habilita a aplicar el descuento.
+    Recurso.CAMBIO_FALLA_AUTORIZAR: ("crear",),
 }
 
 

@@ -115,3 +115,56 @@ def test_accion_invalida_falla_fuerte(db, crear_usuario):
     usuario = crear_usuario("juan", ROL_VENDEDOR)
     with pytest.raises(ValueError):
         resolver_permiso(db, usuario.id, Modulo.VENTAS, "borrar")
+
+
+def test_todo_recurso_esta_en_los_tres_mapas():
+    """
+    `Recurso` no se puede ampliar solo: `recursos_de_modulo()` y
+    `catalogo_accesos()` hacen acceso DIRECTO a `MODULO_DE_RECURSO`,
+    `ACCIONES_DE_RECURSO` y `LABEL_RECURSO`. Un valor nuevo sin su entrada
+    en los tres revienta con KeyError y se lleva puesto el árbol de
+    permisos entero, no solo su propia fila.
+
+    Este test hace que ese olvido se note acá y no en la pantalla.
+    """
+    from app.core.permisos import (
+        ACCIONES_DE_RECURSO,
+        LABEL_RECURSO,
+        MODULO_DE_RECURSO,
+        Recurso,
+    )
+
+    for recurso in Recurso:
+        assert recurso in MODULO_DE_RECURSO, f"{recurso} no tiene módulo"
+        assert recurso in ACCIONES_DE_RECURSO, f"{recurso} no tiene acciones"
+        assert recurso in LABEL_RECURSO, f"{recurso} no tiene etiqueta"
+
+
+def test_el_recurso_de_autorizar_cambio_por_falla(db, crear_usuario):
+    """
+    Recurso del módulo de cambios (sesión 08): autoriza un cambio por falla,
+    que se hace sin código de cambio.
+
+    Cuelga de VENTAS porque los cambios son parte de ese flujo — sus
+    endpoints van junto a ventas y convive con VENTA_ANULAR.
+    """
+    from app.core.permisos import (
+        Modulo,
+        Recurso,
+        recursos_de_modulo,
+        resolver_permiso,
+    )
+
+    assert Recurso.CAMBIO_FALLA_AUTORIZAR.value == "cambio.falla_autorizar"
+    assert Recurso.CAMBIO_FALLA_AUTORIZAR in recursos_de_modulo(Modulo.VENTAS)
+
+    usuario = crear_usuario("vendedor2", ROL_VENDEDOR)
+    db.flush()
+
+    # Sin asignarlo, no lo tiene: es un permiso que se concede a mano.
+    assert (
+        resolver_permiso(
+            db, usuario.id, Modulo.VENTAS, "crear", Recurso.CAMBIO_FALLA_AUTORIZAR
+        )
+        is False
+    )
