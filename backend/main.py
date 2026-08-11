@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.pages import router as pages_router
 from app.api.v1 import api_router
+from app.middleware.auth_refresh_middleware import AuthRefreshMiddleware
 from app.middleware.device_middleware import DeviceMiddleware
 from config import settings
 
@@ -55,6 +56,10 @@ app.add_middleware(
 # Identificación de dispositivos: deja request.state.device disponible y
 # gestiona la cookie device_uuid. Se saltea en rutas de infraestructura.
 app.add_middleware(DeviceMiddleware)
+
+# Renovación de la sesión: si la cookie de acceso venció y el refresh sigue
+# vivo, emite una nueva antes de que el handler mire quién es el usuario.
+app.add_middleware(AuthRefreshMiddleware)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
