@@ -7,7 +7,7 @@
 {% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
-<div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarLocales()">
+<div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarPuntosDeVenta()">
 
     {% call encabezado('Usuarios', volver_url='/configuracion', volver_texto='Configuraciones') %}
         <button type="button" @click="abrirAlta()"
@@ -45,18 +45,19 @@
             </span>
         </div>
 
-        {# Local: mismas opciones que el selector del formulario, que ya
-           están cargadas en memoria. Filtra por `local_asignado_id`, y el
-           filtrado lo resuelve el backend (Principio 5). #}
+        {# Punto de venta: mismas opciones que el selector del formulario, que
+           ya están cargadas en memoria. Filtra por `local_asignado_id` —la
+           columna conserva su nombre histórico— y el filtrado lo resuelve el
+           backend (Principio 5). #}
         <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-local">Local</label>
+            <label class="sr-only" for="f-local">Punto de Venta</label>
             <select id="f-local" x-model="filtros.local_asignado_id" @change="cargar()"
                     class="h-control w-full sm:w-[13.75rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2
                            border-borde rounded-input appearance-none focus:outline-none
                            focus:border-primary"
                     :class="filtros.local_asignado_id ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Local</option>
-                <template x-for="l in localesAsignables" :key="l.id">
+                <option value="">Punto de Venta</option>
+                <template x-for="l in puntosDeVentaAsignables" :key="l.id">
                     <option :value="l.id" x-text="l.nombre" class="text-texto"></option>
                 </template>
             </select>
@@ -181,7 +182,7 @@
                         x-text="formatearFechaCorta(detalle.usuario?.fecha_nacimiento)"></dd>
                 </div>
                 <div class="col-span-2">
-                    <dt class="text-sm text-texto-disabled">Local Asignado</dt>
+                    <dt class="text-sm text-texto-disabled">Punto de Venta</dt>
                     <dd class="font-medium"
                         x-text="detalle.usuario?.local_asignado?.nombre || '—'"></dd>
                 </div>
@@ -300,11 +301,15 @@
                         </div>
                     </div>
 
-                    {# "Local Asignado" al lado de Perfil y en caja: el diseño
-                       los muestra como la única dupla de selects. #}
+                    {# Al lado de Perfil y en caja: el diseño los muestra como
+                       la única dupla de selects.
+
+                       Dice "Punto de Venta" y no "Local Asignado" porque la
+                       lista incluye el centro de distribución y la tienda
+                       online, que no son locales. #}
                     <div class="flex flex-col gap-1">
                         <label for="u-local" class="text-sm font-semibold text-texto-header">
-                            Local Asignado
+                            Punto de Venta
                         </label>
                         <div class="relative w-full sm:w-auto">
                             <select id="u-local" x-model="form.local_asignado_id"
@@ -313,7 +318,7 @@
                                            appearance-none focus:outline-none focus:border-primary"
                                     :class="form.local_asignado_id ? 'text-texto' : 'text-texto-disabled'">
                                 <option value="">Seleccionar</option>
-                                <template x-for="l in localesAsignables" :key="l.id">
+                                <template x-for="l in puntosDeVentaAsignables" :key="l.id">
                                     <option :value="l.id" x-text="l.nombre" class="text-texto"></option>
                                 </template>
                             </select>

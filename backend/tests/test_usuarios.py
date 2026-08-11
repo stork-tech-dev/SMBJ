@@ -294,7 +294,7 @@ def test_recurso_de_otro_modulo_es_rechazado(db, crear_usuario, roles):
 
 @pytest.fixture
 def local(db, crear_usuario):
-    """Un local activo, que es lo único asignable a un usuario."""
+    """Un punto de venta de tipo local, activo."""
     from app.models.punto_de_venta import TipoPuntoVenta
     from app.services import puntos_de_venta as servicio_puntos
 
@@ -368,19 +368,58 @@ def test_celular_rechaza_lo_que_no_es_numero(invalido):
         )
 
 
-def test_local_asignado_debe_ser_un_local(db, crear_usuario, roles):
-    """Un CD o una tienda online no son asignables: el campo es 'local'."""
+def test_se_puede_asignar_cualquier_tipo_de_punto_de_venta(db, crear_usuario, roles):
+    """
+    Antes solo se aceptaban los de tipo 'local', y eso dejaba afuera al centro
+    de distribución y a la tienda online, donde también trabaja gente.
+
+    El tipo no cambia nada del sistema: `local_asignado` no alimenta ningún
+    cálculo, solo se muestra en el listado y en la ficha.
+    """
     from app.models.punto_de_venta import TipoPuntoVenta
     from app.services import puntos_de_venta as servicio_puntos
 
     autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
     cd = servicio_puntos.crear_punto(db, autor, "CD Central", TipoPuntoVenta.CD)
+    online = servicio_puntos.crear_punto(db, autor, "Tienda Online", TipoPuntoVenta.ONLINE)
 
-    with pytest.raises(servicio_roles.ReglaDeNegocio, match="tipo local"):
-        servicio_usuarios.crear_usuario(
-            db, autor, username="usu", nombre="X", password="Test1234!",
-            rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=cd.id,
-        )
+    en_el_cd = servicio_usuarios.crear_usuario(
+        db, autor, username="deposito", nombre="X", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=cd.id,
+    )
+    en_online = servicio_usuarios.crear_usuario(
+        db, autor, username="web", nombre="Y", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=online.id,
+    )
+
+    assert en_el_cd.local_asignado_id == cd.id
+    assert en_online.local_asignado_id == online.id
+
+
+def test_los_asignables_incluyen_el_cd_y_el_online(db, crear_usuario, local):
+    """
+    La lista que alimenta el desplegable tiene que acompañar a la regla: si
+    el servicio los acepta pero el selector no los ofrece, no se pueden elegir.
+    """
+    from app.models.punto_de_venta import TipoPuntoVenta
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    servicio_puntos.crear_punto(db, autor, "CD Central", TipoPuntoVenta.CD)
+    servicio_puntos.crear_punto(db, autor, "Tienda Online", TipoPuntoVenta.ONLINE)
+
+    tipos = {p.tipo for p in servicio_usuarios.puntos_de_venta_asignables(db)}
+
+    assert tipos == {TipoPuntoVenta.LOCAL, TipoPuntoVenta.CD, TipoPuntoVenta.ONLINE}
+
+
+def test_los_asignables_no_incluyen_los_inactivos(db, crear_usuario, local):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    from app.services import puntos_de_venta as servicio_puntos
+
+    servicio_puntos.cambiar_estado(db, autor, local.id, activo=False)
+
+    assert local.id not in {p.id for p in servicio_usuarios.puntos_de_venta_asignables(db)}
 
 
 def test_local_asignado_debe_estar_activo(db, crear_usuario, roles, local):
@@ -393,6 +432,86 @@ def test_local_asignado_debe_estar_activo(db, crear_usuario, roles, local):
         servicio_usuarios.crear_usuario(
             db, autor, username="usu", nombre="X", password="Test1234!",
             rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+        )
+
+
+def test_se_puede_editar_a_alguien_cuyo_punto_de_venta_se_desactivo(
+    db, crear_usuario, roles, local
+):
+    """
+    Desactivar un punto de venta no puede dejar a su gente imposible de
+    editar. El front manda siempre `local_asignado_id`, así que sin esto
+    cambiarle el celular a alguien fallaba con "punto de venta inactivo".
+
+    Conservar el que ya tenía no es asignarlo.
+    """
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    usuario = servicio_usuarios.crear_usuario(
+        db, autor, username="usu", nombre="X", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+    servicio_puntos.cambiar_estado(db, autor, local.id, activo=False)
+
+    servicio_usuarios.editar_usuario(
+        db, autor, usuario.id, celular="3512108190", editar_celular=True,
+        local_asignado_id=local.id, editar_local=True,
+    )
+
+    assert usuario.celular == "3512108190"
+    assert usuario.local_asignado_id == local.id, "perdió la asignación al editar"
+
+
+def test_al_cambiar_de_punto_de_venta_la_respuesta_no_queda_desfasada(
+    db, crear_usuario, roles, local
+):
+    """
+    `local_asignado` se carga con lazy="joined", y cambiar la FK no la
+    refresca sola: la respuesta del PUT devolvía el id nuevo junto al NOMBRE
+    del anterior. Lo guardado siempre estuvo bien; mentía lo que se devolvía.
+    """
+    from app.models.punto_de_venta import TipoPuntoVenta
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    usuario = servicio_usuarios.crear_usuario(
+        db, autor, username="usu", nombre="X", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+    destino = servicio_puntos.crear_punto(db, autor, "Sucursal Nueva", TipoPuntoVenta.LOCAL)
+
+    servicio_usuarios.editar_usuario(
+        db, autor, usuario.id, local_asignado_id=destino.id, editar_local=True,
+    )
+
+    assert usuario.local_asignado_id == destino.id
+    assert usuario.local_asignado.id == destino.id, "la relación quedó en el anterior"
+    assert usuario.local_asignado.nombre == "Sucursal Nueva"
+
+
+def test_conservar_el_propio_no_habilita_mudarse_a_otro_inactivo(
+    db, crear_usuario, roles, local
+):
+    """
+    La excepción es solo para el punto de venta que el usuario ya tenía. Sin
+    este límite, la regla de "solo activos" no valdría para nadie que ya
+    estuviera asignado a algo.
+    """
+    from app.models.punto_de_venta import TipoPuntoVenta
+    from app.services import puntos_de_venta as servicio_puntos
+
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    usuario = servicio_usuarios.crear_usuario(
+        db, autor, username="usu", nombre="X", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+    otro = servicio_puntos.crear_punto(db, autor, "Sucursal Vieja", TipoPuntoVenta.LOCAL)
+    servicio_puntos.cambiar_estado(db, autor, otro.id, activo=False)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="inactivo"):
+        servicio_usuarios.editar_usuario(
+            db, autor, usuario.id, local_asignado_id=otro.id, editar_local=True,
         )
 
 
@@ -482,17 +601,17 @@ def test_respuesta_no_expone_el_codigo_del_local(client, db, crear_usuario, role
     assert fila["local_asignado"] == {"id": local.id, "nombre": "Patio Olmos"}
 
 
-def test_locales_asignables_no_exige_permiso_de_configuracion(
+def test_puntos_de_venta_asignables_no_exige_permiso_de_configuracion(
     client, crear_usuario, roles, dar_permiso, login, local
 ):
     """
     El selector se alimenta del endpoint del propio módulo: un supervisor
-    con permiso solo sobre usuarios tiene que ver los locales.
+    con permiso solo sobre usuarios tiene que ver los puntos de venta.
     """
     crear_usuario("sup", ROL_SUPERVISOR)
     dar_permiso(rol_id=roles[ROL_SUPERVISOR].id, modulo=Modulo.USUARIOS, ver=True)
 
-    resp = client.get("/api/v1/usuarios/locales-asignables", headers=login("sup"))
+    resp = client.get("/api/v1/usuarios/puntos-de-venta-asignables", headers=login("sup"))
     assert resp.status_code == 200
     assert [l["nombre"] for l in resp.json()] == ["Patio Olmos"]
 
