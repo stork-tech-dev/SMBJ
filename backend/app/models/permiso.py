@@ -45,10 +45,22 @@ class RolPermiso(_PermisoMixin, Base):
 
     rol: Mapped["Rol"] = relationship(back_populates="permisos")
 
-    # PostgreSQL admite múltiples NULL en un UNIQUE: cada rol tiene una
-    # fila general por módulo (recurso=NULL) y N filas por recurso.
+    # Cada rol tiene una fila general por módulo (recurso=NULL) y N filas por
+    # recurso.
+    #
+    # `nulls_not_distinct` es lo que hace que la general tampoco se pueda
+    # repetir. Sin eso, PostgreSQL admite múltiples NULL en un UNIQUE —NULL no
+    # es igual a NULL—, y ahí se colaron 45 filas duplicadas que rompían el
+    # guardado de accesos con un 500. De paso es lo que hace que el
+    # `ON CONFLICT ... DO NOTHING` del seed sirva para algo.
     __table_args__ = (
-        UniqueConstraint("rol_id", "modulo", "recurso", name="uq_rol_permisos_rol_modulo_recurso"),
+        UniqueConstraint(
+            "rol_id",
+            "modulo",
+            "recurso",
+            name="uq_rol_permisos_rol_modulo_recurso",
+            postgresql_nulls_not_distinct=True,
+        ),
     )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
@@ -64,9 +76,15 @@ class UsuarioPermiso(_PermisoMixin, Base):
 
     usuario: Mapped["Usuario"] = relationship(back_populates="permisos")
 
+    # `nulls_not_distinct` por el mismo motivo que en RolPermiso: sin eso, el
+    # permiso general de un módulo (recurso=NULL) se puede duplicar.
     __table_args__ = (
         UniqueConstraint(
-            "usuario_id", "modulo", "recurso", name="uq_usuario_permisos_usuario_modulo_recurso"
+            "usuario_id",
+            "modulo",
+            "recurso",
+            name="uq_usuario_permisos_usuario_modulo_recurso",
+            postgresql_nulls_not_distinct=True,
         ),
     )
 
