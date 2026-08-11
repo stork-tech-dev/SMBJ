@@ -790,12 +790,18 @@ def test_el_listado_va_alfabetico_por_descripcion(db, autor, config, categoria, 
     castellano— y no este código; compararlo contra el `sorted()` de Python,
     que ordena por punto de código y la manda al final de todo, probaría una
     diferencia entre dos algoritmos ajenos en vez de nuestro ORDER BY.
+
+    Las minúsculas se fuerzan sobre el modelo porque `crear_producto` ahora
+    capitaliza la inicial. Es el estado real de las filas creadas antes de la
+    migración 0015 y de cualquier escritura que no pase por el servicio: el
+    `lower()` del ORDER BY las tiene que seguir ordenando bien.
     """
     for nombre in ["zapato", "Alpargata", "alfajor", "Mocasin"]:
-        servicio.crear_producto(
+        creado = servicio.crear_producto(
             db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"), descripcion=nombre,
         )
+        creado.descripcion = nombre
     multi = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
         precio_usd=Decimal("10"), descripcion="Mocasín",
@@ -840,6 +846,85 @@ def test_no_se_puede_dejar_sin_descripcion_al_editar(db, autor, producto):
 
     db.refresh(producto)
     assert producto.descripcion == "Zapatilla running"
+
+
+# ============================================================================
+# CAPITALIZACIÓN DE LA DESCRIPCIÓN
+# ============================================================================
+
+
+def test_la_descripcion_se_guarda_con_la_inicial_en_mayuscula(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Se normaliza al GUARDAR y no al mostrar, así queda igual en el listado,
+    en la ficha, en la edición y en cualquier pantalla que se agregue después,
+    sin que ninguna tenga que acordarse de formatearla.
+    """
+    creado = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="anillo de plata",
+    )
+
+    assert creado.descripcion == "Anillo de plata"
+
+
+def test_la_capitalizacion_no_toca_el_resto_del_texto(
+    db, autor, config, categoria, proveedor
+):
+    """
+    El error fácil acá es usar `.capitalize()` o `.title()`, que bajan todo
+    lo que sigue: "PLATA" y "18K" son parte del dato y tienen que sobrevivir.
+    """
+    creado = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="anillo de PLATA 18K",
+    )
+
+    assert creado.descripcion == "Anillo de PLATA 18K"
+
+
+def test_una_descripcion_que_arranca_con_numero_queda_igual(
+    db, autor, config, categoria, proveedor
+):
+    """`upper()` sobre un dígito no hace nada: no hay nada que romper."""
+    creado = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="925 plata cadena",
+    )
+
+    assert creado.descripcion == "925 plata cadena"
+
+
+def test_la_edicion_tambien_capitaliza(db, autor, producto):
+    """
+    Si solo lo hiciera el alta, la primera edición desharía en un producto lo
+    que la migración 0015 arregló en todos.
+    """
+    servicio.editar_producto(db, autor, producto.id, descripcion="zapatilla nueva")
+
+    db.refresh(producto)
+    assert producto.descripcion == "Zapatilla nueva"
+
+
+def test_capitalizar_no_rompe_la_busqueda_en_minuscula(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Se busca tipeando en minúscula. El filtro usa `ilike`, así que la
+    mayúscula guardada no lo puede afectar — pero es lo primero que notaría
+    un vendedor si se rompiera.
+    """
+    servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="anillo de plata",
+    )
+    db.flush()
+
+    filas, total = servicio.listar_variantes(db, busqueda="anillo")
+
+    assert total == 1
+    assert filas[0].producto.descripcion == "Anillo de plata"
 
 
 def test_existe_el_indice_del_orden_alfabetico(db):

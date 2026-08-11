@@ -26,7 +26,12 @@ from app.core.codigos import (
     codigo_es_valido,
     digito_verificador,
 )
-from app.core.utils import ahora_db, normalizar_texto, redondear_hacia_arriba
+from app.core.utils import (
+    ahora_db,
+    capitalizar_inicial,
+    normalizar_texto,
+    redondear_hacia_arriba,
+)
 from app.models.categoria import Categoria
 from app.models.configuracion import ConfiguracionSistema
 from app.models.producto import Estacionalidad, Producto, Variante
@@ -158,11 +163,17 @@ def _validar_descripcion(descripcion: str) -> str:
     así que sin este control un valor de solo espacios llegaría como NULL a
     una columna NOT NULL: reventaría con un error de base en vez de decir
     qué está mal.
+
+    La inicial se pone en mayúscula acá y no en la pantalla porque este es el
+    único embudo por el que se escribe la descripción —`crear_producto` y
+    `editar_producto`—: así queda igual en el listado, en la ficha, en la
+    edición y en cualquier pantalla que se agregue después, sin que ninguna
+    tenga que acordarse de formatearla.
     """
     limpia = normalizar_texto(descripcion)
     if not limpia:
         raise ReglaDeNegocio("La descripción del producto es obligatoria")
-    return limpia
+    return capitalizar_inicial(limpia)
 
 
 def _validar_nombre_variante(descripcion_sufijo: str) -> str:

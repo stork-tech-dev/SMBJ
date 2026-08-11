@@ -85,3 +85,23 @@ def normalizar_texto(valor: str | None) -> str | None:
         return None
     limpio = " ".join(valor.split())
     return limpio or None
+
+
+def capitalizar_inicial(valor: str) -> str:
+    """
+    Primera letra en mayúscula, **sin tocar el resto**.
+
+    No es `.capitalize()` ni `.title()`: esos bajan todo lo demás y
+    arruinarían "Anillo de PLATA 925" o "Cadena 18K", donde las mayúsculas
+    son parte del dato.
+
+    Si el texto arranca con un número —"925 plata"— queda igual, porque
+    `upper()` sobre un dígito no hace nada.
+
+    La migración 0015 hace exactamente esto en SQL
+    (`upper(left(x,1)) || substr(x,2)`); si cambia una, tiene que cambiar
+    la otra.
+    """
+    # `valor[:1]` y no `valor[0]`: con string vacío devuelve "" en vez de
+    # reventar con IndexError.
+    return valor[:1].upper() + valor[1:]
