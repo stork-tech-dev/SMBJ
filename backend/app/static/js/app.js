@@ -90,9 +90,49 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+/**
+ * Sesión terminada: avisa y manda al login.
+ *
+ * Con `AuthRefreshMiddleware` en el backend, un 401 ya no significa "venció
+ * el token de 30 minutos" —eso se renueva solo— sino que tampoco hay refresh:
+ * pasaron los 7 días o alguien cerró sesión. Es el final del camino, así que
+ * no se reintenta nada.
+ *
+ * `yendoAlLogin` evita que varios requests en paralelo disparen tres toasts y
+ * tres redirecciones a la vez.
+ */
+let yendoAlLogin = false;
+
+function sesionTerminada() {
+    if (yendoAlLogin) return;
+    yendoAlLogin = true;
+    window.toast('Tu sesión venció. Volvé a ingresar.', 'error');
+    setTimeout(() => { window.location.href = '/login'; }, 1200);
+}
+
+// Envolver `fetch` una sola vez acá evita que cada pantalla tenga que
+// acordarse de mirar el 401 (Principio 2: DRY). No renueva ni reintenta: de
+// eso se ocupa el middleware, mucho antes de que la respuesta llegue.
+const fetchOriginal = window.fetch.bind(window);
+window.fetch = async function (...args) {
+    const respuesta = await fetchOriginal(...args);
+    if (respuesta.status === 401) {
+        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+        // El login contesta 401 con las credenciales mal: ahí el 401 es la
+        // respuesta esperada, no una sesión caída.
+        if (!url.includes('/api/v1/auth/')) sesionTerminada();
+    }
+    return respuesta;
+};
+
 // Cualquier respuesta de error de la API muestra un toast, sin que cada
 // pantalla tenga que manejarlo (Principio 2: DRY).
 document.addEventListener('htmx:responseError', function (evt) {
+    if (evt.detail.xhr.status === 401) {
+        sesionTerminada();
+        return;
+    }
+
     let mensaje = 'Ocurrió un error al procesar la solicitud.';
     try {
         const cuerpo = JSON.parse(evt.detail.xhr.responseText);

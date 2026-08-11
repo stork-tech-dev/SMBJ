@@ -357,6 +357,14 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
         token = autorizacion[7:]
 
     if not token:
+        # `access_renovado` lo deja `AuthRefreshMiddleware` cuando la cookie
+        # venció y la pudo renovar con el refresh token. Va ANTES que la
+        # cookie porque la del request sigue siendo la vieja: la nueva recién
+        # existe en la response, así que si no se mirara acá el usuario se
+        # comería un 401 con la sesión ya renovada.
+        token = getattr(request.state, "access_renovado", None)
+
+    if not token:
         token = request.cookies.get(settings.JWT_COOKIE_NAME)
 
     if not token:

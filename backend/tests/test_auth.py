@@ -139,6 +139,214 @@ def test_refresh_emite_access_nuevo(client, crear_usuario):
     assert resp.json()["access_token"]
 
 
+# ============================================================================
+# RENOVACIÓN AUTOMÁTICA DE LA SESIÓN (AuthRefreshMiddleware)
+# ============================================================================
+
+
+class _SesionDeTest:
+    """
+    La sesión del test, con `close()` desactivado.
+
+    El middleware no puede usar `Depends`, así que abre y cierra la suya. Acá
+    se le pasa la del test —la de él no vería nada, porque los datos del login
+    viven en una transacción que nunca se commitea— y se le saca el `close()`,
+    que cerraría la sesión que el fixture todavía necesita.
+    """
+
+    def __init__(self, sesion):
+        self._sesion = sesion
+
+    def __getattr__(self, nombre):
+        return getattr(self._sesion, nombre)
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def middleware_ve_la_base(monkeypatch, db):
+    from app.middleware import auth_refresh_middleware as mw
+
+    monkeypatch.setattr(mw, "SessionLocal", lambda: _SesionDeTest(db))
+
+
+def _vencer_el_access(client):
+    """Deja la cookie de acceso vencida, con el refresh intacto."""
+    client.cookies.set(
+        "soleil_access_token",
+        servicio_auth._crear_token({"sub": "1"}, timedelta(minutes=-5), tipo="access"),
+    )
+
+
+def test_la_sesion_se_renueva_sola_cuando_vence_el_access(
+    client, crear_usuario, middleware_ve_la_base
+):
+    """
+    El corazón del cambio: con el access vencido y el refresh vivo, se sigue
+    trabajando sin volver a loguearse.
+
+    Antes de esto la sesión duraba 30 minutos contados desde el login —no
+    desde la última actividad— y el refresh de 7 días no lo usaba nadie.
+    """
+    crear_usuario("juan", ROL_VENDEDOR)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    _vencer_el_access(client)
+    resp = client.get("/api/v1/auth/me")
+
+    assert resp.status_code == 200
+    assert resp.json()["username"] == "juan"
+    # Y se llevó una cookie nueva, para no renovar en cada request.
+    assert "soleil_access_token" in resp.cookies
+
+
+def test_la_renovacion_tambien_vale_para_las_paginas(
+    client, crear_usuario, middleware_ve_la_base
+):
+    """
+    Las páginas HTML no pasan por el mismo camino que la API —usan
+    `requiere_sesion`, que redirige a /login en vez de dar 401—, así que se
+    prueban aparte: es donde más se nota si deja de andar.
+    """
+    crear_usuario("juan", ROL_VENDEDOR)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    _vencer_el_access(client)
+    resp = client.get("/", follow_redirects=False)
+
+    assert resp.status_code == 200, "la página redirigió al login en vez de renovar"
+
+
+def test_no_renueva_si_se_cerro_la_sesion(client, crear_usuario, middleware_ve_la_base):
+    """
+    El test que protege el logout. Si el middleware renovara sin mirar
+    `sesiones.revocada`, cerrar sesión no serviría de nada: alcanzaría con
+    esperar a que venza el access para volver a entrar con la cookie vieja.
+    """
+    crear_usuario("juan", ROL_VENDEDOR)
+    login = client.post(
+        "/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"}
+    ).json()
+
+    # Control positivo: con la sesión viva, este mismo pedido se renueva. Sin
+    # él el test daría verde aunque el middleware no existiera, porque un 401
+    # es también lo que pasa cuando no hay ninguna renovación.
+    _vencer_el_access(client)
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+    client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": login["refresh_token"]},
+        headers={"Authorization": f"Bearer {login['access_token']}"},
+    )
+
+    # La cookie de refresh sigue en el navegador, pero su sesión está revocada.
+    client.cookies.set("soleil_refresh_token", login["refresh_token"])
+    _vencer_el_access(client)
+
+    assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_no_renueva_con_el_refresh_tambien_vencido(
+    client, crear_usuario, middleware_ve_la_base
+):
+    """Los 7 días son el techo: pasados, se vuelve a entrar."""
+    crear_usuario("juan", ROL_VENDEDOR)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    _vencer_el_access(client)
+    client.cookies.set(
+        "soleil_refresh_token",
+        servicio_auth._crear_token(
+            {"sub": "1", "jti": "x"}, timedelta(days=-1), tipo="refresh"
+        ),
+    )
+
+    assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_no_renueva_a_un_usuario_desactivado(
+    client, db, crear_usuario, middleware_ve_la_base
+):
+    """
+    Dar de baja a alguien tiene que sacarlo, no esperar 7 días. Lo controla
+    `refrescar_access_token`, que es la misma función del endpoint.
+    """
+    usuario = crear_usuario("juan", ROL_VENDEDOR)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    # Control positivo, por el mismo motivo que en el test del logout.
+    _vencer_el_access(client)
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+    usuario.activo = False
+    db.flush()
+
+    _vencer_el_access(client)
+    assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_renovar_no_abre_una_sesion_nueva(client, db, crear_usuario, middleware_ve_la_base):
+    """
+    Sigue siendo la MISMA sesión: si cada renovación insertara una fila,
+    `sesiones` crecería una por usuario cada 30 minutos y el logout dejaría
+    de alcanzar para cerrarlas todas.
+    """
+    from app.models.sesion import Sesion
+
+    crear_usuario("juan", ROL_VENDEDOR)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+    antes = len(db.execute(select(Sesion)).scalars().all())
+
+    _vencer_el_access(client)
+    client.get("/api/v1/auth/me")
+    client.get("/api/v1/auth/me")
+
+    assert len(db.execute(select(Sesion)).scalars().all()) == antes
+
+
+def test_el_bearer_vencido_no_lo_tapa_la_cookie(
+    client, crear_usuario, middleware_ve_la_base
+):
+    """
+    Una credencial explícita manda: si alguien manda un Bearer vencido, la
+    respuesta es 401 y no una sesión sacada de la cookie del navegador, que
+    podría ser de otro usuario.
+    """
+    crear_usuario("juan", ROL_VENDEDOR)
+    client.post("/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"})
+
+    vencido = servicio_auth._crear_token({"sub": "1"}, timedelta(minutes=-5), tipo="access")
+    resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {vencido}"})
+
+    assert resp.status_code == 401
+
+
+def test_el_logout_no_recibe_una_cookie_nueva(client, crear_usuario, middleware_ve_la_base):
+    """
+    El middleware corre DESPUÉS del handler para agregar la cookie, así que
+    sin la comprobación de "el handler ya la tocó" le devolvería al usuario un
+    access token válido por 30 minutos justo al cerrar sesión.
+    """
+    crear_usuario("juan", ROL_VENDEDOR)
+    login = client.post(
+        "/api/v1/auth/login", json={"username": "juan", "password": "Test1234!"}
+    ).json()
+
+    _vencer_el_access(client)
+    resp = client.post("/api/v1/auth/logout", json={"refresh_token": login["refresh_token"]})
+
+    assert resp.status_code == 200, "el logout tiene que funcionar con el access vencido"
+    # La única cookie de acceso que emite es la que la borra.
+    cookies = [v for k, v in resp.headers.items() if k.lower() == "set-cookie"]
+    de_acceso = [c for c in cookies if c.startswith("soleil_access_token=")]
+    assert de_acceso, "el logout tiene que borrar la cookie"
+    assert all('soleil_access_token=""' in c or "Max-Age=0" in c for c in de_acceso), (
+        f"el logout devolvió una cookie de acceso viva: {de_acceso}"
+    )
+
+
 def test_logout_invalida_el_refresh(client, crear_usuario):
     crear_usuario("juan", ROL_VENDEDOR)
     login = client.post(
