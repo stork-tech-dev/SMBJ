@@ -444,11 +444,78 @@ def test_los_dos_selectores_de_categoria_muestran_el_camino_completo(client, cre
     client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
 
     html = client.get("/productos").text
-    assert html.count('x-text="rutaCategoria(c)"') == 2, (
+    # Los dos se lo pasan al combobox como la función que arma la etiqueta.
+    assert html.count("texto: (o) => rutaCategoria(o)") == 2, (
         "los dos selectores de categoría tienen que usar el camino completo"
     )
     # La sangría con puntos era lo que los hacía distintos.
     assert ".repeat(" not in html
+
+
+def test_el_selector_de_categoria_se_puede_buscar_tipeando(client, crear_usuario):
+    """
+    Era un `<select>` nativo, que no se filtra: tipear ahí solo salta por la
+    primera letra, y como cada opción muestra el camino completo, todas las de
+    una misma rama empiezan igual ("Joyas - …"). Con el árbol de 5 niveles de
+    una bijouterie, encontrar la categoría era bajar con la rueda.
+
+    Ahora es un combobox: un input que filtra la lista mientras se escribe.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Los dos campos son el mismo componente.
+    assert html.count("comboboxBuscable({") == 2
+
+    for campo in ("f-categoria", "pr-categoria"):
+        assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
+        # Sin esto un lector de pantalla lee un campo de texto suelto y no
+        # anuncia ni que hay lista ni cuál fila está marcada.
+        assert f'aria-controls="{campo}-lista"' in html
+
+    # El desplegable viejo no puede quedar dando vueltas al lado del nuevo.
+    assert 'x-model="filtros.categoria_id"' not in html
+    assert 'x-model="form.categoria_id"' not in html
+
+
+def test_el_alta_de_producto_exige_categoria_sin_el_required(client, crear_usuario):
+    """
+    La obligatoriedad la daba el `required` del `<select>`. El combobox es un
+    input de texto libre —lo que se tipea es la búsqueda, no el valor— así que
+    un `required` ahí exigiría texto, no una categoría elegida: bastaría dejar
+    a medio escribir "ani" para que el navegador diera el formulario por bueno.
+
+    Pasa a exigirlo el botón, como en los dos modales de variante.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert '"form.guardando || !form.categoria_id"' in html, (
+        "el botón Guardar tiene que quedar deshabilitado sin categoría"
+    )
+
+
+def test_el_filtro_de_categoria_recarga_y_se_puede_limpiar(client, crear_usuario):
+    """
+    El `<select>` del filtro traía dos cosas que el combobox tiene que
+    conservar: recargaba la tabla al elegir (`@change="cargar()"`) y tenía una
+    opción vacía para sacar el filtro. Sin la primera el filtro no se aplica;
+    sin la segunda no hay forma de volver al catálogo completo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "filtros.categoria_id = v; cargar();" in html
+    assert "vacio: 'Todas las categorías'" in html
+
+    # El del formulario NO la lleva: la categoría del producto es obligatoria.
+    assert html.count("vacio: null") == 1
 
 
 def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario):

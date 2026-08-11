@@ -58,6 +58,162 @@ window.toast = function (mensaje, tipo = 'info', duracion = 4000) {
 };
 
 /**
+ * Texto comparable: sin mayúsculas y sin acentos.
+ *
+ * Se descompone en NFD para separar la letra de su tilde y se borran los
+ * diacríticos, así "Diseño" se encuentra escribiendo "diseno" y "Bijouterie"
+ * escribiendo "bijou". Sin esto habría que acertar el acento para que el
+ * buscador devuelva algo, que es exactamente lo que se quiere evitar.
+ */
+const normalizarTexto = (valor) =>
+    String(valor ?? '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLowerCase();
+
+/**
+ * Estado de un combobox: un campo de texto que filtra una lista mientras se
+ * escribe. Lo usa el macro `components/combobox.html`.
+ *
+ * Existe porque un `<select>` nativo no se puede filtrar —tipear solo salta
+ * por la primera letra— y las categorías se muestran con su camino completo
+ * ("Joyas - Anillos - Plata"), así que todas las de una misma rama empiezan
+ * igual y ni ese salto sirve.
+ *
+ * Config (todo son funciones para que se evalúen contra el scope de Alpine
+ * que envuelve al componente, y sigan siendo reactivas):
+ *   id        prefijo de los ids de cada fila, para `aria-activedescendant`.
+ *   opciones  () => array de objetos con `id`.
+ *   texto     (o) => etiqueta visible de una opción.
+ *   valor     () => id seleccionado.
+ *   elegir    (id) => guarda el elegido y dispara lo que corresponda.
+ *   vacio     etiqueta de una primera opción que limpia la selección, o null.
+ */
+window.comboboxBuscable = function ({ id, opciones, texto, valor, elegir, vacio = null }) {
+    return {
+        abierto: false,
+        consulta: '',
+        resaltado: 0,
+        // Al abrir se muestra la lista ENTERA aunque el campo tenga escrito
+        // el camino de la opción ya elegida: filtrar por él dejaría una sola
+        // fila y no se podría ver el resto sin borrar a mano.
+        filtrando: false,
+
+        /** La opción vacía va primera y se filtra como cualquier otra. */
+        todas() {
+            const lista = opciones() || [];
+            return vacio === null ? lista : [{ id: '', etiquetaVacio: vacio }, ...lista];
+        },
+
+        etiquetaDe(opcion) {
+            if (!opcion) return '';
+            return opcion.etiquetaVacio !== undefined ? opcion.etiquetaVacio : texto(opcion);
+        },
+
+        /** Se compara como texto: el filtro guarda strings y el form, números. */
+        opcionElegida() {
+            const actual = valor();
+            if (actual === '' || actual === null || actual === undefined) return null;
+            return this.todas().find((o) => String(o.id) === String(actual)) || null;
+        },
+
+        /**
+         * Todos los términos tipeados tienen que aparecer, en cualquier orden:
+         * "plata anillo" encuentra "Joyas - Anillos - Plata". Buscar la frase
+         * completa obligaría a escribir la ruta en el orden exacto del árbol.
+         */
+        filtradas() {
+            const lista = this.todas();
+            if (!this.filtrando) return lista;
+
+            const terminos = normalizarTexto(this.consulta).split(/\s+/).filter(Boolean);
+            if (!terminos.length) return lista;
+
+            return lista.filter((o) => {
+                const etiqueta = normalizarTexto(this.etiquetaDe(o));
+                return terminos.every((termino) => etiqueta.includes(termino));
+            });
+        },
+
+        idOpcion(indice) {
+            return `${id}-opcion-${indice}`;
+        },
+
+        /**
+         * Deja el campo mostrando lo que está elegido. Corre en un `x-effect`,
+         * así que también reacciona cuando el valor lo cambia otro —abrir la
+         * edición de un producto ya cargado— y no solo cuando se elige acá.
+         *
+         * No toca nada con la lista abierta: ahí el texto es lo que el usuario
+         * está escribiendo. Y no lee `this.consulta`, que es la variable que
+         * escribe, para no reactivarse a sí misma.
+         */
+        sincronizar() {
+            const etiqueta = this.etiquetaDe(this.opcionElegida());
+            if (!this.abierto) this.consulta = etiqueta;
+        },
+
+        abrir() {
+            this.abierto = true;
+            this.filtrando = false;
+            const elegida = this.opcionElegida();
+            const lista = this.todas();
+            this.resaltado = elegida ? Math.max(lista.indexOf(elegida), 0) : 0;
+            this.$nextTick(() => this.desplazarALaResaltada());
+        },
+
+        /**
+         * Cierra sin cambiar el valor y devuelve el campo al camino de la
+         * opción elegida. Si no, quedaría mostrando "ani" mientras el producto
+         * tiene guardado "Joyas - Anillos": el campo estaría mintiendo.
+         */
+        cerrar() {
+            this.abierto = false;
+            this.filtrando = false;
+            this.consulta = this.etiquetaDe(this.opcionElegida());
+        },
+
+        alEscribir() {
+            this.abierto = true;
+            this.filtrando = true;
+            this.resaltado = 0;
+        },
+
+        seleccionar(opcion) {
+            if (!opcion) return;
+            elegir(opcion.id);
+            this.abierto = false;
+            this.filtrando = false;
+            this.consulta = this.etiquetaDe(opcion);
+        },
+
+        /* --- Teclado --- */
+
+        mover(paso) {
+            if (!this.abierto) {
+                this.abrir();
+                return;
+            }
+            const total = this.filtradas().length;
+            if (!total) return;
+            this.resaltado = Math.min(Math.max(this.resaltado + paso, 0), total - 1);
+            this.$nextTick(() => this.desplazarALaResaltada());
+        },
+
+        elegirResaltada() {
+            this.seleccionar(this.filtradas()[this.resaltado]);
+        },
+
+        /** `block: 'nearest'` mueve solo la lista, nunca la página de atrás. */
+        desplazarALaResaltada() {
+            document
+                .getElementById(this.idOpcion(this.resaltado))
+                ?.scrollIntoView({ block: 'nearest' });
+        },
+    };
+};
+
+/**
  * Cierra la sesión: revoca el refresh token y borra las cookies.
  * Se llama desde el menú de usuario del header.
  */

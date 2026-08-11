@@ -1,0 +1,125 @@
+{# ===========================================================================
+   Macro: desplegable con buscador.
+
+   Un campo de texto que filtra la lista mientras se escribe, en lugar de un
+   `<select>` nativo. Se armó para "Categoría", que muestra el camino completo
+   de cada nodo ("Joyas - Anillos - Plata"): con el select había que recorrer
+   la lista entera con la rueda, porque tipear en un select solo salta por la
+   primera letra y todas las ramas de una misma raíz empiezan igual.
+
+   El estado vive en `window.comboboxBuscable` (static/js/app.js): acá está
+   solo el marcado. El filtro del listado y el formulario de alta usan el
+   mismo componente con clases distintas, que es para lo que está `clases`
+   (Principio 2: el comportamiento se escribe una sola vez).
+
+   Parámetros:
+     id         id del input y destino del `for` del label.
+     opciones   expresión Alpine con el array de opciones (ej. `categorias`).
+                Cada una necesita `id`.
+     texto      expresión Alpine que rinde la etiqueta visible de una opción,
+                con `o` como variable (ej. `rutaCategoria(o)`).
+     modelo     expresión Alpine del id elegido, de lectura y escritura
+                (ej. `form.categoria_id`).
+     etiqueta   texto del label. Con `label_oculto` queda solo para lectores
+                de pantalla.
+     placeholder  texto del campo vacío.
+     vacio      etiqueta de una primera opción que LIMPIA la selección
+                (ej. "Todas las categorías"). Vacío = no se puede deseleccionar,
+                que es lo que corresponde a un campo obligatorio.
+                Va dentro de un string de JavaScript entre comillas simples,
+                así que no puede llevar apóstrofo.
+     al_elegir  sentencia Alpine a ejecutar después de elegir (ej. `cargar()`).
+     clases     clases del input.
+     obligatorio  agrega el asterisco rojo al label.
+
+   Uso:
+     {% from "components/combobox.html" import combobox %}
+     {{ combobox('pr-categoria', 'categorias', 'rutaCategoria(o)',
+                 'form.categoria_id', etiqueta='Categoría', obligatorio=true) }}
+   =========================================================================== #}
+
+{% from "components/icons.html" import icono %}
+
+{% macro combobox(id, opciones, texto, modelo, etiqueta='', placeholder='Seleccionar',
+                  vacio='', al_elegir='', clases='', label_oculto=false,
+                  obligatorio=false) %}
+<div x-data="comboboxBuscable({
+                 id: '{{ id }}',
+                 opciones: () => {{ opciones }},
+                 texto: (o) => {{ texto }},
+                 valor: () => {{ modelo }},
+                 elegir: (v) => { {{ modelo }} = v; {{ al_elegir }} },
+                 vacio: {% if vacio %}'{{ vacio }}'{% else %}null{% endif %},
+             })"
+     {# Mantiene el campo mostrando lo elegido aunque el valor lo cambie otro:
+        al abrir la EDICIÓN de un producto, `modelo` ya viene con su categoría
+        y el input tiene que aparecer con el camino puesto, no en blanco. #}
+     x-effect="sincronizar()"
+     @click.outside="cerrar()">
+
+    <label for="{{ id }}"
+           class="{% if label_oculto %}sr-only{% else %}block mb-1 text-sm font-semibold text-texto-header{% endif %}">
+        {{ etiqueta }}{% if obligatorio %}<span class="text-danger ml-0.5">*</span>{% endif %}
+    </label>
+
+    {# El input, la flecha y la lista van juntos en un `relative` propio: así
+       la lista se ubica debajo del CAMPO y no del label. #}
+    <div class="relative">
+        <input id="{{ id }}" type="text" x-model="consulta"
+               placeholder="{{ placeholder }}"
+               {# El autocompletado del navegador tapa la lista con su propio
+                  desplegable de valores ya tipeados. #}
+               autocomplete="off" role="combobox" aria-autocomplete="list"
+               aria-controls="{{ id }}-lista"
+               :aria-expanded="abierto ? 'true' : 'false'"
+               :aria-activedescendant="abierto ? idOpcion(resaltado) : null"
+               class="{{ clases }}"
+               @focus="abrir(); $event.target.select()"
+               {# El `focus` no vuelve a dispararse si el campo YA tiene el
+                  cursor, así que sin esto el clic para reabrir la lista
+                  después de elegir no hacía nada. Con la lista abierta no se
+                  toca: ahí el clic es para mover el cursor dentro del texto. #}
+               @click="if (!abierto) abrir()"
+               @input="alEscribir()"
+               @keydown.arrow-down.prevent="mover(1)"
+               @keydown.arrow-up.prevent="mover(-1)"
+               {# Enter elige la fila marcada; sin el `preventDefault` además
+                  enviaría el formulario que envuelve al campo. #}
+               @keydown.enter="if (abierto) { $event.preventDefault(); elegirResaltada(); }"
+               {# Escape cierra la lista y NO el modal: el `stopPropagation` frena
+                  el `@keydown.escape.window` del diálogo, que si no cerraría todo
+                  el formulario y se perdería lo cargado. Con la lista ya cerrada
+                  se deja pasar, y ahí sí cierra el modal. #}
+               @keydown.escape="if (abierto) { $event.stopPropagation(); cerrar(); }"
+               @keydown.tab="cerrar()">
+
+        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
+            {{ icono('chevron') }}
+        </span>
+
+        <ul id="{{ id }}-lista" x-show="abierto" x-cloak role="listbox"
+            class="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-y-auto
+                   bg-surface border border-borde rounded-input
+                   shadow-[0_4px_12px_0_rgba(0,0,0,0.15)]">
+
+            <template x-for="(o, indice) in filtradas()" :key="o.id">
+                {# `min-h-toque`: es el blanco táctil mínimo del Principio 6, y
+                   acá importa más que en otros lados porque las filas están
+                   pegadas una a la otra. #}
+                <li :id="idOpcion(indice)" role="option"
+                    :aria-selected="String(o.id) === String({{ modelo }}) ? 'true' : 'false'"
+                    @click="seleccionar(o)"
+                    @mouseenter="resaltado = indice"
+                    class="flex items-center min-h-toque px-3 py-2 text-base cursor-pointer"
+                    :class="indice === resaltado ? 'bg-primary/10 text-texto' : 'text-texto'"
+                    x-text="etiquetaDe(o)"></li>
+            </template>
+
+            <li x-show="!filtradas().length"
+                class="flex items-center min-h-toque px-3 py-2 text-base text-texto-muted">
+                Sin resultados
+            </li>
+        </ul>
+    </div>
+</div>
+{% endmacro %}

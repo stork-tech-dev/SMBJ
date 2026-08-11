@@ -3,6 +3,7 @@
 {% extends "base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/combobox.html" import combobox %}
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
 
@@ -41,21 +42,17 @@
            Deportivas"): dos ramas pueden tener hojas con el mismo nombre y
            el nombre suelto no alcanza para distinguirlas.
            Elegir una trae también sus subcategorías (lo resuelve el backend). #}
-        <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-categoria">Categoría</label>
-            <select id="f-categoria" x-model="filtros.categoria_id" @change="cargar()"
-                    class="h-control w-full sm:w-[18rem] pl-4 pr-10 text-sm font-semibold
-                           bg-surface border-2 border-borde rounded-input appearance-none
-                           focus:outline-none focus:border-primary"
-                    :class="filtros.categoria_id ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Categoría</option>
-                <template x-for="c in categorias" :key="c.id">
-                    <option :value="c.id" x-text="rutaCategoria(c)" class="text-texto"></option>
-                </template>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
-                {{ icono('chevron') }}
-            </span>
+        <div class="w-full sm:w-[18rem]">
+            {{ combobox('f-categoria', 'categorias', 'rutaCategoria(o)',
+                        'filtros.categoria_id',
+                        etiqueta='Categoría', label_oculto=true,
+                        placeholder='Categoría',
+                        vacio='Todas las categorías',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
         </div>
 
         <div class="relative w-full sm:w-auto">
@@ -648,30 +645,23 @@
                     {# Categoría ocupa la fila entera: muestra el camino
                        completo y a media fila los caminos largos se cortaban
                        con puntos suspensivos en el select cerrado. #}
-                    <div class="sm:col-span-2 flex flex-col gap-1">
-                        <label for="pr-categoria" class="text-sm font-semibold text-texto-header">
-                            Categoría<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        <div class="relative">
-                            <select id="pr-categoria" x-model="form.categoria_id" required
-                                    class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
-                                           border-[0.5px] border-texto-disabled rounded-input
-                                           appearance-none focus:outline-none focus:border-primary">
-                                {# Mismo texto que el filtro del listado: el
-                                   camino completo ("Calzado - Zapatillas -
-                                   Deportivas"). La sangría con puntos no
-                                   alcanzaba: dos ramas pueden tener hojas con
-                                   el mismo nombre y, al elegir, en el select
-                                   cerrado solo se ve la hoja. #}
-                                <option value="">Seleccionar</option>
-                                <template x-for="c in categorias" :key="c.id">
-                                    <option :value="c.id" x-text="rutaCategoria(c)"></option>
-                                </template>
-                            </select>
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                {{ icono('chevron') }}
-                            </span>
-                        </div>
+                    <div class="sm:col-span-2">
+                        {# Mismo texto que el filtro del listado: el camino
+                           completo ("Calzado - Zapatillas - Deportivas"). La
+                           sangría con puntos no alcanzaba: dos ramas pueden
+                           tener hojas con el mismo nombre y, con el campo
+                           cerrado, solo se vería la hoja.
+
+                           Sin opción para vaciar: la categoría es obligatoria,
+                           y lo que la exige es el botón Guardar deshabilitado
+                           —el `required` era del `<select>` que ya no está. #}
+                        {{ combobox('pr-categoria', 'categorias', 'rutaCategoria(o)',
+                                    'form.categoria_id',
+                                    etiqueta='Categoría', obligatorio=true,
+                                    clases='w-full h-control pl-3 pr-9 text-base font-light
+                                            bg-surface text-texto border-[0.5px]
+                                            border-texto-disabled rounded-input
+                                            focus:outline-none focus:border-primary') }}
                     </div>
 
                     <div class="flex flex-col gap-1">
@@ -827,7 +817,11 @@
                     <button type="button" @click="form.abierto = false"
                             class="h-boton px-5 rounded-input border border-borde text-base
                                    hover:border-primary hover:text-primary">Cancelar</button>
-                    <button type="submit" :disabled="form.guardando"
+                    {# Sin categoría no se puede guardar. Lo exigía el
+                       `required` del `<select>`; el combobox es un input de
+                       texto libre, así que la restricción pasa acá, como en
+                       los dos modales de variante. #}
+                    <button type="submit" :disabled="form.guardando || !form.categoria_id"
                             class="h-boton px-8 rounded-input bg-primary text-white text-base
                                    font-medium hover:bg-primary-hover disabled:opacity-60"
                             x-text="form.guardando ? 'Guardando…'
