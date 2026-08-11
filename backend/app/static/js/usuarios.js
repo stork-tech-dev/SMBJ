@@ -25,7 +25,8 @@ function abmUsuarios() {
 
         // Los tres filtros del diseño de Figma. El backend acepta además
         // username, email y activo: se pueden reactivar sin tocar la API.
-        filtros: { nombre: '', rol_id: '', local_asignado_id: '' },
+        // `activo: 'true'` = solo activos por defecto (ver components/switch_activos).
+        filtros: { nombre: '', rol_id: '', local_asignado_id: '', activo: 'true' },
 
         detalle: { abierto: false, usuario: null },
 
@@ -103,7 +104,7 @@ function abmUsuarios() {
         },
 
         limpiar() {
-            this.filtros = { nombre: '', rol_id: '', local_asignado_id: '' };
+            this.filtros = { nombre: '', rol_id: '', local_asignado_id: '', activo: 'true' };
             this.cargar();
         },
 

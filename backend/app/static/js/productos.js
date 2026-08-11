@@ -24,11 +24,18 @@ function abmProductos() {
         total: 0,
         cargando: false,
 
+        // Diálogo de confirmación de las acciones destructivas.
+        confirmacion: { abierta: false, titulo: '', mensaje: '', accion: () => {} },
+
         // Un solo campo de texto que resuelve las tres formas de nombrar un
         // artículo: el código de la etiqueta, el SKU o parte de la
         // descripción. Lo desambigua el backend (ver `listar_variantes`).
         filtros: {
             busqueda: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
+            // 'true' = solo activos, que es como arranca la pantalla.
+            // Vacío = todos. Es string y no booleano para que entre sin
+            // cambios en el bucle que arma los query params.
+            activo: 'true',
         },
 
         // `varianteId` acota el panel al código desde el que se abrió; en
@@ -178,8 +185,11 @@ function abmProductos() {
         },
 
         limpiar() {
+            // 'Limpiar filtros' vuelve al estado de entrada, que incluye
+            // el switch en Sí: limpiar no es 'mostrar todo'.
             this.filtros = {
                 busqueda: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
+                activo: 'true',
             };
             this.cargar();
         },
@@ -577,7 +587,29 @@ function abmProductos() {
 
         /* --- Alta y baja lógica --- */
 
+        /**
+         * Pide confirmación antes de cambiar el estado de un producto.
+         *
+         * La baja se ejecutaba de una: un clic al lado de "Producto" en una
+         * tabla donde cada fila es una variante, y el producto entero quedaba
+         * desactivado con todas sus variantes. Un error ahí no avisa nada.
+         */
+        confirmarEstado(producto) {
+            const desactivando = producto.activo;
+            this.confirmacion = {
+                abierta: true,
+                titulo: desactivando ? 'Desactivar producto' : 'Activar producto',
+                mensaje: desactivando
+                    ? `¿Desactivar ${producto.descripcion}? Deja de aparecer para vender, `
+                      + 'con todas sus variantes. No se borra: el stock y el historial '
+                      + 'se conservan y se puede volver a activar.'
+                    : `¿Activar ${producto.descripcion}? Vuelve a estar disponible para vender.`,
+                accion: () => this.cambiarEstado(producto, !producto.activo),
+            };
+        },
+
         async cambiarEstado(p, activo) {
+            this.confirmacion.abierta = false;
             try {
                 const resp = await fetch(`/api/v1/productos/${p.id}/estado`, {
                     method: 'PATCH',

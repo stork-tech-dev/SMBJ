@@ -1,0 +1,56 @@
+{# ===========================================================================
+   Macro: switch "Solo activos" de la fila de filtros.
+
+   Los listados muestran por defecto **solo lo que está operativo**. Lo dado
+   de baja no desaparece —se puede ver apagando el switch— pero deja de
+   ensuciar la pantalla del día a día, que es donde se trabaja.
+
+   Reemplaza a los selects "Estado (todos) / Activo / Inactivo" que tenían
+   puntos de venta, dispositivos y roles: tres controles distintos para la
+   misma pregunta, y ninguno arrancaba filtrado.
+
+   El valor es `'true'` o `''` —string, no booleano— a propósito: así entra
+   sin cambios en el bucle que arma los query params de cada pantalla, que
+   saltea los vacíos y manda el resto tal cual.
+
+   Parámetros:
+     modelo     expresión Alpine con el filtro (ej. `filtros.activo`).
+     al_cambiar sentencia a ejecutar después de togglear. Por defecto
+                `cargar()`, que es como se llama en todos los listados.
+     id         sufijo para los ids, por si hubiera dos en una pantalla.
+
+   Uso:
+     {% from "components/switch_activos.html" import switch_activos %}
+     {{ switch_activos('filtros.activo') }}
+   =========================================================================== #}
+
+{% macro switch_activos(modelo, al_cambiar='cargar()', id='solo-activos') %}
+{# `ml-auto` lo empuja contra la derecha de la fila de filtros, que es un
+   flex: queda separado de los filtros que acotan el listado, porque este no
+   acota nada — decide qué universo se está mirando. #}
+<div class="ml-auto flex items-center gap-3">
+    <span id="{{ id }}-label" class="text-sm font-semibold text-texto-muted">Solo activos</span>
+
+    {# Un <button role="switch"> y no un checkbox: se ve como el diseño y
+       igual responde a Espacio y Enter, que es lo que hace un botón. #}
+    <button type="button" role="switch" id="{{ id }}"
+            aria-labelledby="{{ id }}-label"
+            :aria-checked="{{ modelo }} === 'true' ? 'true' : 'false'"
+            @click="{{ modelo }} = {{ modelo }} === 'true' ? '' : 'true'; {{ al_cambiar }}"
+            {# El alto táctil va en el botón y no en la vía: el blanco de
+               toque llega a 44px sin agrandar el control a la vista. #}
+            class="inline-flex items-center min-h-toque focus:outline-none
+                   focus-visible:ring-2 focus-visible:ring-primary rounded-input">
+        <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
+              :class="{{ modelo }} === 'true' ? 'bg-primary' : 'bg-borde'">
+            <span class="inline-block w-4 h-4 rounded-full bg-white shadow transition-transform"
+                  :class="{{ modelo }} === 'true' ? 'translate-x-6' : 'translate-x-1'"></span>
+        </span>
+    </button>
+
+    {# Ancho fijo: "Sí" y "No" miden distinto y sin esto el switch se
+       correría un pixel a cada toque. #}
+    <span class="text-sm font-semibold text-texto w-6"
+          x-text="{{ modelo }} === 'true' ? 'Sí' : 'No'"></span>
+</div>
+{% endmacro %}

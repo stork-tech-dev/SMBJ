@@ -1,0 +1,66 @@
+{# ===========================================================================
+   Macro: modal de confirmación de una acción de peso.
+
+   El mismo diálogo estaba copiado en usuarios, roles y puntos de venta, con
+   diferencias que nadie decidió —`rounded-[20px]` acá, `rounded-input` allá,
+   `p-8` contra `p-6`—, y productos y dispositivos no lo tenían: uno ejecutaba
+   la baja sin preguntar y el otro usaba el `confirm()` del navegador, que se
+   ve como un cartel de Chrome y no como el sistema.
+
+   Parámetros:
+     estado     nombre de la variable de estado en el x-data. Necesita
+                `abierta`, `titulo`, `mensaje` y `accion`. Por defecto
+                `confirmacion`.
+     accion     expresión Alpine que ejecuta el botón Confirmar. Por defecto
+                `<estado>.accion()`.
+     advertencia  expresión Alpine con un texto de alerta en rojo, que se
+                muestra solo si tiene valor. Vacío = sin bloque de alerta.
+     etiqueta_confirmar  expresión Alpine con el texto del botón. Por defecto
+                la constante 'Confirmar'.
+     tono       'peligro' (rojo, por defecto) para lo que destruye o da de
+                baja; 'primario' para lo que aplica o guarda. Pintar de rojo
+                un botón de guardar dice "cuidado, esto rompe algo", que no
+                es lo que pasa.
+
+   Uso:
+     {% from "components/modal_confirmacion.html" import modal_confirmacion %}
+     {{ modal_confirmacion() }}
+   =========================================================================== #}
+
+{% macro modal_confirmacion(estado='confirmacion', accion=None, advertencia='',
+                            etiqueta_confirmar="'Confirmar'", tono='peligro') %}
+{% set clase_boton = 'bg-danger' if tono == 'peligro' else 'bg-primary hover:bg-primary-hover' %}
+{% set accion = accion or estado ~ '.accion()' %}
+<div x-show="{{ estado }}.abierta" x-cloak
+     class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+     @click.self="{{ estado }}.abierta = false"
+     {# Escape cancela: es lo que espera cualquiera frente a un diálogo, y
+        cancelar nunca destruye nada. #}
+     @keydown.escape.window="{{ estado }}.abierta = false"
+     role="dialog" aria-modal="true" aria-labelledby="titulo-{{ estado }}">
+
+    <div class="w-full max-w-md bg-surface rounded-[20px] shadow-xl p-6 sm:p-8">
+        <h2 id="titulo-{{ estado }}" class="text-lg font-semibold"
+            x-text="{{ estado }}.titulo"></h2>
+        <p class="mt-3 text-base text-texto-muted" x-text="{{ estado }}.mensaje"></p>
+
+        {% if advertencia %}
+            {# `role="alert"` para que un lector de pantalla la anuncie al
+               aparecer: si no, la advertencia solo existiría para quien la ve. #}
+            <p x-show="{{ advertencia }}" x-cloak role="alert"
+               class="mt-3 text-base font-medium text-danger"
+               x-text="{{ advertencia }}"></p>
+        {% endif %}
+
+        <div class="flex justify-end gap-3 mt-6">
+            <button type="button" @click="{{ estado }}.abierta = false"
+                    class="h-boton px-5 rounded-input border border-borde
+                           hover:border-primary hover:text-primary">Cancelar</button>
+            <button type="button" @click="{{ accion }}"
+                    class="h-boton px-5 rounded-input {{ clase_boton }} text-white
+                           font-medium hover:opacity-90"
+                    x-text="{{ etiqueta_confirmar }}"></button>
+        </div>
+    </div>
+</div>
+{% endmacro %}

@@ -1489,3 +1489,167 @@ def test_el_error_de_login_se_muestra_en_el_formulario_y_no_como_toast(client):
 
     assert "this.error = e.message" in html
     assert "window.toast(e.message" not in html
+
+
+def test_ningun_desactivar_ejecuta_sin_confirmar(client, crear_usuario):
+    """
+    Toda baja pide confirmación antes de ejecutarse.
+
+    En /productos el botón llamaba derecho a `cambiarEstado(...)`: un clic al
+    lado de "Producto", en una tabla donde cada fila es una variante, y el
+    producto entero quedaba desactivado con todas sus variantes.
+
+    Se comprueba sobre el HTML porque es donde está el cableado: el botón
+    tiene que abrir el diálogo, no disparar la acción.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    # (pantalla, expresión que NO puede estar en un botón de desactivar)
+    pantallas = {
+        "/productos": "cambiarEstado(v.producto, false)",
+        "/usuarios": "cambiarEstado(u, false)",
+        "/dispositivos": "cambiarEstado(d, false)",
+        "/roles": "cambiarEstado(rol, false)",
+        "/puntos-de-venta": "cambiarEstado(p, false",
+    }
+
+    for url, ejecucion_directa in pantallas.items():
+        html = client.get(url).text
+        assert ejecucion_directa not in html, f"{url} desactiva sin confirmar"
+        # Y el diálogo está en la página para poder confirmar.
+        assert 'role="dialog"' in html and "Cancelar" in html, f"{url} no tiene el diálogo"
+
+
+def test_las_bajas_usan_el_mismo_componente_de_confirmacion(client, crear_usuario):
+    """
+    El diálogo estaba copiado en tres pantallas con diferencias que nadie
+    decidió (`rounded-[20px]` contra `rounded-input`, `p-8` contra `p-6`), y
+    dos pantallas no lo tenían. Ahora sale todo de un macro.
+
+    Se verifica por el `aria-labelledby` que genera el macro, que ninguna
+    copia a mano tenía.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url, estado in (
+        ("/productos", "confirmacion"),
+        ("/usuarios", "confirmacion"),
+        ("/dispositivos", "confirmacion"),
+        ("/roles", "confirmacion"),
+        ("/puntos-de-venta", "baja"),
+    ):
+        html = client.get(url).text
+        assert f'aria-labelledby="titulo-{estado}"' in html, f"{url} no usa el macro"
+
+
+def test_ninguna_pantalla_usa_los_dialogos_del_navegador(client, crear_usuario):
+    """
+    Ni `confirm()`, ni `alert()`, ni `prompt()`: todos se ven como un cartel
+    de Chrome en vez del sistema, no se pueden estilar y no dan lugar a
+    explicar la consecuencia de lo que se está por hacer.
+
+    Los tenían `/dispositivos` (dar de baja un equipo), el cambio masivo de
+    dólar y el guardado del árbol de permisos. Ahora todos usan
+    `components/modal_confirmacion.html`.
+    """
+    import pathlib
+    import re
+
+    js = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
+
+    # Se ignoran las menciones dentro de comentarios, que explican por qué se
+    # sacaron: lo que se busca es la LLAMADA.
+    nativo = re.compile(r"(?<![a-zA-Z.`])(confirm|alert|prompt)\s*\(")
+    culpables = {}
+    for archivo in js.glob("*.js"):
+        codigo = "\n".join(
+            linea for linea in archivo.read_text().split("\n")
+            if not linea.lstrip().startswith(("*", "//", "/*"))
+        )
+        hallazgos = nativo.findall(codigo)
+        if hallazgos:
+            culpables[archivo.name] = hallazgos
+
+    assert not culpables, f"diálogos nativos del navegador: {culpables}"
+
+
+def test_los_listados_arrancan_mostrando_solo_los_activos(client, crear_usuario):
+    """
+    Lo dado de baja no ensucia la pantalla del día a día: se ve apagando el
+    switch, pero no de entrada. En /dispositivos la diferencia es enorme —de
+    36 filas cargadas, 4 están activas—.
+
+    El filtro es el string 'true' y no un booleano: así entra sin cambios en
+    el bucle que arma los query params de cada pantalla, que saltea los
+    vacíos y manda el resto tal cual.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+        html = client.get(url).text
+        assert "activo: 'true'" in html or "activo: 'true'" in _js_de(url), (
+            f"{url} no arranca filtrado por activos"
+        )
+
+
+def _js_de(url: str) -> str:
+    """El JS de cada pantalla, donde vive el estado inicial de los filtros."""
+    import pathlib
+
+    archivos = {
+        "/productos": "productos.js",
+        "/usuarios": "usuarios.js",
+        "/puntos-de-venta": "puntos_de_venta.js",
+        "/dispositivos": "dispositivos.js",
+        "/roles": "roles.js",
+        "/proveedores": "proveedores.js",
+    }
+    base = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
+    return (base / archivos[url]).read_text()
+
+
+def test_el_switch_solo_activos_esta_en_los_cinco_listados(client, crear_usuario):
+    """
+    Mismo control en todos: un `role="switch"` del macro `switch_activos`.
+    Antes eran tres selects distintos —y dos pantallas sin nada—, y ninguno
+    arrancaba filtrado.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+        html = client.get(url).text
+        assert 'role="switch"' in html, f"{url} no tiene el switch"
+        assert "Solo activos" in html, f"{url} no tiene el label"
+        # `ml-auto` es lo que lo alinea contra la derecha de la fila.
+        assert "ml-auto" in html, f"{url}: el switch no está alineado a la derecha"
+        # Y el select viejo de estado no puede haber quedado al lado.
+        assert 'x-model="filtros.activo"' not in html, f"{url} conserva el select viejo"
+
+
+def test_limpiar_filtros_no_muestra_los_inactivos(client, crear_usuario):
+    """
+    "Limpiar filtros" vuelve al estado de entrada, no a "mostrar todo": si
+    reseteara `activo` a vacío, limpiar traería los dados de baja, que es lo
+    contrario de lo que espera quien limpia para volver a empezar.
+    """
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+        js = _js_de(url)
+        limpiar = js[js.index("limpiar()"):]
+        limpiar = limpiar[:limpiar.index("cargar()")]
+        assert "activo: 'true'" in limpiar, f"{url}: limpiar() apaga el filtro de activos"
+
+
+def test_proveedores_arranca_en_activo_con_su_propio_select(client, crear_usuario):
+    """
+    Proveedores no lleva el switch: tiene TRES estados (activo, desactivado,
+    inhabilitado) y un sí/no no los distingue. Conserva su select, pero
+    arranca en 'activo' para que la pantalla abra igual que las demás.
+    """
+    js = _js_de("/proveedores")
+    assert "estado: 'activo'" in js
+    limpiar = js[js.index("limpiar()"):]
+    assert "estado: 'activo'" in limpiar[:limpiar.index("cargar()")]

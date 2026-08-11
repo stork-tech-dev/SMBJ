@@ -6,6 +6,8 @@
 {% from "components/combobox.html" import combobox %}
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/switch_activos.html" import switch_activos %}
 
 {% block contenido %}
 <div x-data="abmProductos()" x-init="cargar(); cargarCatalogos()">
@@ -100,6 +102,8 @@
                haría que el número no coincidiera con lo que se ve. #}
             <span x-text="total === 1 ? 'código encontrado' : 'códigos encontrados'"></span>
         </p>
+        {{ switch_activos('filtros.activo') }}
+
     </div>
 
     {# ---------- Tabla ---------- #}
@@ -206,11 +210,11 @@
                                                                   { editar: true })"') }}
                                     {{ accion('borrar',
                                               atributos='x-show="v.producto.activo"
-                                                         @click="cambiarEstado(v.producto, false)"
+                                                         @click="confirmarEstado(v.producto)"
                                                          title="Desactivar producto"') }}
                                     {{ accion('activar',
                                               atributos='x-show="!v.producto.activo" x-cloak
-                                                         @click="cambiarEstado(v.producto, true)"
+                                                         @click="confirmarEstado(v.producto)"
                                                          title="Activar producto"') }}
                                 {% endcall %}
                             </td>
@@ -830,6 +834,8 @@
             </form>
         </div>
     </div>
+
+    {{ modal_confirmacion() }}
 </div>
 {% endblock %}
 

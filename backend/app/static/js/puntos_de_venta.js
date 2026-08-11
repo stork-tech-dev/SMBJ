@@ -6,9 +6,12 @@ function abmPuntos() {
     return {
         puntos: [],
         cargando: false,
-        filtros: { nombre: '', tipo: '', activo: '' },
+        filtros: { nombre: '', tipo: '', activo: 'true' },
         form: { abierto: false, guardando: false, id: null, nombre: '', tipo: 'local', codigo: '' },
-        baja: { abierta: false, punto: null, advertencia: '' },
+        // Mismo diálogo que el resto del sistema (components/modal_confirmacion).
+        // `advertencia` es propia de acá: el backend responde 409 cuando el
+        // punto tiene dispositivos activos, y recién ahí se ofrece insistir.
+        baja: { abierta: false, punto: null, titulo: '', mensaje: '', advertencia: '' },
 
         etiquetaTipo(t) {
             return { cd: 'Centro de Distribución', local: 'Local', online: 'Online' }[t] || t;
@@ -37,7 +40,7 @@ function abmPuntos() {
         },
 
         limpiar() {
-            this.filtros = { nombre: '', tipo: '', activo: '' };
+            this.filtros = { nombre: '', tipo: '', activo: 'true' };
             this.cargar();
         },
 
@@ -86,7 +89,14 @@ function abmPuntos() {
         },
 
         pedirBaja(p) {
-            this.baja = { abierta: true, punto: p, advertencia: '' };
+            this.baja = {
+                abierta: true,
+                punto: p,
+                titulo: 'Desactivar punto de venta',
+                mensaje: `¿Desactivar ${p.nombre}? Deja de estar disponible para `
+                    + 'asignar usuarios y dispositivos. No se borra y se puede reactivar.',
+                advertencia: '',
+            };
         },
 
         async confirmarBaja() {

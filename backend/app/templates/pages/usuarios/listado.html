@@ -5,6 +5,8 @@
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/switch_activos.html" import switch_activos %}
 
 {% block contenido %}
 <div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarPuntosDeVenta()">
@@ -70,6 +72,8 @@
             <span x-text="total"></span>
             <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
         </p>
+        {{ switch_activos('filtros.activo') }}
+
     </div>
 
     {# ---------- Tarjeta con la tabla ---------- #}
@@ -403,22 +407,7 @@
     </div>
 
     {# ---------- Confirmación de activar / desactivar ---------- #}
-    <div x-show="confirmacion.abierta" x-cloak
-         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="confirmacion.abierta = false" role="dialog" aria-modal="true">
-        <div class="w-full max-w-md bg-surface rounded-[20px] shadow-xl p-8">
-            <h2 class="text-lg font-semibold" x-text="confirmacion.titulo"></h2>
-            <p class="mt-3 text-base text-texto-muted" x-text="confirmacion.mensaje"></p>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" @click="confirmacion.abierta = false"
-                        class="h-boton px-5 rounded-input border border-borde
-                               hover:border-primary hover:text-primary">Cancelar</button>
-                <button type="button" @click="confirmacion.accion()"
-                        class="h-boton px-5 rounded-input bg-danger text-white font-medium
-                               hover:opacity-90">Confirmar</button>
-            </div>
-        </div>
-    </div>
+    {{ modal_confirmacion() }}
 </div>
 {% endblock %}
 

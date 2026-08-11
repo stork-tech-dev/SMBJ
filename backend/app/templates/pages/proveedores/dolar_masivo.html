@@ -4,6 +4,7 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
 
 {% block contenido %}
 <div x-data="dolarMasivo()" x-init="cargar()">
@@ -99,7 +100,7 @@
                 </div>
             </div>
 
-            <button type="button" @click="aplicar()" :disabled="!preview.length || aplicando"
+            <button type="button" @click="confirmarAplicar()" :disabled="!preview.length || aplicando"
                     class="mt-6 h-control px-8 rounded-input bg-primary text-white text-base font-medium
                            hover:bg-primary-hover disabled:opacity-50"
                     x-text="aplicando ? 'Aplicando…' : 'Aplicar cambio'"></button>
@@ -170,6 +171,8 @@
             </div>
         </section>
     </div>
+
+    {{ modal_confirmacion(tono='primario') }}
 </div>
 {% endblock %}
 
