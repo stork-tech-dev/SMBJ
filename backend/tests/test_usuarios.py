@@ -299,7 +299,7 @@ def local(db, crear_usuario):
     from app.services import puntos_de_venta as servicio_puntos
 
     autor = crear_usuario("cm_local", ROL_CUENTA_MAESTRA)
-    return servicio_puntos.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "1234")
+    return servicio_puntos.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "PO")
 
 
 def test_alta_guarda_los_datos_personales(db, crear_usuario, roles, local):
@@ -380,8 +380,8 @@ def test_se_puede_asignar_cualquier_tipo_de_punto_de_venta(db, crear_usuario, ro
     from app.services import puntos_de_venta as servicio_puntos
 
     autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
-    cd = servicio_puntos.crear_punto(db, autor, "CD Central", TipoPuntoVenta.CD)
-    online = servicio_puntos.crear_punto(db, autor, "Tienda Online", TipoPuntoVenta.ONLINE)
+    cd = servicio_puntos.crear_punto(db, autor, "CD Central", TipoPuntoVenta.CD, "CDC")
+    online = servicio_puntos.crear_punto(db, autor, "Tienda Online", TipoPuntoVenta.ONLINE, "TON")
 
     en_el_cd = servicio_usuarios.crear_usuario(
         db, autor, username="deposito", nombre="X", password="Test1234!",
@@ -405,8 +405,8 @@ def test_los_asignables_incluyen_el_cd_y_el_online(db, crear_usuario, local):
     from app.services import puntos_de_venta as servicio_puntos
 
     autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
-    servicio_puntos.crear_punto(db, autor, "CD Central", TipoPuntoVenta.CD)
-    servicio_puntos.crear_punto(db, autor, "Tienda Online", TipoPuntoVenta.ONLINE)
+    servicio_puntos.crear_punto(db, autor, "CD Central", TipoPuntoVenta.CD, "CDC")
+    servicio_puntos.crear_punto(db, autor, "Tienda Online", TipoPuntoVenta.ONLINE, "TON")
 
     tipos = {p.tipo for p in servicio_usuarios.puntos_de_venta_asignables(db)}
 
@@ -479,7 +479,7 @@ def test_al_cambiar_de_punto_de_venta_la_respuesta_no_queda_desfasada(
         db, autor, username="usu", nombre="X", password="Test1234!",
         rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
     )
-    destino = servicio_puntos.crear_punto(db, autor, "Sucursal Nueva", TipoPuntoVenta.LOCAL)
+    destino = servicio_puntos.crear_punto(db, autor, "Sucursal Nueva", TipoPuntoVenta.LOCAL, "SNU")
 
     servicio_usuarios.editar_usuario(
         db, autor, usuario.id, local_asignado_id=destino.id, editar_local=True,
@@ -506,7 +506,7 @@ def test_conservar_el_propio_no_habilita_mudarse_a_otro_inactivo(
         db, autor, username="usu", nombre="X", password="Test1234!",
         rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
     )
-    otro = servicio_puntos.crear_punto(db, autor, "Sucursal Vieja", TipoPuntoVenta.LOCAL)
+    otro = servicio_puntos.crear_punto(db, autor, "Sucursal Vieja", TipoPuntoVenta.LOCAL, "SVI")
     servicio_puntos.cambiar_estado(db, autor, otro.id, activo=False)
 
     with pytest.raises(servicio_roles.ReglaDeNegocio, match="inactivo"):
@@ -575,10 +575,18 @@ def test_editar_mandando_null_si_los_vacia(client, db, crear_usuario, roles, loc
     assert cuerpo["local_asignado_id"] is None
 
 
-def test_respuesta_no_expone_el_codigo_del_local(client, db, crear_usuario, roles, local, login):
+def test_el_punto_de_venta_anidado_solo_trae_id_y_nombre(
+    client, db, crear_usuario, roles, local, login
+):
     """
-    El local viaja anidado, pero sin `codigo_confirmacion`: es el código
-    con el que un local confirma envíos y no pinta en usuarios.
+    El punto de venta viaja anidado en cada fila del listado, así que lleva
+    solo lo que el selector necesita. Su tipo, su código y su estado se piden
+    a su propio endpoint; duplicarlos acá los dejaría desactualizados en
+    cuanto se editara el punto de venta.
+
+    (Antes este test cuidaba que no se filtrara `codigo_confirmacion`, que era
+    un secreto. Ese campo ya no existe: se reconvirtió en la abreviatura
+    pública `codigo`.)
     """
     autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
     servicio_usuarios.crear_usuario(
@@ -589,7 +597,6 @@ def test_respuesta_no_expone_el_codigo_del_local(client, db, crear_usuario, role
 
     resp = client.get("/api/v1/usuarios", headers=login("admin"))
     assert resp.status_code == 200
-    assert "codigo_confirmacion" not in resp.text
 
     fila = next(u for u in resp.json()["resultados"] if u["username"] == "leandra")
     # La igualdad exacta ES la comprobación: si el código viajara, el dict
@@ -625,7 +632,7 @@ def test_listado_filtra_por_local_asignado(db, crear_usuario, roles, local):
     from app.services import puntos_de_venta as servicio_puntos
 
     autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
-    otro = servicio_puntos.crear_punto(db, autor, "Paseo del Jockey", TipoPuntoVenta.LOCAL)
+    otro = servicio_puntos.crear_punto(db, autor, "Paseo del Jockey", TipoPuntoVenta.LOCAL, "PJ")
 
     servicio_usuarios.crear_usuario(
         db, autor, username="anaolmos", nombre="Ana", password="Test1234!",

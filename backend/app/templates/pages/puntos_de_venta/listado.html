@@ -64,9 +64,11 @@
             <table class="w-full border-collapse text-base">
                 <thead>
                     <tr>
-                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        {# El código va primero: es la abreviatura con la que
+                           se nombra al punto de venta. #}
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Tipo</th>
-                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
@@ -75,12 +77,12 @@
                     <template x-for="p in puntos" :key="p.id">
                         <tr class="border-t border-borde transition-shadow hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!p.activo && 'opacity-60'">
-                            <td class="px-8 py-3 align-middle font-medium" x-text="p.nombre"></td>
+                            <td class="px-8 py-3 align-middle font-mono font-medium" x-text="p.codigo"></td>
+                            <td class="px-4 py-3 align-middle font-medium" x-text="p.nombre"></td>
                             <td class="px-4 py-3 align-middle">
                                 <span class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs font-medium"
                                       :class="badgeTipo(p.tipo)" x-text="etiquetaTipo(p.tipo)"></span>
                             </td>
-                            <td class="px-4 py-3 align-middle font-medium" x-text="p.codigo_confirmacion || '—'"></td>
                             <td class="px-4 py-3 align-middle">
                                 <span class="text-xs font-medium" :class="p.activo ? 'text-success' : 'text-danger'"
                                       x-text="p.activo ? 'Activo' : 'Inactivo'"></span>
@@ -135,12 +137,21 @@
                         <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
                     </div>
                 </div>
-                {# El código de confirmación solo se muestra para locales. #}
-                <div class="flex flex-col gap-1" x-show="form.tipo === 'local'" x-cloak>
-                    <label for="pdv-codigo" class="text-sm font-semibold text-texto-header">Código de confirmación</label>
-                    <input id="pdv-codigo" x-model="form.codigo_confirmacion" maxlength="4" minlength="4"
-                           inputmode="numeric" placeholder="4 dígitos" class="campo-linea">
-                    <span class="text-xs text-texto-disabled">Para confirmar la recepción de envíos del CD.</span>
+                {# Va para todos los tipos: el CD y la tienda online también se
+                   nombran en un reporte. #}
+                <div class="flex flex-col gap-1">
+                    <label for="pdv-codigo" class="text-sm font-semibold text-texto-header">
+                        Código<span class="text-danger ml-0.5">*</span>
+                    </label>
+                    {# Mayúsculas al tipear: el código se guarda siempre en
+                       mayúsculas, así lo que se ve es lo que se va a guardar. #}
+                    <input id="pdv-codigo" x-model="form.codigo" required
+                           maxlength="6" minlength="2"
+                           @input="form.codigo = form.codigo.toUpperCase()"
+                           placeholder="MPO" class="campo-linea font-mono uppercase">
+                    <span class="text-xs text-texto-disabled">
+                        Abreviatura del punto de venta, de 2 a 6 caracteres. Identifica sus reportes.
+                    </span>
                 </div>
                 <div class="flex justify-end gap-3 mt-2">
                     <button type="button" @click="form.abierto = false"

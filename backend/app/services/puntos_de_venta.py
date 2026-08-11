@@ -57,15 +57,37 @@ def locales_activos(db: Session) -> list[PuntoDeVenta]:
     )
 
 
-def _validar_codigo(tipo: TipoPuntoVenta, codigo: str | None) -> str | None:
-    """El código de confirmación solo aplica a locales y son 4 caracteres."""
+def _validar_codigo(db: Session, codigo: str | None, excluir_id: int | None = None) -> str:
+    """
+    Abreviatura del punto de venta: obligatoria, en mayúsculas y única.
+
+    Aplica a **cualquier tipo** —el CD y la tienda online también se nombran
+    en un reporte—, a diferencia de la regla anterior, que solo la pedía a los
+    locales porque era un código de confirmación de envíos.
+
+    Se guarda en MAYÚSCULAS para que "mpo" y "MPO" no convivan como dos
+    códigos distintos: el índice único de la base distingue la caja, así que
+    normalizar acá es lo que hace que la unicidad signifique algo.
+
+    El mínimo de 2 es criterio, no límite técnico: una sola letra no alcanza
+    para distinguir un punto de venta de otro en un reporte.
+    """
     codigo = normalizar_texto(codigo)
-    if codigo is None:
-        return None
-    if tipo != TipoPuntoVenta.LOCAL:
-        raise ReglaDeNegocio("El código de confirmación solo aplica a locales")
-    if len(codigo) != 4:
-        raise ReglaDeNegocio("El código de confirmación debe tener 4 caracteres")
+    if not codigo:
+        raise ReglaDeNegocio("El código es obligatorio")
+
+    codigo = codigo.upper()
+    if not 2 <= len(codigo) <= 6:
+        raise ReglaDeNegocio("El código debe tener entre 2 y 6 caracteres")
+
+    # La garantía real es el índice único; esto es para dar un mensaje que se
+    # entienda en vez de un error de integridad de la base.
+    consulta = select(func.count(PuntoDeVenta.id)).where(PuntoDeVenta.codigo == codigo)
+    if excluir_id is not None:
+        consulta = consulta.where(PuntoDeVenta.id != excluir_id)
+    if db.execute(consulta).scalar_one() > 0:
+        raise ReglaDeNegocio(f"Ya existe un punto de venta con el código '{codigo}'")
+
     return codigo
 
 
@@ -83,7 +105,7 @@ def crear_punto(
     autor: Usuario,
     nombre: str,
     tipo: TipoPuntoVenta,
-    codigo_confirmacion: str | None = None,
+    codigo: str,
     ip_origen: str | None = None,
 ) -> PuntoDeVenta:
     """Alta de punto de venta. Solo puede existir un CD por instancia."""
@@ -94,12 +116,12 @@ def crear_punto(
     if tipo == TipoPuntoVenta.CD and _existe_cd(db):
         raise ReglaDeNegocio("Ya existe un Centro de Distribución")
 
-    codigo = _validar_codigo(tipo, codigo_confirmacion)
+    codigo_limpio = _validar_codigo(db, codigo)
 
     punto = PuntoDeVenta(
         nombre=nombre_limpio,
         tipo=tipo,
-        codigo_confirmacion=codigo,
+        codigo=codigo_limpio,
         activo=True,
         created_at=ahora_db(),
         updated_at=ahora_db(),
@@ -125,7 +147,7 @@ def editar_punto(
     punto_id: int,
     nombre: str | None = None,
     tipo: TipoPuntoVenta | None = None,
-    codigo_confirmacion: str | None = None,
+    codigo: str | None = None,
     ip_origen: str | None = None,
 ) -> PuntoDeVenta:
     """Edita un punto de venta. Cambiar a CD respeta la unicidad."""
@@ -142,12 +164,11 @@ def editar_punto(
         if tipo == TipoPuntoVenta.CD and _existe_cd(db, excluir_id=punto.id):
             raise ReglaDeNegocio("Ya existe un Centro de Distribución")
         punto.tipo = tipo
-        # Al dejar de ser local, el código de confirmación pierde sentido.
-        if tipo != TipoPuntoVenta.LOCAL:
-            punto.codigo_confirmacion = None
 
-    if codigo_confirmacion is not None:
-        punto.codigo_confirmacion = _validar_codigo(punto.tipo, codigo_confirmacion)
+    if codigo is not None:
+        # `excluir_id` para que editar un punto sin cambiarle el código no lo
+        # haga chocar contra sí mismo.
+        punto.codigo = _validar_codigo(db, codigo, excluir_id=punto.id)
 
     punto.updated_at = ahora_db()
     db.flush()

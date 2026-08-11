@@ -29,6 +29,17 @@ class PuntoDeVenta(Base):
     __tablename__ = "puntos_de_venta"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    # Abreviatura del punto de venta: "MPO" para Patio Olmos, "MTO" para
+    # Tienda Online. Va antes que el nombre porque es lo primero que se lee
+    # en la tabla y funciona como identificador corto.
+    #
+    # ÚNICO a propósito: a futuro identifica los reportes, y dos puntos de
+    # venta con el mismo código los volverían ambiguos.
+    codigo: Mapped[str] = mapped_column(
+        String(6), nullable=False, unique=True, index=True
+    )
+
     nombre: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
 
     tipo: Mapped[TipoPuntoVenta] = mapped_column(
@@ -36,10 +47,6 @@ class PuntoDeVenta(Base):
         nullable=False,
         index=True,
     )
-
-    # Código de 4 dígitos con el que un local confirma la recepción de un
-    # envío del CD. Solo tiene sentido en los locales; NULL en CD y online.
-    codigo_confirmacion: Mapped[str | None] = mapped_column(String(4), nullable=True)
 
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 

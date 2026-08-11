@@ -1177,7 +1177,7 @@ def _local(db, crear_usuario, activo=True):
     from app.services import puntos_de_venta as servicio
 
     autor = crear_usuario("cm_local", ROL_CUENTA_MAESTRA)
-    punto = servicio.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "1234")
+    punto = servicio.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "PO")
     if not activo:
         servicio.cambiar_estado(db, autor, punto.id, activo=False)
     return punto

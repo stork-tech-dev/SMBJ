@@ -7,7 +7,7 @@ function abmPuntos() {
         puntos: [],
         cargando: false,
         filtros: { nombre: '', tipo: '', activo: '' },
-        form: { abierto: false, guardando: false, id: null, nombre: '', tipo: 'local', codigo_confirmacion: '' },
+        form: { abierto: false, guardando: false, id: null, nombre: '', tipo: 'local', codigo: '' },
         baja: { abierta: false, punto: null, advertencia: '' },
 
         etiquetaTipo(t) {
@@ -42,12 +42,12 @@ function abmPuntos() {
         },
 
         abrirAlta() {
-            this.form = { abierto: true, guardando: false, id: null, nombre: '', tipo: 'local', codigo_confirmacion: '' };
+            this.form = { abierto: true, guardando: false, id: null, nombre: '', tipo: 'local', codigo: '' };
         },
         abrirEdicion(p) {
             this.form = {
                 abierto: true, guardando: false, id: p.id, nombre: p.nombre,
-                tipo: p.tipo, codigo_confirmacion: p.codigo_confirmacion || '',
+                tipo: p.tipo, codigo: p.codigo || '',
             };
         },
 
@@ -55,10 +55,12 @@ function abmPuntos() {
             this.form.guardando = true;
             try {
                 const alta = !this.form.id;
-                const cuerpo = { nombre: this.form.nombre, tipo: this.form.tipo };
-                // El código solo se manda para locales.
-                cuerpo.codigo_confirmacion = (this.form.tipo === 'local' && this.form.codigo_confirmacion)
-                    ? this.form.codigo_confirmacion : null;
+                // El código va siempre y para cualquier tipo: es obligatorio.
+                const cuerpo = {
+                    nombre: this.form.nombre,
+                    tipo: this.form.tipo,
+                    codigo: this.form.codigo,
+                };
 
                 const resp = await fetch(
                     alta ? '/api/v1/puntos-de-venta' : '/api/v1/puntos-de-venta/' + this.form.id,
