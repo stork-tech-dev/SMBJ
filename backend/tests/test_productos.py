@@ -9,11 +9,13 @@ probar es que ningún camino lo deje desactualizado.
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR
 from app.models.configuracion import ConfiguracionSistema
-from app.models.producto import Estacionalidad
+from app.models.producto import Temporada
 from app.models.proveedor import EstadoProveedor
+from app.schemas.productos import ProductoCrear
 from app.services import categorias as servicio_categorias
 from app.services import productos as servicio
 from app.services import proveedores as servicio_proveedores
@@ -1169,3 +1171,64 @@ def test_no_se_puede_dejar_un_precio_en_pesos_sin_su_origen(db, variante_con_pre
     with pytest.raises(IntegrityError):
         db.flush()
     db.rollback()
+
+
+# ============================================================================
+# TEMPORADA
+# ============================================================================
+
+
+def test_el_producto_arranca_atemporal(db, producto):
+    """
+    La mayoría del catálogo de una bijouterie no es de temporada, así que el
+    alta no tiene por qué obligar a elegir una. El default lo pone el modelo
+    y también la columna (`server_default`): una fila insertada por fuera del
+    service tampoco puede quedar sin temporada.
+    """
+    assert producto.temporada is Temporada.ATEMPORAL
+
+
+def test_la_temporada_son_tres_y_no_las_cuatro_estaciones():
+    """
+    El rubro compra por temporada, no por estación: repone en Otoño-Invierno
+    y en Primavera-Verano. Antes eran cinco valores sueltos, que obligaban a
+    elegir entre dos que significan lo mismo —¿un buzo es de otoño o de
+    invierno?— y a filtrar dos veces para ver una temporada entera.
+
+    Las estaciones viejas ya no existen: las rechazan las dos puertas, el
+    enum del modelo y el `pattern` del schema, así que ni el service ni la
+    API las dejan entrar.
+    """
+    assert [t.value for t in Temporada] == [
+        "atemporal", "otoño_invierno", "primavera_verano",
+    ]
+
+    for estacion_vieja in ("permanente", "verano", "invierno", "otoño", "primavera"):
+        with pytest.raises(ValueError):
+            Temporada(estacion_vieja)
+        with pytest.raises(ValidationError):
+            ProductoCrear(
+                categoria_id=1, proveedor_id=1, precio_usd=Decimal("10"),
+                descripcion="Producto de prueba", temporada=estacion_vieja,
+            )
+
+
+def test_el_filtro_por_temporada_no_mezcla(db, autor, config, categoria, proveedor):
+    """
+    Es el filtro del listado: elegir una temporada tiene que devolver solo
+    esa, y no arrastrar lo atemporal por ser el valor por defecto.
+    """
+    de_invierno = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Buzo de frisa",
+        temporada="otoño_invierno",
+    )
+    servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Anillo de plata",
+    )
+
+    filas, total = servicio.listar_productos(db, temporada="otoño_invierno")
+
+    assert total == 1
+    assert filas[0].id == de_invierno.id

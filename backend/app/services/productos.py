@@ -34,7 +34,7 @@ from app.core.utils import (
 )
 from app.models.categoria import Categoria
 from app.models.configuracion import ConfiguracionSistema
-from app.models.producto import Estacionalidad, Producto, Variante
+from app.models.producto import Producto, Temporada, Variante
 from app.models.proveedor import EstadoProveedor, Proveedor
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
@@ -429,7 +429,7 @@ def listar_productos(
     descripcion: str | None = None,
     categoria_id: int | None = None,
     proveedor_id: int | None = None,
-    estacionalidad: str | None = None,
+    temporada: str | None = None,
     activo: bool | None = None,
     precio_desde: Decimal | None = None,
     precio_hasta: Decimal | None = None,
@@ -453,8 +453,8 @@ def listar_productos(
         consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
     if proveedor_id is not None:
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
-    if estacionalidad:
-        consulta = consulta.where(Producto.estacionalidad == estacionalidad)
+    if temporada:
+        consulta = consulta.where(Producto.temporada == temporada)
     if activo is not None:
         consulta = consulta.where(Producto.activo.is_(activo))
     if precio_desde is not None:
@@ -480,7 +480,7 @@ def listar_variantes(
     busqueda: str | None = None,
     categoria_id: int | None = None,
     proveedor_id: int | None = None,
-    estacionalidad: str | None = None,
+    temporada: str | None = None,
     activo: bool | None = None,
     precio_desde: Decimal | None = None,
     precio_hasta: Decimal | None = None,
@@ -531,8 +531,8 @@ def listar_variantes(
         consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
     if proveedor_id is not None:
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
-    if estacionalidad:
-        consulta = consulta.where(Producto.estacionalidad == estacionalidad)
+    if temporada:
+        consulta = consulta.where(Producto.temporada == temporada)
     if activo is not None:
         consulta = consulta.where(Producto.activo.is_(activo))
 
@@ -583,7 +583,7 @@ def crear_producto(
     sku_proveedor: str | None = None,
     descuento_producto: Decimal | None = None,
     peso_gramos: Decimal | None = None,
-    estacionalidad: str = Estacionalidad.PERMANENTE.value,
+    temporada: str = Temporada.ATEMPORAL.value,
     stock_infinito: bool = False,
     ip_origen: str | None = None,
 ) -> Producto:
@@ -612,7 +612,7 @@ def crear_producto(
         precio_venta=calcular_precio_venta(db, precio_usd, proveedor.dolar_actual),
         descuento_producto=descuento,
         peso_gramos=Decimal(peso_gramos) if peso_gramos is not None else None,
-        estacionalidad=Estacionalidad(estacionalidad),
+        temporada=Temporada(temporada),
         stock_infinito=stock_infinito,
         tiene_variantes=False,
         activo=True,
@@ -648,7 +648,7 @@ def editar_producto(
     precio_usd: Decimal | None = None,
     descuento_producto: Decimal | None = None,
     peso_gramos: Decimal | None = None,
-    estacionalidad: str | None = None,
+    temporada: str | None = None,
     stock_infinito: bool | None = None,
     ip_origen: str | None = None,
 ) -> Producto:
@@ -687,8 +687,8 @@ def editar_producto(
             raise ReglaDeNegocio("El peso debe ser mayor a cero")
         producto.peso_gramos = Decimal(peso_gramos)
 
-    if estacionalidad is not None:
-        producto.estacionalidad = Estacionalidad(estacionalidad)
+    if temporada is not None:
+        producto.temporada = Temporada(temporada)
     if stock_infinito is not None:
         producto.stock_infinito = stock_infinito
 

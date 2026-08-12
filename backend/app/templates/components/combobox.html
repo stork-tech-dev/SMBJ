@@ -1,5 +1,5 @@
 {# ===========================================================================
-   Macro: desplegable con buscador.
+   Macro: desplegable, con buscador o sin él.
 
    Un campo de texto que filtra la lista mientras se escribe, en lugar de un
    `<select>` nativo. Se armó para "Categoría", que muestra el camino completo
@@ -7,9 +7,15 @@
    la lista entera con la rueda, porque tipear en un select solo salta por la
    primera letra y todas las ramas de una misma raíz empiezan igual.
 
-   El estado vive en `window.comboboxBuscable` (static/js/app.js): acá está
-   solo el marcado. El filtro del listado y el formulario de alta usan el
-   mismo componente con clases distintas, que es para lo que está `clases`
+   Con `buscable=false` el campo va `readonly`: se despliega y se navega
+   igual, pero no se tipea. Es para las listas cortas —Temporada tiene tres
+   opciones— donde un buscador no aporta nada. Usan el mismo componente
+   porque la lista de un `<select>` nativo la dibuja el sistema operativo:
+   no se puede estilar, y al lado de un combobox se ve como otra cosa.
+
+   El estado vive en `window.combobox` (static/js/app.js): acá está solo el
+   marcado. El filtro del listado y el formulario de alta usan el mismo
+   componente con clases distintas, que es para lo que está `clases`
    (Principio 2: el comportamiento se escribe una sola vez).
 
    Parámetros:
@@ -31,6 +37,8 @@
      al_elegir  sentencia Alpine a ejecutar después de elegir (ej. `cargar()`).
      clases     clases del input.
      obligatorio  agrega el asterisco rojo al label.
+     buscable   false deja el campo de solo lectura: se despliega y se
+                navega, pero no se filtra tipeando.
 
    Uso:
      {% from "components/combobox.html" import combobox %}
@@ -42,8 +50,8 @@
 
 {% macro combobox(id, opciones, texto, modelo, etiqueta='', placeholder='Seleccionar',
                   vacio='', al_elegir='', clases='', label_oculto=false,
-                  obligatorio=false) %}
-<div x-data="comboboxBuscable({
+                  obligatorio=false, buscable=true) %}
+<div x-data="combobox({
                  id: '{{ id }}',
                  opciones: () => {{ opciones }},
                  texto: (o) => {{ texto }},
@@ -67,20 +75,25 @@
     <div class="relative">
         <input id="{{ id }}" type="text" x-model="consulta"
                placeholder="{{ placeholder }}"
+               {# `readonly` y no `disabled`: el campo sigue recibiendo el foco
+                  y abriendo la lista, pero no se tipea y en un teléfono no
+                  levanta el teclado. #}
+               {% if not buscable %}readonly{% endif %}
                {# El autocompletado del navegador tapa la lista con su propio
                   desplegable de valores ya tipeados. #}
-               autocomplete="off" role="combobox" aria-autocomplete="list"
+               autocomplete="off" role="combobox"
+               {% if buscable %}aria-autocomplete="list"{% endif %}
                aria-controls="{{ id }}-lista"
                :aria-expanded="abierto ? 'true' : 'false'"
                :aria-activedescendant="abierto ? idOpcion(resaltado) : null"
-               class="{{ clases }}"
+               class="{{ clases }}{% if not buscable %} cursor-pointer{% endif %}"
                @focus="abrir(); $event.target.select()"
                {# El `focus` no vuelve a dispararse si el campo YA tiene el
                   cursor, así que sin esto el clic para reabrir la lista
                   después de elegir no hacía nada. Con la lista abierta no se
                   toca: ahí el clic es para mover el cursor dentro del texto. #}
                @click="if (!abierto) abrir()"
-               @input="alEscribir()"
+               {% if buscable %}@input="alEscribir()"{% endif %}
                @keydown.arrow-down.prevent="mover(1)"
                @keydown.arrow-up.prevent="mover(-1)"
                {# Enter elige la fila marcada; sin el `preventDefault` además

@@ -34,12 +34,20 @@ if TYPE_CHECKING:
     from app.models.proveedor import Proveedor
 
 
-class Estacionalidad(str, enum.Enum):
-    PERMANENTE = "permanente"
-    VERANO = "verano"
-    INVIERNO = "invierno"
-    OTONIO = "otoño"
-    PRIMAVERA = "primavera"
+class Temporada(str, enum.Enum):
+    """
+    Cómo se compra la mercadería, que es en dos temporadas y no en cuatro
+    estaciones: el rubro reposiciona por Otoño-Invierno y Primavera-Verano.
+
+    Antes eran las cinco estaciones sueltas (`permanente`, `verano`,
+    `invierno`, `otoño`, `primavera`), que obligaban a elegir entre dos
+    valores que en la práctica significan lo mismo —¿un buzo es de otoño o
+    de invierno?— y a filtrar dos veces para ver una temporada entera.
+    """
+
+    ATEMPORAL = "atemporal"
+    OTONIO_INVIERNO = "otoño_invierno"
+    PRIMAVERA_VERANO = "primavera_verano"
 
 
 def _enum(tipo, nombre):
@@ -90,10 +98,13 @@ class Producto(Base):
 
     peso_gramos: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
 
-    estacionalidad: Mapped[Estacionalidad] = mapped_column(
-        _enum(Estacionalidad, "estacionalidad_producto"),
+    # `atemporal` por defecto: es lo que corresponde a la mayoría del
+    # catálogo de una bijouterie, y hace que el alta no obligue a decidir
+    # una temporada para un producto que no la tiene.
+    temporada: Mapped[Temporada] = mapped_column(
+        _enum(Temporada, "temporada_producto"),
         nullable=False,
-        server_default=Estacionalidad.PERMANENTE.value,
+        server_default=Temporada.ATEMPORAL.value,
         index=True,
     )
 

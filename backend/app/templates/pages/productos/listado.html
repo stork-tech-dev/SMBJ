@@ -74,21 +74,21 @@
                                 focus:outline-none focus:border-primary') }}
         </div>
 
-        <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-temporada">Estacionalidad</label>
-            <select id="f-temporada" x-model="filtros.estacionalidad" @change="cargar()"
-                    class="h-control w-full sm:w-[10rem] pl-4 pr-10 text-sm font-semibold
-                           bg-surface border-2 border-borde rounded-input appearance-none
-                           focus:outline-none focus:border-primary"
-                    :class="filtros.estacionalidad ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Temporada</option>
-                <template x-for="e in ESTACIONES" :key="e">
-                    <option :value="e" x-text="e" class="text-texto capitalize"></option>
-                </template>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
-                {{ icono('chevron') }}
-            </span>
+        {# Mismo componente y mismas clases que los dos de al lado, pero sin
+           buscador: con tres opciones no hay nada que buscar. Lo que se gana
+           es que la lista se vea igual —la de un `<select>` la dibuja el
+           sistema operativo y no se puede estilar—. #}
+        <div class="w-full sm:w-[11rem]">
+            {{ combobox('f-temporada', 'TEMPORADAS', 'o.etiqueta',
+                        'filtros.temporada', buscable=false,
+                        etiqueta='Temporada', label_oculto=true,
+                        placeholder='Temporada',
+                        vacio='Todas las temporadas',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
         </div>
 
         <button type="button" @click="limpiar()"
@@ -757,13 +757,13 @@
                         </p>
                     </div>
 
-                    {# Peso, descuento y estacionalidad comparten fila: los tres
+                    {# Peso, descuento y temporada comparten fila: los tres
                        son valores chicos y ninguno necesita media pantalla.
 
                        En cuatro columnas y no en tres iguales: los dos números
-                       ocupan una cada uno y la estacionalidad dos, porque es lo
-                       único con texto —a un tercio de fila "permanente" se
-                       cortaba—. `items-end` alinea los controles por abajo
+                       ocupan una cada uno y la temporada dos, porque es lo
+                       único con texto —a un tercio de fila "Primavera-Verano"
+                       se cortaba—. `items-end` alinea los controles por abajo
                        aunque algún label ocupe dos líneas. #}
                     <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-4 items-end">
                         <div class="flex flex-col gap-1">
@@ -787,23 +787,18 @@
                                    x-model="form.descuento_producto" class="campo-linea">
                         </div>
 
-                        <div class="sm:col-span-2 flex flex-col gap-1">
-                            <label for="pr-temporada" class="text-sm font-semibold text-texto-header">
-                                Estacionalidad
-                            </label>
-                            <div class="relative">
-                                <select id="pr-temporada" x-model="form.estacionalidad"
-                                        class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
-                                               border-[0.5px] border-texto-disabled rounded-input
-                                               appearance-none focus:outline-none focus:border-primary">
-                                    <template x-for="e in ESTACIONES" :key="e">
-                                        <option :value="e" x-text="e" class="capitalize"></option>
-                                    </template>
-                                </select>
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    {{ icono('chevron') }}
-                                </span>
-                            </div>
+                        <div class="sm:col-span-2">
+                            {# Mismo componente que Categoría, sin buscador y
+                               sin opción para vaciar: la temporada siempre
+                               tiene valor y arranca en "Atemporal", que es lo
+                               que corresponde a la mayoría del catálogo. #}
+                            {{ combobox('pr-temporada', 'TEMPORADAS', 'o.etiqueta',
+                                        'form.temporada', buscable=false,
+                                        etiqueta='Temporada',
+                                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                bg-surface text-texto border-[0.5px]
+                                                border-texto-disabled rounded-input
+                                                focus:outline-none focus:border-primary') }}
                         </div>
                     </div>
 

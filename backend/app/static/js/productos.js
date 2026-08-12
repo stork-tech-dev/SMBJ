@@ -9,11 +9,22 @@
    El filtrado y la paginación también son del backend (Principio 5).
    ========================================================================== */
 
-const ESTACIONES = ['permanente', 'verano', 'invierno', 'otoño', 'primavera'];
+// El `id` es el que viaja a la API; la etiqueta es la que se lee. No se
+// deriva una de la otra: "otoño_invierno" con el guion bajo cambiado por un
+// espacio no da "Otoño-Invierno", y capitalizar por CSS tampoco alcanza.
+//
+// Se llama `id` y no `valor` porque es lo que espera el combobox, que es el
+// mismo componente que usan Categoría y Proveedor (acá sin buscador: con
+// tres opciones no hay nada que buscar).
+const TEMPORADAS = [
+    { id: 'atemporal', etiqueta: 'Atemporal' },
+    { id: 'otoño_invierno', etiqueta: 'Otoño-Invierno' },
+    { id: 'primavera_verano', etiqueta: 'Primavera-Verano' },
+];
 
 function abmProductos() {
     return {
-        ESTACIONES,
+        TEMPORADAS,
 
         // Filas del listado. Son VARIANTES, no productos: un producto con
         // tres variantes ocupa tres filas, porque cada una tiene su stock y
@@ -31,7 +42,7 @@ function abmProductos() {
         // artículo: el código de la etiqueta, el SKU o parte de la
         // descripción. Lo desambigua el backend (ver `listar_variantes`).
         filtros: {
-            busqueda: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
+            busqueda: '', categoria_id: '', proveedor_id: '', temporada: '',
             // 'true' = solo activos, que es como arranca la pantalla.
             // Vacío = todos. Es string y no booleano para que entre sin
             // cambios en el bucle que arma los query params.
@@ -71,7 +82,7 @@ function abmProductos() {
             abierto: false, guardando: false, id: null, sku: '',
             descripcion: '', categoria_id: '', proveedor_id: '', precio_usd: '',
             sku_proveedor: '', descuento_producto: '', peso_gramos: '',
-            estacionalidad: 'permanente', stock_infinito: false,
+            temporada: 'atemporal', stock_infinito: false,
         },
 
         /* --- Formato: la API manda números, no strings con símbolo --- */
@@ -188,7 +199,7 @@ function abmProductos() {
             // 'Limpiar filtros' vuelve al estado de entrada, que incluye
             // el switch en Sí: limpiar no es 'mostrar todo'.
             this.filtros = {
-                busqueda: '', categoria_id: '', proveedor_id: '', estacionalidad: '',
+                busqueda: '', categoria_id: '', proveedor_id: '', temporada: '',
                 activo: 'true',
             };
             this.cargar();
@@ -516,7 +527,7 @@ function abmProductos() {
                 abierto: true, guardando: false, id: null, sku: '',
                 descripcion: '', categoria_id: '', proveedor_id: '', precio_usd: '',
                 sku_proveedor: '', descuento_producto: '', peso_gramos: '',
-                estacionalidad: 'permanente', stock_infinito: false,
+                temporada: 'atemporal', stock_infinito: false,
             };
             this.preview = { dolar_proveedor: null, precio_venta: null };
         },
@@ -531,7 +542,7 @@ function abmProductos() {
                 sku_proveedor: p.sku_proveedor || '',
                 descuento_producto: p.descuento_producto,
                 peso_gramos: p.peso_gramos || '',
-                estacionalidad: p.estacionalidad,
+                temporada: p.temporada,
                 stock_infinito: p.stock_infinito,
             };
             // En edición ya hay proveedor y precio: se muestra de entrada.
@@ -549,7 +560,7 @@ function abmProductos() {
                     sku_proveedor: this.form.sku_proveedor || null,
                     descuento_producto: this.form.descuento_producto || null,
                     peso_gramos: this.form.peso_gramos || null,
-                    estacionalidad: this.form.estacionalidad,
+                    temporada: this.form.temporada,
                     stock_infinito: this.form.stock_infinito,
                 };
                 // El SKU y el precio de venta los genera el backend; el

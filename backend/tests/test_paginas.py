@@ -466,9 +466,9 @@ def test_el_selector_de_categoria_se_puede_buscar_tipeando(client, crear_usuario
 
     html = client.get("/productos").text
 
-    # Los cuatro campos —categoría y proveedor, filtro y alta— son el mismo
-    # componente.
-    assert html.count("comboboxBuscable({") == 4
+    # Los seis campos —categoría, proveedor y temporada, filtro y alta— son
+    # el mismo componente. Temporada va sin buscador, pero es el mismo.
+    assert html.count("combobox({") == 6
 
     for campo in ("f-categoria", "pr-categoria"):
         assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
@@ -519,8 +519,9 @@ def test_el_filtro_de_categoria_recarga_y_se_puede_limpiar(client, crear_usuario
     assert "filtros.categoria_id = v; cargar();" in html
     assert "vacio: 'Todas las categorías'" in html
 
-    # Los del formulario NO la llevan: categoría y proveedor son obligatorios.
-    assert html.count("vacio: null") == 2
+    # Los del formulario NO la llevan: categoría, proveedor y temporada
+    # siempre tienen valor.
+    assert html.count("vacio: null") == 3
 
 
 def test_el_selector_de_proveedor_se_puede_buscar_tipeando(client, crear_usuario):
@@ -576,6 +577,72 @@ def test_elegir_proveedor_en_el_alta_recalcula_el_precio(client, crear_usuario):
     html = client.get("/productos").text
 
     assert "form.proveedor_id = v; calcularPreview();" in html
+
+
+def test_la_temporada_ofrece_solo_las_tres_opciones(client, crear_usuario):
+    """
+    El desplegable decía "Estacionalidad" y listaba las cuatro estaciones más
+    "permanente", en minúscula y capitalizadas por CSS. Ahora es "Temporada"
+    con las tres que se compran, y la etiqueta visible no se deriva del valor:
+    "otoño_invierno" con el guion bajo cambiado por un espacio no da
+    "Otoño-Invierno".
+
+    Son los dos campos —el filtro del listado y el del formulario— y los dos
+    salen de la misma constante `TEMPORADAS`.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "Estacionalidad" not in html, "quedó el nombre viejo en pantalla"
+    for campo in ("f-temporada", "pr-temporada"):
+        assert f'id="{campo}"' in html
+    assert html.count("opciones: () => TEMPORADAS") == 2
+    assert "filtros.temporada = v; cargar();" in html
+    assert "form.temporada = v;" in html
+
+    js = _js_de("/productos")
+    for etiqueta in ("Atemporal", "Otoño-Invierno", "Primavera-Verano"):
+        assert etiqueta in js, f"falta la opción {etiqueta}"
+    # Las estaciones sueltas ya no existen como valor.
+    for vieja in ("'permanente'", "'invierno'", "'primavera'"):
+        assert vieja not in js, f"quedó la estación vieja {vieja}"
+    # El alta arranca en atemporal, que es lo que corresponde a la mayoría
+    # del catálogo.
+    assert "temporada: 'atemporal'" in js
+
+
+def test_temporada_es_el_mismo_desplegable_que_los_otros_pero_sin_buscador(
+    client, crear_usuario
+):
+    """
+    Los tres desplegables de la barra de filtros tienen que verse igual. Con
+    un `<select>` nativo no se puede: su lista la dibuja el sistema operativo,
+    así que al lado de Categoría y Proveedor —que abren una lista propia,
+    estilada— Temporada se veía como otra cosa.
+
+    Pasa al mismo componente con `buscable=false`: el campo va `readonly`, se
+    despliega y se navega con el teclado, pero no se tipea. Con tres opciones
+    un buscador no aporta nada, y un campo que invita a escribir donde no hay
+    nada que buscar confunde.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Ni un `<select>` de temporada ni el `x-for` de sus `<option>`.
+    assert "<select" not in html, "volvió un select nativo a la pantalla"
+
+    for campo in ("f-temporada", "pr-temporada"):
+        assert f'id="{campo}" type="text"' in html
+        assert f'aria-controls="{campo}-lista"' in html
+
+    # Los dos van de solo lectura; los cuatro buscables, no.
+    assert html.count("readonly") == 2
+    # Y sin el `@input` que filtra, que es lo único que los diferencia.
+    assert html.count("alEscribir()") == 4
 
 
 def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario):

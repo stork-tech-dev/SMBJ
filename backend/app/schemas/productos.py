@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-_ESTACIONALIDAD = "^(permanente|verano|invierno|otoño|primavera)$"
+_TEMPORADA = "^(atemporal|otoño_invierno|primavera_verano)$"
 
 
 class ProductoCrear(BaseModel):
@@ -26,7 +26,7 @@ class ProductoCrear(BaseModel):
     sku_proveedor: str | None = Field(default=None, max_length=30)
     descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
     peso_gramos: Decimal | None = Field(default=None, gt=0)
-    estacionalidad: str = Field(default="permanente", pattern=_ESTACIONALIDAD)
+    temporada: str = Field(default="atemporal", pattern=_TEMPORADA)
     stock_infinito: bool = False
 
 
@@ -45,7 +45,7 @@ class ProductoEditar(BaseModel):
     precio_usd: Decimal | None = Field(default=None, gt=0)
     descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
     peso_gramos: Decimal | None = Field(default=None, gt=0)
-    estacionalidad: str | None = Field(default=None, pattern=_ESTACIONALIDAD)
+    temporada: str | None = Field(default=None, pattern=_TEMPORADA)
     stock_infinito: bool | None = None
 
 
@@ -163,7 +163,7 @@ class ProductoResponse(BaseModel):
     precio_venta: Decimal
     descuento_producto: Decimal
     peso_gramos: Decimal | None
-    estacionalidad: str
+    temporada: str
     stock_infinito: bool
     tiene_variantes: bool
     activo: bool
@@ -192,7 +192,7 @@ class ProductoResumen(BaseModel):
     # Crudos: el formato lo pone el frontend (Principio 1).
     precio_usd: Decimal
     precio_venta: Decimal
-    estacionalidad: str
+    temporada: str
     stock_infinito: bool
     activo: bool
 

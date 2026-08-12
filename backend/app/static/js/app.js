@@ -72,13 +72,20 @@ const normalizarTexto = (valor) =>
         .toLowerCase();
 
 /**
- * Estado de un combobox: un campo de texto que filtra una lista mientras se
- * escribe. Lo usa el macro `components/combobox.html`.
+ * Estado de un combobox: un campo con su lista desplegable propia. Lo usa el
+ * macro `components/combobox.html`.
  *
  * Existe porque un `<select>` nativo no se puede filtrar —tipear solo salta
  * por la primera letra— y las categorías se muestran con su camino completo
  * ("Joyas - Anillos - Plata"), así que todas las de una misma rama empiezan
  * igual y ni ese salto sirve.
+ *
+ * También lo usan los campos que NO se buscan (`buscable=false` en el macro,
+ * como Temporada, que tiene tres opciones): el input va `readonly`, así que
+ * `filtrando` nunca se prende y la lista se muestra entera. Es el mismo
+ * componente para que todos los desplegables de una pantalla se vean y se
+ * manejen igual, que es lo que un `<select>` nativo no permite: su lista la
+ * dibuja el sistema operativo y no se puede estilar.
  *
  * Config (todo son funciones para que se evalúen contra el scope de Alpine
  * que envuelve al componente, y sigan siendo reactivas):
@@ -89,7 +96,7 @@ const normalizarTexto = (valor) =>
  *   elegir    (id) => guarda el elegido y dispara lo que corresponda.
  *   vacio     etiqueta de una primera opción que limpia la selección, o null.
  */
-window.comboboxBuscable = function ({ id, opciones, texto, valor, elegir, vacio = null }) {
+window.combobox = function ({ id, opciones, texto, valor, elegir, vacio = null }) {
     return {
         abierto: false,
         consulta: '',
