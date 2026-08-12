@@ -125,7 +125,7 @@
 
     {# ---------- Modal de edición ---------- #}
     <div x-show="form.abierto" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false" role="dialog" aria-modal="true">
+         @keydown.escape.window="form.abierto = false" role="dialog" aria-modal="true">
         <div class="w-full max-w-md bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
             <div class="flex items-center justify-between px-8 pt-7 pb-2">
                 <h2 class="text-lg font-black text-welcome">Editar dispositivo</h2>

@@ -1599,6 +1599,7 @@ def test_las_bajas_usan_el_mismo_componente_de_confirmacion(client, crear_usuari
         ("/dispositivos", "confirmacion"),
         ("/roles", "confirmacion"),
         ("/puntos-de-venta", "baja"),
+        ("/categorias", "confirmacion"),
     ):
         html = client.get(url).text
         assert f'aria-labelledby="titulo-{estado}"' in html, f"{url} no usa el macro"
@@ -1633,6 +1634,29 @@ def test_ninguna_pantalla_usa_los_dialogos_del_navegador(client, crear_usuario):
             culpables[archivo.name] = hallazgos
 
     assert not culpables, f"diálogos nativos del navegador: {culpables}"
+
+
+def test_los_modales_no_se_cierran_al_clickear_afuera(client, crear_usuario):
+    """
+    Un clic al costado de un alta cerraba el modal y se llevaba todo lo
+    cargado. Ahora se sale por la X, por Cancelar o con Escape.
+
+    El test mira el HTML SERVIDO y no las plantillas —de eso se ocupa
+    `test_ningun_modal_se_cierra_al_clickear_el_velo`— porque acá interesa la
+    otra mitad del trato: sacar el clic afuera no puede dejar un modal sin
+    salida. Cada pantalla con modales tiene que seguir ofreciendo la X o el
+    botón Cancelar.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url in ("/productos", "/usuarios", "/proveedores", "/roles",
+                "/dispositivos", "/puntos-de-venta", "/categorias"):
+        html = client.get(url).text
+        assert "@click.self" not in html, f"{url} cierra el modal al clickear el velo"
+        assert 'aria-label="Cerrar"' in html or "Cancelar" in html, (
+            f"{url} quedó con un modal sin forma de salir"
+        )
 
 
 def test_los_listados_arrancan_mostrando_solo_los_activos(client, crear_usuario):

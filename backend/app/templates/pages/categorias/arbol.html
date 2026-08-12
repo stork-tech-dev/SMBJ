@@ -5,6 +5,7 @@
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
 
 {% block contenido %}
 <div x-data="arbolCategorias()" x-init="cargar()">
@@ -119,7 +120,7 @@
     {# ---------- Modal de alta / edición ---------- #}
     <div x-show="form.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-categoria">
 
         <div class="w-full max-w-[35rem] my-8 bg-surface rounded-[10px]
@@ -173,25 +174,10 @@
     </div>
 
     {# ---------- Confirmación de baja ---------- #}
-    <div x-show="confirmacion.abierta" x-cloak
-         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="confirmacion.abierta = false" role="dialog" aria-modal="true">
-        <div class="w-full max-w-md bg-surface rounded-[20px] shadow-xl p-6 sm:p-8">
-            <h2 class="text-lg font-semibold">Eliminar categoría</h2>
-            <p class="mt-3 text-base text-texto-muted">
-                ¿Confirmás eliminar <span class="font-medium" x-text="confirmacion.nombre"></span>?
-                La acción queda auditada.
-            </p>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" @click="confirmacion.abierta = false"
-                        class="h-boton px-5 rounded-input border border-borde
-                               hover:border-primary hover:text-primary">Cancelar</button>
-                <button type="button" @click="eliminar()"
-                        class="h-boton px-5 rounded-input bg-danger text-white font-medium
-                               hover:opacity-90">Confirmar</button>
-            </div>
-        </div>
-    </div>
+    {# Era una copia a mano del mismo diálogo, con su propio `rounded-[20px]`
+       y sin Escape. Ahora sale del macro, como el resto de las bajas: el
+       título y el mensaje los arma `confirmarBaja()`. #}
+    {{ modal_confirmacion() }}
 </div>
 {% endblock %}
 

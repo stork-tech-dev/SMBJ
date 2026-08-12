@@ -234,7 +234,6 @@
     {# ---------- Panel de detalle: variantes y códigos ---------- #}
     <div x-show="detalle.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="detalle.abierto = false"
          {# El modal de variante se abre ENCIMA de este. Sin la guarda, un
             Escape cerraría los dos de una y el usuario perdería el detalle
             sin haberlo pedido. #}
@@ -400,7 +399,7 @@
        y no avisaba de que la BASE se elimina. #}
     <div x-show="variante.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="variante.abierto = false" @keydown.escape.window="variante.abierto = false"
+         @keydown.escape.window="variante.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-variante">
 
         <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
@@ -513,7 +512,6 @@
        etiqueta ya se imprimió y está pegada a la mercadería. #}
     <div x-show="edicionVariante.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="edicionVariante.abierto = false"
          @keydown.escape.window="edicionVariante.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-editar-variante">
 
@@ -616,7 +614,7 @@
     {# ---------- Modal de alta / edición ---------- #}
     <div x-show="form.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-producto">
 
         <div class="w-full max-w-[35rem] my-8 bg-surface rounded-[10px]

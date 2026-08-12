@@ -149,7 +149,8 @@
     {# ---------- Panel de detalle (botón "Ver") ---------- #}
     <div x-show="detalle.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="detalle.abierto = false" role="dialog" aria-modal="true">
+         @keydown.escape.window="detalle.abierto = false"
+         role="dialog" aria-modal="true">
         <div class="w-full max-w-lg bg-surface rounded-[20px] shadow-xl">
             <div class="flex items-center justify-between px-8 py-5 border-b border-borde">
                 <h2 class="text-lg font-semibold" x-text="detalle.usuario?.nombre"></h2>
@@ -225,7 +226,7 @@
        entero (Principio 2: DRY). #}
     <div x-show="form.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-usuario">
 
         <div class="w-full max-w-full sm:w-[35rem] my-8 bg-surface rounded-[10px]

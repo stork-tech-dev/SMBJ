@@ -162,3 +162,70 @@ def test_todos_los_componentes_se_importan_sin_error(env):
             errores[nombre] = f"{type(exc).__name__}: {exc}"
 
     assert not errores, errores
+
+
+# ============================================================================
+# REGLAS QUE VALEN PARA TODAS LAS PLANTILLAS
+# ============================================================================
+
+
+def test_ningun_modal_se_cierra_al_clickear_el_velo():
+    """
+    Los modales se cierran con la X, con Cancelar o con Escape. NUNCA con un
+    clic en el fondo oscuro.
+
+    El velo cerraba el diálogo con `@click.self`, así que un clic de más al
+    costado de un alta de producto o de usuario se llevaba puesto el
+    formulario entero: sin aviso, sin confirmación y sin forma de recuperar
+    lo cargado. Las tres salidas que quedan son gestos deliberados; el
+    resbalón del mouse no.
+
+    El test barre las plantillas y no una lista de archivos porque la regla
+    tiene que valer también para los modales que todavía no existen: es la
+    única forma de que el próximo no lo reintroduzca por copiar y pegar uno
+    viejo.
+
+    No confundir con dos usos legítimos que quedan afuera:
+      - `components/combobox.html` cierra su lista con `@click.outside`, que
+        es otra directiva y otro problema: ahí no se pierde nada.
+      - `base.html` cierra el cajón de navegación con `@click` (sin `.self`)
+        en su velo. Es un menú, no un formulario: tocar el fondo para
+        cerrarlo es lo que espera cualquiera en un teléfono.
+    """
+    culpables = [
+        str(archivo.relative_to(PLANTILLAS))
+        for archivo in sorted(PLANTILLAS.rglob("*.html"))
+        if "@click.self" in archivo.read_text(encoding="utf-8")
+    ]
+
+    assert not culpables, (
+        f"el velo de estos modales vuelve a cerrar al clickearlo: {culpables}"
+    )
+
+
+def test_todos_los_modales_se_cierran_con_escape():
+    """
+    Escape es la contraparte de haber sacado el clic en el velo: es la salida
+    de teclado, la que espera cualquiera frente a un diálogo, y la única que
+    no obliga a apuntar el mouse a la X.
+
+    Tres modales no la tenían —el detalle de usuario, el form de roles y la
+    confirmación de baja de categorías— y se notaba justamente porque todos
+    los demás sí. Se cuenta un `@keydown.escape.window` por cada velo del
+    archivo: `pages/productos/listado.html` tiene cuatro modales y necesita
+    los cuatro.
+
+    `base.html` queda afuera solo: su velo es `z-40` porque es el cajón de
+    navegación y no un modal, y su Escape vive en el contenedor de más
+    arriba.
+    """
+    velo = 'class="fixed inset-0 z-50'
+    faltantes = {}
+    for archivo in sorted(PLANTILLAS.rglob("*.html")):
+        texto = archivo.read_text(encoding="utf-8")
+        velos = texto.count(velo)
+        escapes = texto.count("@keydown.escape.window")
+        if velos > escapes:
+            faltantes[str(archivo.relative_to(PLANTILLAS))] = f"{velos} velos, {escapes} escapes"
+
+    assert not faltantes, f"modales que no se cierran con Escape: {faltantes}"

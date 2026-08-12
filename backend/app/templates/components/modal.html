@@ -37,9 +37,11 @@
      @keydown.escape.window="cerrar()"
      x-cloak>
 
+    {# El velo no cierra al clickearlo: ver el porqué en
+       `components/modal_confirmacion.html`. Se sale por la X, por Cancelar o
+       con Escape. #}
     <div x-show="abierto"
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="cerrar()"
          role="dialog"
          aria-modal="true"
          :aria-label="titulo">
@@ -79,8 +81,9 @@
 {% macro modal(titulo, id='modal') %}
 <div id="{{ id }}" x-data="{ abierto: false }" @abrir-{{ id }}.window="abierto = true"
      @keydown.escape.window="abierto = false" x-cloak>
+    {# Sin cierre por clic en el velo, igual que el resto de los modales. #}
     <div x-show="abierto" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="abierto = false" role="dialog" aria-modal="true" aria-label="{{ titulo }}">
+         role="dialog" aria-modal="true" aria-label="{{ titulo }}">
         <div class="w-full max-w-2xl bg-surface border border-borde rounded-input shadow-xl">
             <div class="flex items-center justify-between px-6 py-4 border-b border-borde">
                 <h2 class="text-lg font-semibold text-texto">{{ titulo }}</h2>

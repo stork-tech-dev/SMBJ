@@ -33,8 +33,12 @@
 {% set accion = accion or estado ~ '.accion()' %}
 <div x-show="{{ estado }}.abierta" x-cloak
      class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-     @click.self="{{ estado }}.abierta = false"
-     {# Escape cancela: es lo que espera cualquiera frente a un diálogo, y
+     {# El velo NO cierra al clickearlo, y la ausencia es a propósito: un clic
+        de más al costado del diálogo lo cerraba sin avisar, y en los modales
+        de formulario eso se llevaba puesto todo lo cargado. Se sale por la X,
+        por Cancelar o con Escape, que son las tres cosas que alguien hace a
+        propósito. Vale para todos los modales del sistema, no solo para este.
+        Escape cancela: es lo que espera cualquiera frente a un diálogo, y
         cancelar nunca destruye nada. #}
      @keydown.escape.window="{{ estado }}.abierta = false"
      role="dialog" aria-modal="true" aria-labelledby="titulo-{{ estado }}">
