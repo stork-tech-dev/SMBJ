@@ -466,8 +466,9 @@ def test_el_selector_de_categoria_se_puede_buscar_tipeando(client, crear_usuario
 
     html = client.get("/productos").text
 
-    # Los dos campos son el mismo componente.
-    assert html.count("comboboxBuscable({") == 2
+    # Los cuatro campos —categoría y proveedor, filtro y alta— son el mismo
+    # componente.
+    assert html.count("comboboxBuscable({") == 4
 
     for campo in ("f-categoria", "pr-categoria"):
         assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
@@ -480,21 +481,25 @@ def test_el_selector_de_categoria_se_puede_buscar_tipeando(client, crear_usuario
     assert 'x-model="form.categoria_id"' not in html
 
 
-def test_el_alta_de_producto_exige_categoria_sin_el_required(client, crear_usuario):
+def test_el_alta_de_producto_exige_categoria_y_proveedor_sin_el_required(
+    client, crear_usuario
+):
     """
     La obligatoriedad la daba el `required` del `<select>`. El combobox es un
     input de texto libre —lo que se tipea es la búsqueda, no el valor— así que
     un `required` ahí exigiría texto, no una categoría elegida: bastaría dejar
     a medio escribir "ani" para que el navegador diera el formulario por bueno.
 
-    Pasa a exigirlo el botón, como en los dos modales de variante.
+    Pasa a exigirlo el botón, como en los dos modales de variante. Vale igual
+    para el proveedor desde que también es un combobox; en edición no bloquea
+    nada porque `editar()` carga el proveedor del producto.
     """
     crear_usuario("cm", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
 
     html = client.get("/productos").text
 
-    assert '"form.guardando || !form.categoria_id"' in html, (
+    assert '"form.guardando || !form.categoria_id || !form.proveedor_id"' in html, (
         "el botón Guardar tiene que quedar deshabilitado sin categoría"
     )
 
@@ -514,8 +519,63 @@ def test_el_filtro_de_categoria_recarga_y_se_puede_limpiar(client, crear_usuario
     assert "filtros.categoria_id = v; cargar();" in html
     assert "vacio: 'Todas las categorías'" in html
 
-    # El del formulario NO la lleva: la categoría del producto es obligatoria.
-    assert html.count("vacio: null") == 1
+    # Los del formulario NO la llevan: categoría y proveedor son obligatorios.
+    assert html.count("vacio: null") == 2
+
+
+def test_el_selector_de_proveedor_se_puede_buscar_tipeando(client, crear_usuario):
+    """
+    Mismo problema que tenía categoría: era un `<select>` nativo, que no se
+    filtra. Con el catálogo de una bijouterie los proveedores son decenas y
+    encontrar uno era bajar con la rueda, mientras el campo de al lado
+    —categoría— ya se buscaba tipeando. Dos campos pegados en la misma fila no
+    pueden comportarse distinto.
+
+    Es el mismo componente, no una copia: lo único que cambia es la etiqueta de
+    cada opción (`o.nombre` en vez del camino del árbol).
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    for campo in ("f-proveedor", "pr-proveedor"):
+        assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
+        assert f'aria-controls="{campo}-lista"' in html
+
+    # El desplegable viejo no puede quedar dando vueltas al lado del nuevo.
+    assert 'x-model="filtros.proveedor_id"' not in html
+    assert 'x-model="form.proveedor_id"' not in html
+
+
+def test_el_filtro_de_proveedor_recarga_y_se_puede_limpiar(client, crear_usuario):
+    """
+    Lo mismo que se le exige al filtro de categoría: el `<select>` recargaba la
+    tabla al elegir y tenía una opción vacía. Sin la primera el filtro no se
+    aplica; sin la segunda no hay forma de volver al catálogo completo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "filtros.proveedor_id = v; cargar();" in html
+    assert "vacio: 'Todos los proveedores'" in html
+
+
+def test_elegir_proveedor_en_el_alta_recalcula_el_precio(client, crear_usuario):
+    """
+    El precio en pesos sale de la cotización del proveedor, así que el
+    `@change="calcularPreview()"` del `<select>` no era decorativo: sin él los
+    valores informativos quedan con el dólar del proveedor anterior y el alta
+    muestra un precio que no es el que se va a guardar.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "form.proveedor_id = v; calcularPreview();" in html
 
 
 def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario):

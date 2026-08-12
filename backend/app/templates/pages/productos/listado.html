@@ -57,21 +57,21 @@
                                 focus:outline-none focus:border-primary') }}
         </div>
 
-        <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-proveedor">Proveedor</label>
-            <select id="f-proveedor" x-model="filtros.proveedor_id" @change="cargar()"
-                    class="h-control w-full sm:w-[12.5rem] pl-4 pr-10 text-sm font-semibold
-                           bg-surface border-2 border-borde rounded-input appearance-none
-                           focus:outline-none focus:border-primary"
-                    :class="filtros.proveedor_id ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Proveedor</option>
-                <template x-for="p in proveedores" :key="p.id">
-                    <option :value="p.id" x-text="p.nombre" class="text-texto"></option>
-                </template>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
-                {{ icono('chevron') }}
-            </span>
+        {# Mismo componente que categoría: con decenas de proveedores, el
+           `<select>` obligaba a bajar con la rueda —tipear ahí solo salta por
+           la primera letra— mientras el campo de al lado ya se buscaba
+           escribiendo. #}
+        <div class="w-full sm:w-[12.5rem]">
+            {{ combobox('f-proveedor', 'proveedores', 'o.nombre',
+                        'filtros.proveedor_id',
+                        etiqueta='Proveedor', label_oculto=true,
+                        placeholder='Proveedor',
+                        vacio='Todos los proveedores',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
         </div>
 
         <div class="relative w-full sm:w-auto">
@@ -669,40 +669,39 @@
                     </div>
 
                     <div class="flex flex-col gap-1">
-                        <label for="pr-proveedor" class="text-sm font-semibold text-texto-header">
-                            Proveedor<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        {# En ALTA es un desplegable; en EDICIÓN, un dato fijo.
+                        {# En ALTA es un desplegable con buscador; en EDICIÓN,
+                           un dato fijo. Cada rama pone su propio título: el
+                           combobox trae el suyo y el dato fijo no tiene campo
+                           al que apuntar, así que ahí no va un `<label>`.
 
                            El proveedor no se cambia, y no es una restricción de
                            la pantalla: `ProductoActualizar` no tiene el campo y
                            `actualizar_producto()` tampoco lo recibe. Antes esto
-                           se resolvía con el select deshabilitado, que se veía
+                           se resolvía con el campo deshabilitado, que se veía
                            igual que uno roto —no se desplegaba y nada explicaba
                            por qué—. Mostrarlo como valor con su motivo dice lo
                            mismo sin parecer una falla. #}
                         <template x-if="!form.id">
-                            <div class="relative">
-                                {# Al elegir proveedor cambia la cotización, así que
-                                   los valores informativos se recalculan. #}
-                                <select id="pr-proveedor" x-model="form.proveedor_id" required
-                                        @change="calcularPreview()"
-                                        class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
-                                               border-[0.5px] border-texto-disabled rounded-input
-                                               appearance-none focus:outline-none focus:border-primary">
-                                    <option value="">Seleccionar</option>
-                                    <template x-for="p in proveedores" :key="p.id">
-                                        <option :value="p.id" x-text="p.nombre"></option>
-                                    </template>
-                                </select>
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    {{ icono('chevron') }}
-                                </span>
-                            </div>
+                            {# Sin opción para vaciar: el proveedor es
+                               obligatorio, y lo exige el botón Guardar
+                               deshabilitado igual que la categoría.
+                               Al elegir cambia la cotización, así que los
+                               valores informativos se recalculan. #}
+                            {{ combobox('pr-proveedor', 'proveedores', 'o.nombre',
+                                        'form.proveedor_id',
+                                        etiqueta='Proveedor', obligatorio=true,
+                                        al_elegir='calcularPreview();',
+                                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                bg-surface text-texto border-[0.5px]
+                                                border-texto-disabled rounded-input
+                                                focus:outline-none focus:border-primary') }}
                         </template>
 
                         <template x-if="form.id">
                             <div>
+                                <span class="block mb-1 text-sm font-semibold text-texto-header">
+                                    Proveedor
+                                </span>
                                 <p class="h-control flex items-center text-base font-light text-texto"
                                    x-text="nombreProveedor()"></p>
                                 <span class="text-xs text-texto-disabled">
@@ -821,11 +820,13 @@
                     <button type="button" @click="form.abierto = false"
                             class="h-boton px-5 rounded-input border border-borde text-base
                                    hover:border-primary hover:text-primary">Cancelar</button>
-                    {# Sin categoría no se puede guardar. Lo exigía el
-                       `required` del `<select>`; el combobox es un input de
-                       texto libre, así que la restricción pasa acá, como en
-                       los dos modales de variante. #}
-                    <button type="submit" :disabled="form.guardando || !form.categoria_id"
+                    {# Sin categoría ni proveedor no se puede guardar. Lo exigía
+                       el `required` de los `<select>`; el combobox es un input
+                       de texto libre, así que la restricción pasa acá, como en
+                       los dos modales de variante. En edición no bloquea nada:
+                       `editar()` carga el proveedor del producto. #}
+                    <button type="submit"
+                            :disabled="form.guardando || !form.categoria_id || !form.proveedor_id"
                             class="h-boton px-8 rounded-input bg-primary text-white text-base
                                    font-medium hover:bg-primary-hover disabled:opacity-60"
                             x-text="form.guardando ? 'Guardando…'
