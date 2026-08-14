@@ -1,5 +1,5 @@
 """
-Modelos de `productos` y `variantes`.
+Modelos de `productos` y `producto_variantes`.
 
 Todo producto tiene al menos una variante: los que no manejan variantes
 reales reciben una BASE automática al crearse. Así el stock siempre cuelga
@@ -165,7 +165,7 @@ class Variante(Base):
     recalcularlo invalidaría lo que ya está en el depósito.
     """
 
-    __tablename__ = "variantes"
+    __tablename__ = "producto_variantes"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
@@ -221,7 +221,7 @@ class Variante(Base):
         # La BASE no lleva sufijo y las reales sí: son excluyentes.
         CheckConstraint(
             "(es_base AND sufijo IS NULL) OR (NOT es_base AND sufijo IS NOT NULL)",
-            name="ck_variantes_base_sin_sufijo",
+            name="ck_producto_variantes_base_sin_sufijo",
         ),
         # Espeja al de arriba: la BASE no es variante de nada, así que no
         # lleva nombre; las reales lo llevan siempre. Con el CHECK, que sea
@@ -229,19 +229,21 @@ class Variante(Base):
         CheckConstraint(
             "(es_base AND descripcion_sufijo IS NULL)"
             " OR (NOT es_base AND descripcion_sufijo IS NOT NULL)",
-            name="ck_variantes_base_sin_descripcion_sufijo",
+            name="ck_producto_variantes_base_sin_descripcion_sufijo",
         ),
-        CheckConstraint("stock_minimo >= 0", name="ck_variantes_stock_minimo_no_negativo"),
+        CheckConstraint(
+            "stock_minimo >= 0", name="ck_producto_variantes_stock_minimo_no_negativo"
+        ),
         CheckConstraint(
             "precio_usd IS NULL OR precio_usd > 0",
-            name="ck_variantes_precio_usd_positivo",
+            name="ck_producto_variantes_precio_usd_positivo",
         ),
         # `precio_venta` se deriva de `precio_usd`: uno sin el otro sería un
         # número que nadie puede recalcular al cambiar la cotización.
         CheckConstraint(
             "(precio_usd IS NULL AND precio_venta IS NULL)"
             " OR (precio_usd IS NOT NULL AND precio_venta IS NOT NULL)",
-            name="ck_variantes_precio_completo",
+            name="ck_producto_variantes_precio_completo",
         ),
     )
 

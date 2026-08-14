@@ -364,7 +364,7 @@ def agregar_variante(
         db,
         usuario_id=autor.id,
         accion="variante.crear",
-        entidad="variantes",
+        entidad="producto_variantes",
         entidad_id=variante.id,
         estado_nuevo=variante,
         ip_origen=ip_origen,
@@ -420,7 +420,7 @@ def editar_variante(
             # Se resuelve TODO antes de asignar. Leer el proveedor y calcular
             # el precio disparan consultas, y cada consulta hace autoflush:
             # con `precio_usd` ya puesto y `precio_venta` todavía en NULL, el
-            # CHECK `ck_variantes_precio_completo` rechaza la fila a mitad de
+            # CHECK `ck_producto_variantes_precio_completo` rechaza la fila a mitad de
             # camino. Las dos asignaciones tienen que quedar pegadas.
             nuevo_usd = Decimal(precio_usd)
             dolar = variante.producto.proveedor.dolar_actual
@@ -436,7 +436,7 @@ def editar_variante(
         db,
         usuario_id=autor.id,
         accion="variante.editar",
-        entidad="variantes",
+        entidad="producto_variantes",
         entidad_id=variante.id,
         estado_anterior=antes,
         estado_nuevo=variante,

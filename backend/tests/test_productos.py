@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR, Modulo
 from app.models.configuracion import ConfiguracionSistema
-from app.models.producto import Temporada
+from app.models.producto import Temporada, Variante
 from app.models.proveedor import EstadoProveedor
 from app.schemas.productos import ProductoCrear
 from app.services import categorias as servicio_categorias
@@ -1025,7 +1025,7 @@ def test_editar_una_variante_queda_auditado(db, autor, producto):
     servicio.editar_variante(db, autor, variante.id, descripcion_sufijo="Rojo")
 
     acciones = db.execute(
-        sa_select(Auditoria.accion).where(Auditoria.entidad == "variantes")
+        sa_select(Auditoria.accion).where(Auditoria.entidad == "producto_variantes")
     ).scalars().all()
     assert "variante.editar" in acciones
 
@@ -1365,3 +1365,91 @@ def test_la_api_responde_403_y_no_deja_la_edicion_a_medias(
     db.refresh(p)
     assert p.stock_infinito is False
     assert p.descripcion == "Producto de prueba", "la edición se guardó a medias"
+
+
+# ============================================================================
+# NOMBRE DE LA TABLA
+# ============================================================================
+
+
+def test_la_tabla_de_variantes_se_llama_producto_variantes(db, producto):
+    """
+    `variantes` a secas no decía de qué. El prefijo la agrupa con su
+    producto, igual que `producto_fotos`, y en plural como las otras 17
+    tablas del esquema.
+
+    Se verifica contra la base y no solo contra el `__tablename__`: si la
+    migración renombrara algo distinto de lo que dice el modelo, la clase
+    apuntaría a una tabla que no existe y esto lo agarra.
+
+    La clase Python sigue siendo `Variante` y la ruta `/productos/variantes`
+    tampoco cambia: lo que se renombró es la tabla, no el contrato de la API
+    ni el vocabulario del código.
+    """
+    from sqlalchemy import text
+
+    assert Variante.__tablename__ == "producto_variantes"
+
+    fila = db.execute(
+        text("SELECT count(*) FROM producto_variantes WHERE producto_id = :p"),
+        {"p": producto.id},
+    ).scalar()
+    assert fila == 1, "la variante BASE del producto tiene que estar en la tabla nueva"
+
+
+def test_los_indices_y_restricciones_llevan_el_nombre_nuevo(db):
+    """
+    Postgres NO renombra los índices ni las restricciones al renombrar la
+    tabla: sin el ALTER explícito quedaría un `ix_variantes_*` colgando de
+    `producto_variantes`, y la próxima migración que los busque por nombre
+    no los encontraría.
+    """
+    from sqlalchemy import text
+
+    def lleva_el_nombre_nuevo(nombre: str) -> bool:
+        return any(
+            nombre.startswith(p)
+            for p in ("ck_producto_variantes", "ix_producto_variantes",
+                      "uq_producto_variantes", "producto_variantes_")
+        )
+
+    restricciones = db.execute(
+        text(
+            "SELECT conname FROM pg_constraint"
+            " WHERE conrelid = 'producto_variantes'::regclass"
+        )
+    ).scalars().all()
+    assert restricciones, "no hay restricciones sobre la tabla"
+    viejas = [c for c in restricciones if not lleva_el_nombre_nuevo(c)]
+    assert not viejas, f"restricciones con el nombre viejo: {viejas}"
+
+    indices = db.execute(
+        text("SELECT indexname FROM pg_indexes WHERE tablename = 'producto_variantes'")
+    ).scalars().all()
+    assert indices, "no hay índices sobre la tabla"
+    viejos = [i for i in indices if not lleva_el_nombre_nuevo(i)]
+    assert not viejos, f"índices con el nombre viejo: {viejos}"
+
+
+def test_la_auditoria_de_variantes_usa_el_nombre_nuevo(db, autor, producto):
+    """
+    Las 12 entidades auditadas usan el nombre de su tabla; dejar "variantes"
+    rompería esa regla.
+
+    Lo que ya está escrito NO cambia: `auditoria` es append-only por trigger
+    (migración 0001) y no admite UPDATE ni desde una migración. El historial
+    anterior a este cambio sigue bajo "variantes", así que una consulta del
+    historial completo tiene que buscar por los dos nombres.
+    """
+    from app.models.auditoria import Auditoria
+    from sqlalchemy import select as sa_select
+
+    servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Rojo"
+    )
+
+    entidades = db.execute(
+        sa_select(Auditoria.entidad).where(Auditoria.accion == "variante.crear")
+    ).scalars().all()
+
+    assert entidades and set(entidades) == {"producto_variantes"}
