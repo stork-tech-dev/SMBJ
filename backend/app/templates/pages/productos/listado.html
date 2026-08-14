@@ -802,11 +802,26 @@
                         </div>
                     </div>
 
+                    {# Solo la Cuenta Maestra. Es el interruptor que hace que
+                       el producto NO descuente stock al vender: prendido por
+                       error, el sistema deja de saber cuánto hay y nada avisa.
+
+                       Esconderlo no es la barrera —la API se puede llamar sin
+                       la pantalla—: eso lo cierra `_validar_stock_infinito()`
+                       en el service. Acá lo que se evita es ofrecerle a un
+                       vendedor una decisión que no es suya.
+
+                       Sacarlo del formulario no pisa el valor guardado:
+                       `editar()` lo carga del producto y `guardar()` lo
+                       reenvía igual, así que un producto con stock infinito
+                       lo sigue teniendo después de que lo edite un vendedor. #}
+                    {% if es_maestra %}
                     <label class="sm:col-span-2 flex items-center gap-2 min-h-toque text-sm
                                   font-semibold text-texto-header cursor-pointer">
                         <input type="checkbox" x-model="form.stock_infinito" class="acceso-check">
                         <span>Stock infinito (no descuenta al vender)</span>
                     </label>
+                    {% endif %}
                 </div>
 
                 <div class="flex justify-end gap-3 mt-8">

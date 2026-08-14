@@ -26,6 +26,7 @@ from app.core.codigos import (
     codigo_es_valido,
     digito_verificador,
 )
+from app.core.permisos import ROL_CUENTA_MAESTRA
 from app.core.utils import (
     ahora_db,
     capitalizar_inicial,
@@ -38,6 +39,32 @@ from app.models.producto import Producto, Temporada, Variante
 from app.models.proveedor import EstadoProveedor, Proveedor
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
+
+
+class SinPermiso(Exception):
+    """El autor no puede tocar este campo del producto (403)."""
+
+
+def _validar_stock_infinito(autor: Usuario, pedido: bool | None, actual: bool) -> None:
+    """
+    `stock_infinito` lo decide solo la Cuenta Maestra.
+
+    Es el interruptor que hace que un producto NO descuente stock al vender:
+    prendido por error, el sistema deja de saber cuánto hay de ese artículo y
+    no queda ninguna señal de que pasó. Por eso no alcanza con esconder el
+    checkbox del formulario —la API es el contrato (Principio 1) y se puede
+    llamar sin la pantalla— y por eso la regla vive acá, en el service, que
+    es por donde pasan todos los clientes.
+
+    Solo molesta si el valor CAMBIA: el formulario manda el producto entero
+    en cada guardado, así que rechazar la mera presencia del campo haría que
+    ninguna edición de un vendedor pudiera guardarse.
+    """
+    if pedido is None or pedido == actual:
+        return
+    if autor.rol is not None and autor.rol.nombre == ROL_CUENTA_MAESTRA:
+        return
+    raise SinPermiso("El stock infinito lo define la Cuenta Maestra")
 
 
 def obtener_producto(db: Session, producto_id: int) -> Producto:
@@ -591,6 +618,10 @@ def crear_producto(
     Alta de producto. Genera el SKU, calcula el precio de venta y crea la
     variante BASE, todo en la misma transacción.
     """
+    # En el alta el valor de partida es False: un vendedor puede mandarlo
+    # apagado —es lo que hace el formulario— pero no prenderlo.
+    _validar_stock_infinito(autor, stock_infinito, actual=False)
+
     _validar_categoria(db, categoria_id)
     proveedor = _validar_proveedor(db, proveedor_id)
 
@@ -659,6 +690,10 @@ def editar_producto(
     """
     producto = obtener_producto(db, producto_id)
     antes = snapshot(producto)
+
+    # Antes de tocar nada: si el pedido no está permitido, la edición entera
+    # se rechaza y no queda a medias.
+    _validar_stock_infinito(autor, stock_infinito, actual=producto.stock_infinito)
 
     if categoria_id is not None:
         _validar_categoria(db, categoria_id)

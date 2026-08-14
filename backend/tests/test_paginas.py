@@ -645,6 +645,34 @@ def test_temporada_es_el_mismo_desplegable_que_los_otros_pero_sin_buscador(
     assert html.count("alEscribir()") == 4
 
 
+def test_el_stock_infinito_solo_lo_ve_la_cuenta_maestra(client, crear_usuario):
+    """
+    El checkbox hace que el producto NO descuente stock al vender. No es una
+    decisión de quien carga mercadería: prendido por error, el sistema deja
+    de saber cuánto hay de ese artículo y nada avisa.
+
+    Esconderlo no es la barrera —la API se puede llamar sin la pantalla, y de
+    eso se ocupa `_validar_stock_infinito()` en el service—: lo que se evita
+    acá es ofrecerle a un vendedor una decisión que no es suya.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    crear_usuario("vende", ROL_VENDEDOR)
+
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+    assert "form.stock_infinito" in client.get("/productos").text, (
+        "la Cuenta Maestra tiene que poder elegirlo"
+    )
+
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+    html = client.get("/productos").text
+    assert "form.stock_infinito" not in html, "el vendedor no puede elegirlo"
+    assert "Stock infinito" not in html
+
+    # Pero sigue viendo el dato en la tabla: saber que un producto no
+    # descuenta stock es distinto de poder cambiarlo.
+    assert "v.producto.stock_infinito" in html
+
+
 def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario):
     """
     El alta de variante se hacía con `window.prompt()`: no validaba el sufijo,

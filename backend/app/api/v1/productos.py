@@ -43,6 +43,10 @@ def _404(exc):
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
+def _403(exc):
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+
+
 def _409(exc):
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
@@ -195,6 +199,8 @@ def crear(
             stock_infinito=datos.stock_infinito,
             ip_origen=ip_de_request(request),
         )
+    except servicio.SinPermiso as exc:
+        raise _403(exc) from exc
     except NoEncontrado as exc:
         raise _404(exc) from exc
     except ReglaDeNegocio as exc:
@@ -227,6 +233,8 @@ def editar(
             stock_infinito=datos.stock_infinito,
             ip_origen=ip_de_request(request),
         )
+    except servicio.SinPermiso as exc:
+        raise _403(exc) from exc
     except NoEncontrado as exc:
         raise _404(exc) from exc
     except ReglaDeNegocio as exc:

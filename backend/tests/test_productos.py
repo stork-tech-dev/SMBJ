@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR
+from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR, Modulo
 from app.models.configuracion import ConfiguracionSistema
 from app.models.producto import Temporada
 from app.models.proveedor import EstadoProveedor
@@ -1232,3 +1232,136 @@ def test_el_filtro_por_temporada_no_mezcla(db, autor, config, categoria, proveed
 
     assert total == 1
     assert filas[0].id == de_invierno.id
+
+
+# ============================================================================
+# STOCK INFINITO — solo Cuenta Maestra
+# ============================================================================
+
+
+def test_un_vendedor_no_puede_prender_el_stock_infinito(db, autor, config, categoria,
+                                                        proveedor, crear_usuario):
+    """
+    Es el interruptor que hace que el producto NO descuente stock al vender:
+    prendido por error, el sistema deja de saber cuánto hay de ese artículo y
+    nada avisa. Lo decide la Cuenta Maestra.
+
+    La regla vive en el service y no en la pantalla: esconder el checkbox no
+    impide llamar a la API sin la pantalla (Principio 1).
+    """
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    with pytest.raises(servicio.SinPermiso):
+        servicio.crear_producto(
+            db, vendedor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+            precio_usd=Decimal("10"), descripcion="Producto de prueba",
+            stock_infinito=True,
+        )
+
+
+def test_un_vendedor_puede_dar_de_alta_sin_stock_infinito(db, config, categoria,
+                                                          proveedor, crear_usuario):
+    """
+    Lo que se rechaza es PRENDERLO, no que el campo viaje: el formulario
+    manda el producto entero en cada guardado, y `stock_infinito=False` en un
+    alta no cambia nada respecto del valor por defecto.
+    """
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    p = servicio.crear_producto(
+        db, vendedor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=False,
+    )
+
+    assert p.stock_infinito is False
+
+
+def test_un_vendedor_edita_un_producto_con_stock_infinito_sin_apagarlo(
+    db, autor, config, categoria, proveedor, crear_usuario
+):
+    """
+    El caso que hace falta que funcione: el formulario reenvía
+    `stock_infinito` tal como vino aunque el checkbox no esté en pantalla.
+    Rechazar la mera presencia del campo dejaría a un vendedor sin poder
+    guardar NINGUNA edición de un producto con stock infinito.
+    """
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=True,
+    )
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    servicio.editar_producto(
+        db, vendedor, p.id, descripcion="Otra descripción", stock_infinito=True
+    )
+
+    assert p.descripcion == "Otra descripción"
+    assert p.stock_infinito is True
+
+
+def test_un_vendedor_tampoco_puede_apagar_el_stock_infinito(db, autor, config, categoria,
+                                                            proveedor, crear_usuario):
+    """Apagarlo también es decidir sobre el descuento de stock."""
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=True,
+    )
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    with pytest.raises(servicio.SinPermiso):
+        servicio.editar_producto(db, vendedor, p.id, stock_infinito=False)
+
+    assert p.stock_infinito is True
+
+
+def test_la_cuenta_maestra_si_prende_el_stock_infinito(db, autor, config, categoria,
+                                                       proveedor):
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=True,
+    )
+    assert p.stock_infinito is True
+
+    servicio.editar_producto(db, autor, p.id, stock_infinito=False)
+    assert p.stock_infinito is False
+
+
+def test_la_api_responde_403_y_no_deja_la_edicion_a_medias(
+    client, db, autor, config, categoria, proveedor, crear_usuario, roles,
+    dar_permiso, login
+):
+    """
+    403 y no un descarte silencioso: quien lo intenta se entera. Y la
+    validación corre ANTES de tocar el producto, así que el resto de los
+    campos del mismo pedido tampoco se guardan.
+
+    El vendedor del test tiene `productos.editar`: lo que se prueba es que el
+    permiso de editar productos no alcanza para este campo, y no que le falte
+    el permiso de entrada —eso lo frenaría antes y el test no diría nada—.
+    """
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+    )
+    crear_usuario("vende", ROL_VENDEDOR)
+    dar_permiso(
+        rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.PRODUCTOS, ver=True, editar=True
+    )
+    db.commit()
+
+    resp = client.put(
+        f"/api/v1/productos/{p.id}",
+        json={"descripcion": "Cambiada", "stock_infinito": True},
+        headers=login("vende"),
+    )
+
+    assert resp.status_code == 403
+    assert "Cuenta Maestra" in resp.json()["detail"]
+
+    db.refresh(p)
+    assert p.stock_infinito is False
+    assert p.descripcion == "Producto de prueba", "la edición se guardó a medias"
