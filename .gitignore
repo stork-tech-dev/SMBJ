@@ -16,6 +16,10 @@ __pycache__/
 .idea/
 *.swp
 
+# Configuración local de Claude Code: permisos y ajustes de esta máquina,
+# más los temporales que deja al escribirlos. No son del proyecto.
+.claude/
+
 # Sistema operativo
 .DS_Store
 Thumbs.db
