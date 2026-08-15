@@ -364,6 +364,30 @@
                                       class="text-xs text-texto-disabled">Precio del producto</span>
                             </div>
 
+                            {# El código con el que se le pide esta variante al
+                               proveedor. Misma regla y misma forma de decirla
+                               que el precio: el propio manda sobre el del
+                               producto, y se aclara cuál de los dos se está
+                               viendo. Solo aparece si alguno de los dos existe:
+                               el campo es opcional en los dos niveles. #}
+                            <div x-show="v.sku_proveedor_efectivo" x-cloak
+                                 class="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1
+                                        text-sm text-texto-muted">
+                                <span>
+                                    SKU prov.
+                                    <span class="font-mono font-medium text-texto"
+                                          x-text="v.sku_proveedor_efectivo"></span>
+                                </span>
+                                <span x-show="v.tiene_sku_proveedor_propio" x-cloak
+                                      class="text-xs text-accent">
+                                    SKU del proveedor propio de esta variante
+                                </span>
+                                <span x-show="!v.tiene_sku_proveedor_propio && !v.es_base" x-cloak
+                                      class="text-xs text-texto-disabled">
+                                    SKU del proveedor del producto
+                                </span>
+                            </div>
+
                             {# El SVG lo genera el backend: el checksum módulo
                                103 de Code128 lo agrega la librería al codificar. #}
                             <img class="mt-3 max-w-full" alt=""
@@ -462,6 +486,22 @@
                                class="campo-linea">
                     </div>
 
+                    {# El proveedor no numera por producto: numera por color y
+                       por talle. Vacío hereda el del producto, igual que el
+                       precio. #}
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="va-skuprov" class="text-sm font-semibold text-texto-header">
+                            SKU del proveedor
+                        </label>
+                        <input id="va-skuprov" x-model="variante.sku_proveedor"
+                               maxlength="30" placeholder="Usa el del producto"
+                               class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Vacío = usa el del producto<template x-if="detalle.producto?.sku_proveedor"><span>
+                                (<span class="font-mono" x-text="detalle.producto.sku_proveedor"></span>)</span></template>.
+                        </span>
+                    </div>
+
                     <div class="flex flex-col gap-1">
                         <label for="va-stock-min" class="text-sm font-semibold text-texto-header">
                             Stock mínimo
@@ -539,6 +579,21 @@
                         </label>
                         <input id="ev-nombre" x-model="edicionVariante.descripcion_sufijo"
                                required maxlength="60" class="campo-linea">
+                    </div>
+
+                    {# Mismo campo y mismo trato que en el alta: vaciarlo
+                       devuelve la variante al código del producto. #}
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="ev-skuprov" class="text-sm font-semibold text-texto-header">
+                            SKU del proveedor
+                        </label>
+                        <input id="ev-skuprov" x-model="edicionVariante.sku_proveedor"
+                               maxlength="30" placeholder="Usa el del producto"
+                               class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Vacío = usa el del producto<template x-if="detalle.producto?.sku_proveedor"><span>
+                                (<span class="font-mono" x-text="detalle.producto.sku_proveedor"></span>)</span></template>.
+                        </span>
                     </div>
 
                     {# Precio propio de la variante, con el resultado en pesos

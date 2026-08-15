@@ -201,6 +201,15 @@ class Variante(Base):
     precio_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     precio_venta: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
+    # Código con el que el proveedor identifica ESTA variante. NULL = usa el
+    # del producto, misma regla que el precio.
+    #
+    # Existe porque el proveedor no numera por producto: numera por color y
+    # por talle. "NK-AM90-RJ" y "NK-AM90-BL" son dos códigos distintos del
+    # mismo artículo, y con un solo campo en el producto no había dónde
+    # anotarlos.
+    sku_proveedor: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+
     stock_actual: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     stock_minimo: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
@@ -252,11 +261,11 @@ class Variante(Base):
         """Lo que se imprime en la etiqueta y se codifica en Code128."""
         return f"{self.codigo_completo}{self.verificador}"
 
-    # --- Precio efectivo ---------------------------------------------------
-    # La regla "el propio manda sobre el del producto" vive acá y en un solo
-    # lugar: la usan el listado, el detalle y cualquier pantalla futura. Si
-    # cada consumidor hiciera su propio COALESCE, alcanzaría con que uno se
-    # olvidara para mostrar un precio que no es el que se cobra.
+    # --- Lo propio manda sobre lo del producto ------------------------------
+    # La regla vive acá y en un solo lugar: la usan el listado, el detalle y
+    # cualquier pantalla futura. Si cada consumidor hiciera su propio
+    # COALESCE, alcanzaría con que uno se olvidara para mostrar un precio que
+    # no es el que se cobra, o pedirle al proveedor un código que no es.
 
     @property
     def tiene_precio_propio(self) -> bool:
@@ -272,6 +281,23 @@ class Variante(Base):
             self.precio_venta
             if self.precio_venta is not None
             else self.producto.precio_venta
+        )
+
+    @property
+    def tiene_sku_proveedor_propio(self) -> bool:
+        return self.sku_proveedor is not None
+
+    @property
+    def sku_proveedor_efectivo(self) -> str | None:
+        """
+        El código para pedirle esta variante al proveedor.
+
+        Puede ser None: el producto tampoco está obligado a tener uno.
+        """
+        return (
+            self.sku_proveedor
+            if self.sku_proveedor is not None
+            else self.producto.sku_proveedor
         )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug

@@ -866,6 +866,55 @@ def test_crear_con_variantes_lleva_al_alta_de_la_primera_variante(client, crear_
     assert "this.abrirVariante()" in js
 
 
+def test_la_variante_tiene_su_propio_sku_de_proveedor(client, crear_usuario):
+    """
+    El proveedor no numera por producto: numera por color y por talle. El
+    campo va en los dos formularios de variante, debajo del sufijo y su
+    descripción, y vacío hereda el del producto —misma regla que el precio—.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # En el alta (va-) y en la edición (ev-) de variante.
+    for campo in ("va-skuprov", "ev-skuprov"):
+        assert f'id="{campo}"' in html, f"falta {campo}"
+    # Debajo del sufijo y de su descripción, no antes.
+    assert html.index('id="va-nombre"') < html.index('id="va-skuprov"')
+    assert html.index('id="va-sufijo"') < html.index('id="va-skuprov"')
+    assert html.index('id="ev-nombre"') < html.index('id="ev-skuprov"')
+
+    # Vacío = hereda, dicho en el campo y en la aclaración de abajo.
+    assert html.count('placeholder="Usa el del producto"') == 3
+    assert html.count("Vacío = usa el del producto") == 2
+
+    js = _js_de("/productos")
+    assert "sku_proveedor: this.variante.sku_proveedor || null" in js
+    # null explícito al vaciarlo: es lo que lo devuelve al del producto.
+    assert "sku_proveedor: e.sku_proveedor === '' ? null : e.sku_proveedor" in js
+
+
+def test_la_ficha_muestra_el_sku_de_proveedor_que_manda(client, crear_usuario):
+    """
+    Se ve el efectivo —el propio si lo tiene, el del producto si no— y se
+    aclara cuál de los dos es, igual que con el precio: sin la aclaración, un
+    código que no coincide con el del producto parece un error.
+
+    La línea no aparece si no hay ninguno de los dos: el campo es opcional en
+    los dos niveles.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert 'x-text="v.sku_proveedor_efectivo"' in html
+    assert 'x-show="v.sku_proveedor_efectivo"' in html
+    assert "SKU del proveedor propio de esta variante" in html
+    assert "SKU del proveedor del producto" in html
+
+
 def test_agregar_una_variante_deja_la_ficha_abierta_para_la_siguiente(
     client, crear_usuario
 ):

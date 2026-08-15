@@ -323,6 +323,7 @@ def agregar_variante(
             producto_id,
             sufijo=datos.sufijo,
             descripcion_sufijo=datos.descripcion_sufijo,
+            sku_proveedor=datos.sku_proveedor,
             ubicacion_deposito=datos.ubicacion_deposito,
             stock_minimo=datos.stock_minimo,
             ip_origen=ip_de_request(request),
@@ -349,7 +350,8 @@ def editar_variante(
     autor=Depends(requiere_permiso(Modulo.PRODUCTOS, "editar")),
 ):
     """
-    Cambia el nombre de la variante, su ubicación y su stock mínimo.
+    Cambia el nombre de la variante, su código de proveedor, su ubicación y
+    su stock mínimo.
 
     El sufijo no se toca: forma parte del código impreso en la etiqueta.
     """
@@ -366,6 +368,10 @@ def editar_variante(
             # significa volver al precio del producto. Mismo patrón que usan
             # usuarios.py y admin_dispositivos.py.
             editar_precio="precio_usd" in datos.model_fields_set,
+            sku_proveedor=datos.sku_proveedor,
+            # Mismo caso: NULL acá es "volvé al código del proveedor que
+            # tiene el producto", no "sin cambios".
+            editar_sku_proveedor="sku_proveedor" in datos.model_fields_set,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:

@@ -86,15 +86,16 @@ function abmProductos() {
         // el sistema no tiene forma de saberlo.
         variante: {
             abierto: false, guardando: false, reemplazaBase: false,
-            sufijo: '', descripcion_sufijo: '', ubicacion_deposito: '', stock_minimo: 0,
+            sufijo: '', descripcion_sufijo: '', sku_proveedor: '',
+            ubicacion_deposito: '', stock_minimo: 0,
         },
 
         // Edición de una variante ya creada. El sufijo NO está: entra en el
         // código, que se congela porque la etiqueta ya se imprimió.
         edicionVariante: {
             abierto: false, guardando: false, id: null, codigo: '', proveedorId: null,
-            descripcion_sufijo: '', ubicacion_deposito: '', stock_minimo: 0,
-            precio_usd: '',
+            descripcion_sufijo: '', sku_proveedor: '', ubicacion_deposito: '',
+            stock_minimo: 0, precio_usd: '',
         },
 
         // Precio en pesos que resultaría del USD tipeado en el modal de
@@ -420,6 +421,7 @@ function abmProductos() {
                 reemplazaBase: variantes.some((v) => v.es_base),
                 sufijo: '',
                 descripcion_sufijo: '',
+                sku_proveedor: '',
                 ubicacion_deposito: '',
                 stock_minimo: 0,
             };
@@ -468,6 +470,9 @@ function abmProductos() {
                 codigo: v.codigo_completo + v.verificador,
                 proveedorId: this.detalle.producto.proveedor_id,
                 descripcion_sufijo: v.descripcion_sufijo || '',
+                // Vacío cuando no tiene el suyo: el placeholder dice que en
+                // ese caso usa el del producto.
+                sku_proveedor: v.sku_proveedor || '',
                 ubicacion_deposito: v.ubicacion_deposito || '',
                 stock_minimo: v.stock_minimo,
                 // Vacío cuando no tiene precio propio: el placeholder dice
@@ -513,6 +518,9 @@ function abmProductos() {
                         // null explícito = volver al precio del producto. El
                         // backend distingue esto de "no lo mandes".
                         precio_usd: e.precio_usd === '' ? null : e.precio_usd,
+                        // Mismo trato: vaciarlo devuelve la variante al
+                        // código de proveedor del producto.
+                        sku_proveedor: e.sku_proveedor === '' ? null : e.sku_proveedor,
                         // El backend normaliza; '' sería guardar una ubicación
                         // vacía en vez de ninguna.
                         ubicacion_deposito: e.ubicacion_deposito || null,
@@ -551,6 +559,8 @@ function abmProductos() {
                         body: JSON.stringify({
                             sufijo,
                             descripcion_sufijo: this.variante.descripcion_sufijo,
+                            // Vacío = null = usa el del producto.
+                            sku_proveedor: this.variante.sku_proveedor || null,
                             // El backend normaliza el texto; mandar '' sería
                             // guardar una ubicación vacía en vez de ninguna.
                             ubicacion_deposito: this.variante.ubicacion_deposito || null,

@@ -1396,6 +1396,165 @@ def test_el_listado_devuelve_el_nombre_de_la_variante(db, autor, producto):
 
 
 # ============================================================================
+# SKU DEL PROVEEDOR POR VARIANTE
+# ============================================================================
+#
+# Misma regla que el precio: el propio manda sobre el del producto. Existe
+# porque el proveedor no numera por producto sino por color y por talle.
+
+
+@pytest.fixture
+def producto_con_sku_prov(db, autor, config, categoria, proveedor):
+    """Producto cuyo proveedor lo identifica como 'NK-AM90'."""
+    return servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Zapatilla Nike Air Max 90",
+        sku_proveedor="NK-AM90",
+    )
+
+
+def test_el_sku_del_proveedor_propio_manda_sobre_el_del_producto(
+    db, autor, producto_con_sku_prov
+):
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="R", descripcion_sufijo="Rojo",
+        sku_proveedor="NK-AM90-RJ",
+    )
+
+    assert v.sku_proveedor == "NK-AM90-RJ"
+    assert v.tiene_sku_proveedor_propio is True
+    assert v.sku_proveedor_efectivo == "NK-AM90-RJ"
+    # El del producto queda intacto: la variante no lo pisa, lo tapa.
+    assert producto_con_sku_prov.sku_proveedor == "NK-AM90"
+
+
+def test_una_variante_sin_sku_propio_usa_el_del_producto(db, autor, producto_con_sku_prov):
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="N", descripcion_sufijo="Negro"
+    )
+
+    assert v.sku_proveedor is None
+    assert v.tiene_sku_proveedor_propio is False
+    assert v.sku_proveedor_efectivo == "NK-AM90"
+
+
+def test_sin_sku_en_ninguno_de_los_dos_queda_en_nada(db, autor, producto):
+    """
+    El campo es opcional en los dos niveles: hay proveedores que no dan
+    código. La pantalla no muestra la línea en ese caso.
+    """
+    v = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="U", descripcion_sufijo="Único"
+    )
+
+    assert producto.sku_proveedor is None
+    assert v.sku_proveedor_efectivo is None
+
+
+def test_el_sku_de_la_variante_se_normaliza(db, autor, producto_con_sku_prov):
+    """
+    Espacios de más al pegar de una planilla; vacío no es un código, es
+    "usa el del producto".
+    """
+    con_espacios = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="A", descripcion_sufijo="Azul",
+        sku_proveedor="  NK-AM90-AZ  ",
+    )
+    vacio = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="B", descripcion_sufijo="Blanco",
+        sku_proveedor="   ",
+    )
+
+    assert con_espacios.sku_proveedor == "NK-AM90-AZ"
+    assert vacio.sku_proveedor is None
+    assert vacio.sku_proveedor_efectivo == "NK-AM90"
+
+
+def test_vaciar_el_sku_devuelve_la_variante_al_del_producto(db, autor, producto_con_sku_prov):
+    """
+    NULL explícito significa algo concreto —volver al del producto— y por eso
+    hace falta la bandera: sin ella no se distingue de "no lo mandes".
+    """
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="R", descripcion_sufijo="Rojo",
+        sku_proveedor="NK-AM90-RJ",
+    )
+
+    servicio.editar_variante(db, autor, v.id, editar_sku_proveedor=True)
+
+    db.refresh(v)
+    assert v.sku_proveedor is None
+    assert v.sku_proveedor_efectivo == "NK-AM90"
+
+
+def test_no_mandar_el_sku_no_lo_toca(db, autor, producto_con_sku_prov):
+    """Editar la ubicación no puede borrar el código del proveedor."""
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="R", descripcion_sufijo="Rojo",
+        sku_proveedor="NK-AM90-RJ",
+    )
+
+    servicio.editar_variante(db, autor, v.id, ubicacion_deposito="Estante 3")
+
+    db.refresh(v)
+    assert v.sku_proveedor == "NK-AM90-RJ"
+
+
+def test_el_sku_de_la_variante_viaja_por_la_api(
+    client, db, autor, login, producto_con_sku_prov
+):
+    """
+    Cuál de los dos manda lo resuelve el backend: es una regla de negocio, no
+    formato de pantalla (Principio 1).
+    """
+    headers = login("admin")
+    db.flush()
+
+    resp = client.post(
+        f"/api/v1/productos/{producto_con_sku_prov.id}/variantes",
+        json={"sufijo": "R", "descripcion_sufijo": "Rojo",
+              "sku_proveedor": "NK-AM90-RJ"},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    propia = resp.json()
+    assert propia["sku_proveedor"] == "NK-AM90-RJ"
+    assert propia["sku_proveedor_efectivo"] == "NK-AM90-RJ"
+    assert propia["tiene_sku_proveedor_propio"] is True
+
+    resp = client.post(
+        f"/api/v1/productos/{producto_con_sku_prov.id}/variantes",
+        json={"sufijo": "N", "descripcion_sufijo": "Negro"},
+        headers=headers,
+    )
+    heredada = resp.json()
+    assert heredada["sku_proveedor"] is None
+    assert heredada["sku_proveedor_efectivo"] == "NK-AM90"
+    assert heredada["tiene_sku_proveedor_propio"] is False
+
+    # Y el listado, que es el que dibuja la tabla, dice lo mismo.
+    #
+    # Se busca por la descripción y no por el código del proveedor: el
+    # buscador cubre código de etiqueta, SKU y descripción, y el del
+    # proveedor queda fuera a propósito.
+    filas = client.get(
+        "/api/v1/productos/variantes",
+        params={"busqueda": "Zapatilla Nike"},
+        headers=headers,
+    )
+    por_codigo = {f["sufijo"]: f for f in filas.json()["resultados"]}
+    assert por_codigo["R"]["sku_proveedor_efectivo"] == "NK-AM90-RJ"
+    assert por_codigo["N"]["sku_proveedor_efectivo"] == "NK-AM90"
+
+    # Vaciarlo desde la API la devuelve al del producto.
+    resp = client.patch(
+        f"/api/v1/productos/variantes/{propia['id']}",
+        json={"sku_proveedor": None}, headers=headers,
+    )
+    assert resp.json()["sku_proveedor_efectivo"] == "NK-AM90"
+
+
+# ============================================================================
 # PRECIO PROPIO POR VARIANTE
 # ============================================================================
 

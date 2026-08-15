@@ -365,6 +365,7 @@ def agregar_variante(
     producto_id: int,
     sufijo: str,
     descripcion_sufijo: str,
+    sku_proveedor: str | None = None,
     ubicacion_deposito: str | None = None,
     stock_minimo: int = 0,
     ip_origen: str | None = None,
@@ -405,6 +406,8 @@ def agregar_variante(
     )
 
     variante.ubicacion_deposito = normalizar_texto(ubicacion_deposito)
+    # Vacío queda en NULL, que es "usa el del producto" y no "sin código".
+    variante.sku_proveedor = normalizar_texto(sku_proveedor)
     variante.stock_minimo = stock_minimo
 
     producto.tiene_variantes = True
@@ -432,6 +435,8 @@ def editar_variante(
     stock_minimo: int | None = None,
     precio_usd: Decimal | None = None,
     editar_precio: bool = False,
+    sku_proveedor: str | None = None,
+    editar_sku_proveedor: bool = False,
     ip_origen: str | None = None,
 ) -> Variante:
     """
@@ -479,6 +484,14 @@ def editar_variante(
 
             variante.precio_usd = nuevo_usd
             variante.precio_venta = nuevo_venta
+
+    # Misma mecánica que el precio, y por el mismo motivo: NULL acá no es
+    # "sin cambios" sino algo concreto —volver al código del producto—, así
+    # que hace falta la bandera para distinguirlo de "no lo mandes".
+    # `normalizar_texto` deja en NULL el string vacío, que es lo que manda la
+    # pantalla al borrar el campo.
+    if editar_sku_proveedor:
+        variante.sku_proveedor = normalizar_texto(sku_proveedor)
 
     variante.updated_at = ahora_db()
     db.flush()

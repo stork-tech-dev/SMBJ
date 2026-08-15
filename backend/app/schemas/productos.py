@@ -71,6 +71,10 @@ class VarianteCrear(BaseModel):
     descripcion_sufijo: str = Field(
         min_length=1, max_length=60, description="Nombre legible de la variante"
     )
+    # Código propio de esta variante en el catálogo del proveedor. Vacío =
+    # usa el del producto: el proveedor numera por color y por talle, pero no
+    # siempre.
+    sku_proveedor: str | None = Field(default=None, max_length=30)
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
     stock_minimo: int = Field(default=0, ge=0)
 
@@ -91,6 +95,9 @@ class VarianteEditar(BaseModel):
     # del producto; no mandarlo es "no lo toques". El endpoint distingue los
     # dos casos con `model_fields_set`.
     precio_usd: Decimal | None = Field(default=None, gt=0)
+    # Código propio en el catálogo del proveedor, con la misma mecánica que
+    # el precio: NULL vuelve al del producto, no mandarlo no lo toca.
+    sku_proveedor: str | None = Field(default=None, max_length=30)
 
 
 class VarianteResponse(BaseModel):
@@ -110,11 +117,16 @@ class VarianteResponse(BaseModel):
     # Precio propio; NULL = usa el del producto.
     precio_usd: Decimal | None
     precio_venta: Decimal | None
-    # Cuál de los dos precios manda lo resuelve el backend: es una regla de
-    # negocio, no formato de pantalla (Principio 1).
+    # Código propio en el catálogo del proveedor; NULL = usa el del producto.
+    sku_proveedor: str | None
+    # Cuál de los dos manda lo resuelve el backend: es una regla de negocio,
+    # no formato de pantalla (Principio 1). El SKU efectivo puede ser NULL,
+    # porque el producto tampoco está obligado a tener uno.
     precio_usd_efectivo: Decimal
     precio_venta_efectivo: Decimal
     tiene_precio_propio: bool
+    sku_proveedor_efectivo: str | None
+    tiene_sku_proveedor_propio: bool
 
 
 class FotoResponse(BaseModel):
@@ -241,9 +253,14 @@ class VarianteListadoResponse(BaseModel):
     # Precio propio; NULL = usa el del producto.
     precio_usd: Decimal | None
     precio_venta: Decimal | None
-    # Cuál de los dos precios manda lo resuelve el backend: es una regla de
-    # negocio, no formato de pantalla (Principio 1).
+    # Código propio en el catálogo del proveedor; NULL = usa el del producto.
+    sku_proveedor: str | None
+    # Cuál de los dos manda lo resuelve el backend: es una regla de negocio,
+    # no formato de pantalla (Principio 1). El SKU efectivo puede ser NULL,
+    # porque el producto tampoco está obligado a tener uno.
     precio_usd_efectivo: Decimal
     precio_venta_efectivo: Decimal
     tiene_precio_propio: bool
+    sku_proveedor_efectivo: str | None
+    tiene_sku_proveedor_propio: bool
     producto: ProductoResumen
