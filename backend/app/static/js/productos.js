@@ -129,6 +129,15 @@ function abmProductos() {
             descripcion: '', categoria_id: '', proveedor_id: '', precio_usd: '',
             sku_proveedor: '', descuento_producto: '', peso_gramos: '',
             temporada: 'atemporal', stock_infinito: false,
+            // La categoría se elige bajando por el árbol: un select por
+            // nivel. Acá van los ids elegidos desde la raíz, sin huecos, así
+            // que el largo del array ES la cantidad de niveles ya elegidos.
+            //
+            // `categoria_id` sigue siendo el que viaja a la API: es el
+            // último de esta ruta. Puede ser un nodo intermedio mientras la
+            // cascada está a medias; lo que exige llegar a la hoja es
+            // `categoriaCompleta()`, que gobierna el botón Guardar.
+            categoriaRuta: [],
             // Foto elegida en el alta. No se sube acá: el endpoint de fotos
             // cuelga de `/productos/{id}/fotos` y ese id no existe hasta
             // que el producto está creado. Queda esperando en el formulario
@@ -190,19 +199,108 @@ function abmProductos() {
         rutaCategoria(categoria) {
             if (!categoria) return '—';
 
+            const ids = this.rutaDeIds(categoria.id);
+            if (!ids.length) return categoria.nombre || '—';
+
             const porId = new Map(this.categorias.map((c) => [c.id, c]));
-            const tramos = [];
+            return ids.map((id) => porId.get(id).nombre).join(' - ');
+        },
 
-            let actual = porId.get(categoria.id);
-            if (!actual) return categoria.nombre || '—';
+        /**
+         * Los ids desde la raíz hasta la categoría dada, ella incluida.
+         *
+         * Es el mismo recorrido hacia arriba que necesitan el camino escrito
+         * del listado y la cascada de selects del formulario, escrito una
+         * sola vez (Principio 2). Devuelve vacío si la categoría no está en
+         * el catálogo cargado.
+         */
+        rutaDeIds(categoriaId) {
+            const porId = new Map(this.categorias.map((c) => [c.id, c]));
+            const ids = [];
 
+            let actual = porId.get(Number(categoriaId));
             // El árbol tiene 5 niveles como máximo; el tope corta igual por
             // si un dato quedara inconsistente.
             for (let i = 0; i < 5 && actual; i++) {
-                tramos.unshift(actual.nombre);
+                ids.unshift(actual.id);
                 actual = actual.parent_id ? porId.get(actual.parent_id) : null;
             }
-            return tramos.join(' - ');
+            return ids;
+        },
+
+        /* --- Categoría en cascada: un select por nivel --- */
+
+        /**
+         * Las categorías que puede ofrecer el select de ese nivel.
+         *
+         * El primero muestra las raíces; los demás, solo lo que cuelga de lo
+         * elegido en el nivel de arriba. Es lo que hace que no haya que
+         * reconocer la rama leyendo el camino completo en cada opción: en
+         * cada paso se ve nada más que lo que sigue.
+         */
+        opcionesCategoria(nivel) {
+            if (nivel === 1) return this.categorias.filter((c) => !c.parent_id);
+
+            const padre = this.form.categoriaRuta[nivel - 2];
+            if (!padre) return [];
+            return this.categorias.filter((c) => c.parent_id === Number(padre));
+        },
+
+        /**
+         * Si el select de ese nivel se muestra.
+         *
+         * El primero siempre. Los demás aparecen recién cuando el de arriba
+         * tiene valor, y solo si hay algo para elegir: cuando la categoría
+         * elegida no tiene hijos, la cascada se termina ahí.
+         */
+        nivelCategoriaVisible(nivel) {
+            if (nivel === 1) return true;
+            if (!this.form.categoriaRuta[nivel - 2]) return false;
+            return this.opcionesCategoria(nivel).length > 0;
+        },
+
+        /** Cuántos selects hay a la vista: es lo que define el ancho del modal. */
+        nivelesCategoriaVisibles() {
+            let visibles = 0;
+            for (let nivel = 1; nivel <= 5; nivel++) {
+                if (this.nivelCategoriaVisible(nivel)) visibles++;
+            }
+            return visibles;
+        },
+
+        /**
+         * Registra lo elegido en un nivel y descarta lo que colgaba de lo
+         * anterior.
+         *
+         * Cambiar el Tipo invalida el Material que estaba puesto: era hijo de
+         * otra rama. Se corta la cola en vez de dejarla, que es lo que haría
+         * que el producto terminara guardado en una categoría que ya no se
+         * ve en pantalla.
+         *
+         * Se reemplaza el array entero y no se lo trunca con `length`: el
+         * `x-effect` de cada combobox depende de `form.categoriaRuta`, y
+         * cambiar la propiedad es lo que hace que los de abajo se vacíen.
+         */
+        elegirCategoria(nivel) {
+            const elegido = this.form.categoriaRuta[nivel - 1];
+            this.form.categoriaRuta = this.form.categoriaRuta.slice(0, nivel);
+            this.form.categoria_id = elegido || '';
+            // La lista de descripciones parecidas está acotada a la
+            // categoría: al moverla, queda vieja.
+            this.buscarSimilares();
+        },
+
+        /**
+         * Si la cascada llegó hasta el final.
+         *
+         * Es la traducción de "todos los selects visibles son obligatorios":
+         * si quedara uno a la vista sin elegir, sería porque lo último
+         * elegido todavía tiene hijos.
+         */
+        categoriaCompleta() {
+            const ruta = this.form.categoriaRuta;
+            if (!ruta.length || !ruta[ruta.length - 1]) return false;
+            return this.opcionesCategoria(ruta.length + 1).length === 0;
         },
 
         /* --- Carga --- */
@@ -244,6 +342,15 @@ function abmProductos() {
                 // Solo los activos: el backend rechaza cargar un producto
                 // de un proveedor dado de baja.
                 this.proveedores = (await provs.json()).filter((p) => p.estado === 'activo');
+            }
+
+            // La cascada de categorías se arma recorriendo el árbol hacia
+            // arriba, así que necesita este catálogo. Si alguien alcanzó a
+            // abrir la edición de un producto antes de que llegara, la ruta
+            // quedó vacía y no se recompone sola: se rehace acá.
+            if (this.form.abierto && this.form.categoria_id
+                && !this.form.categoriaRuta.length) {
+                this.form.categoriaRuta = this.rutaDeIds(this.form.categoria_id);
             }
         },
 
@@ -693,6 +800,9 @@ function abmProductos() {
                 descripcion: '', categoria_id: '', proveedor_id: '', precio_usd: '',
                 sku_proveedor: '', descuento_producto: '', peso_gramos: '',
                 temporada: 'atemporal', stock_infinito: false,
+                // Sin nada elegido queda a la vista un solo select, el del
+                // primer nivel.
+                categoriaRuta: [],
                 foto: { archivo: null, previo: '' },
             };
             this.preview = { dolar_proveedor: null, precio_venta: null };
@@ -767,6 +877,10 @@ function abmProductos() {
                 abierto: true, guardando: false, id: p.id, sku: p.sku,
                 descripcion: p.descripcion || '',
                 categoria_id: p.categoria_id,
+                // La cascada se abre con el camino del producto ya puesto,
+                // un select por nivel, para poder cambiar desde donde haga
+                // falta sin empezar de cero.
+                categoriaRuta: this.rutaDeIds(p.categoria_id),
                 proveedor_id: p.proveedor_id,
                 precio_usd: p.precio_usd,
                 sku_proveedor: p.sku_proveedor || '',
@@ -774,6 +888,7 @@ function abmProductos() {
                 peso_gramos: p.peso_gramos || '',
                 temporada: p.temporada,
                 stock_infinito: p.stock_infinito,
+                foto: { archivo: null, previo: '' },
             };
             // En edición ya hay proveedor y precio: se muestra de entrada.
             this.calcularPreview();

@@ -617,8 +617,28 @@
          @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-producto">
 
-        <div class="w-full max-w-[35rem] my-8 bg-surface rounded-[10px]
-                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+        {# El modal se ensancha a medida que la cascada de categorías suma
+           selects, para que no terminen apretados en dos renglones.
+
+           El ancho de arranque ya es el que entra los TRES primeros niveles
+           (hasta "Subcategoría 1"): así elegir Tipo y Material —que es el
+           camino de casi todo el catálogo— no mueve el modal. Recién del
+           cuarto en adelante se ve que crece, que es cuando de verdad hace
+           falta.
+
+           Las clases van escritas acá y no armadas en un helper de JS: el
+           CDN de Tailwind genera las que encuentra en el HTML, y una clase
+           que solo existiera dentro de un `.js` no se generaría nunca.
+
+           El `w-full` sigue mandando en pantallas chicas: el `max-w` es un
+           techo, no un ancho. #}
+        <div class="w-full my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]"
+             :class="{
+                 'max-w-[44rem]': nivelesCategoriaVisibles() <= 3,
+                 'max-w-[52rem]': nivelesCategoriaVisibles() === 4,
+                 'max-w-[60rem]': nivelesCategoriaVisibles() >= 5,
+             }">
             <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
                 <div>
                     <h2 id="titulo-form-producto" class="text-lg font-black text-welcome"
@@ -634,30 +654,85 @@
 
             <form @submit.prevent="guardar()" class="px-6 sm:px-10 pb-8 pt-4">
                 <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    {# Categoría ocupa la fila entera: muestra el camino
-                       completo y a media fila los caminos largos se cortaban
-                       con puntos suspensivos en el select cerrado. #}
-                    <div class="sm:col-span-2">
-                        {# Mismo texto que el filtro del listado: el camino
-                           completo ("Calzado - Zapatillas - Deportivas"). La
-                           sangría con puntos no alcanzaba: dos ramas pueden
-                           tener hojas con el mismo nombre y, con el campo
-                           cerrado, solo se vería la hoja.
+                    {# ---------- Categoría: un select por nivel ----------
 
-                           Sin opción para vaciar: la categoría es obligatoria,
-                           y lo que la exige es el botón Guardar deshabilitado
-                           —el `required` era del `<select>` que ya no está. #}
-                        {# `al_elegir` rebusca los parecidos: la lista que
-                           ofrece Descripción está acotada a esta categoría,
-                           así que cambiarla la deja vieja. #}
-                        {{ combobox('pr-categoria', 'categorias', 'rutaCategoria(o)',
-                                    'form.categoria_id',
-                                    etiqueta='Categoría', obligatorio=true,
-                                    al_elegir='buscarSimilares();',
-                                    clases='w-full h-control pl-3 pr-9 text-base font-light
-                                            bg-surface text-texto border-[0.5px]
-                                            border-texto-disabled rounded-input
-                                            focus:outline-none focus:border-primary') }}
+                       Se baja por el árbol en vez de elegir de una lista
+                       plana con el camino completo en cada fila ("Joyas -
+                       Anillos - Plata"): en cada paso se ve nada más que lo
+                       que cuelga de lo ya elegido, y el resultado es siempre
+                       una hoja, que antes nada garantizaba.
+
+                       Los selects se dibujan todos y se muestran los que
+                       correspondan (`x-show`), en vez de generarlos con un
+                       `x-for`: el macro `combobox` fija un `id` que usan el
+                       `<label for>` y el `aria-controls`, y clonarlo lo
+                       repetiría en el DOM. #}
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        {# Un solo título para el grupo: cada campo ya se
+                           nombra con su leyenda gris ("Tipo", "Material",
+                           "Subcategoría 1"…), así que repetir "Categoría"
+                           encima de cada uno sería decirlo dos veces.
+                           Es un `<span>` y no un `<label>` porque no apunta a
+                           un campo: apunta a varios. #}
+                        <span class="text-sm font-semibold text-texto-header">
+                            Categoría<span class="text-danger ml-0.5">*</span>
+                        </span>
+
+                        {# `flex-wrap` con un mínimo por campo: entran en una
+                           fila mientras el modal dé —que se ensancha solo— y
+                           envuelven cuando no. En el teléfono quedan uno
+                           abajo del otro. #}
+                        <div class="flex flex-wrap gap-x-4 gap-y-4 mt-1">
+                            {% for nivel in range(1, nivel_maximo + 1) %}
+                            {# Los dos primeros niveles tienen nombre propio;
+                               del tercero en adelante son subcategorías
+                               numeradas. #}
+                            {% set nombre_nivel = ['Tipo', 'Material'][nivel - 1]
+                                                  if nivel <= 2
+                                                  else 'Subcategoría ' ~ (nivel - 2) %}
+                            {# En el teléfono cada uno ocupa su renglón; desde
+                               sm comparten fila y envuelven cuando no entran. #}
+                            <div class="w-full sm:w-auto sm:flex-1 sm:min-w-[9rem]"
+                                 x-show="nivelCategoriaVisible({{ nivel }})"
+                                 {# El primero se muestra siempre, así que no
+                                    parpadea; los demás sí hasta que Alpine
+                                    arranca. #}
+                                 {% if nivel > 1 %}x-cloak{% endif %}>
+                                {# `o.nombre` y no el camino completo: el
+                                   camino lo dicen los selects anteriores.
+
+                                   Sin opción para vaciar: la categoría es
+                                   obligatoria, y lo que la exige es el botón
+                                   Guardar deshabilitado —el `required` era
+                                   del `<select>` que ya no está—.
+
+                                   `al_elegir` corta lo que colgaba de la
+                                   rama anterior y rebusca los parecidos, que
+                                   están acotados a la categoría. #}
+                                {{ combobox('pr-categoria-' ~ nivel,
+                                            'opcionesCategoria(' ~ nivel ~ ')',
+                                            'o.nombre',
+                                            'form.categoriaRuta[' ~ (nivel - 1) ~ ']',
+                                            etiqueta=nombre_nivel, label_oculto=true,
+                                            placeholder=nombre_nivel,
+                                            al_elegir='elegirCategoria(' ~ nivel ~ ');',
+                                            clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                    bg-surface text-texto border-[0.5px]
+                                                    border-texto-disabled rounded-input
+                                                    focus:outline-none focus:border-primary') }}
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {# Mientras quede un select a la vista sin elegir, la
+                           categoría no está definida y Guardar sigue
+                           deshabilitado: sin este texto, el botón apagado no
+                           dice qué falta. #}
+                        <span x-show="!categoriaCompleta()" x-cloak
+                              class="text-xs text-texto-disabled">
+                            Elegí hasta el último nivel: la categoría del producto es
+                            la del final de la rama.
+                        </span>
                     </div>
 
                     <div class="flex flex-col gap-1">
@@ -997,7 +1072,7 @@
                        pedido. Comparte la misma guarda que "Crear". #}
                     <button type="button" x-show="!form.id" x-cloak
                             @click="guardar({ conVariantes: true })"
-                            :disabled="form.guardando || !form.categoria_id || !form.proveedor_id
+                            :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
                                        || duplicadoExacto()"
                             class="h-boton px-5 rounded-input border-2 border-primary
                                    text-primary text-base font-medium
@@ -1005,7 +1080,7 @@
                         Crear con variantes
                     </button>
                     <button type="submit"
-                            :disabled="form.guardando || !form.categoria_id || !form.proveedor_id
+                            :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
                                        || duplicadoExacto()"
                             class="h-boton px-8 rounded-input bg-primary text-white text-base
                                    font-medium hover:bg-primary-hover disabled:opacity-60"

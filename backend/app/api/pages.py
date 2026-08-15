@@ -22,6 +22,7 @@ from app.core.permisos import (
     resolver_permiso,
 )
 from app.core.templates import templates
+from app.models.categoria import NIVEL_MAXIMO
 from app.services import configuracion as servicio_configuracion
 from app.services import roles as servicio_roles
 from app.services import usuarios as servicio_usuarios
@@ -465,7 +466,17 @@ async def productos(
     return templates.TemplateResponse(
         request,
         "pages/productos/listado.html",
-        contexto_base(request, db, usuario, titulo="Productos", ruta_activa="/productos"),
+        contexto_base(
+            request,
+            db,
+            usuario,
+            titulo="Productos",
+            ruta_activa="/productos",
+            # Cuántos selects de categoría dibuja el formulario: uno por nivel
+            # posible del árbol. Sale del modelo y no de un 5 escrito en la
+            # plantilla, que quedaría corto el día que el árbol admita más.
+            nivel_maximo=NIVEL_MAXIMO,
+        ),
     )
 
 
