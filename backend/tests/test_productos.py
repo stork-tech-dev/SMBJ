@@ -741,6 +741,43 @@ def test_buscar_por_sku_trae_todas_las_variantes_del_producto(db, catalogo):
     assert {f.sufijo for f in filas} == {"R", "N", "V"}
 
 
+def test_un_sku_que_el_validador_lee_como_codigo_igual_encuentra_el_producto(
+    db, autor, config, categoria, proveedor
+):
+    """
+    El SKU y el código de etiqueta comparten alfabeto, así que un SKU puede
+    pasar la validación del dígito verificador por casualidad: le pasa a 18
+    de cada 199 (`AA009`, `AA017`, `AA025`…).
+
+    Cuando el código y el texto eran excluyentes, esos SKU se leían como
+    etiqueta: se les sacaba el último carácter y se comparaba contra un
+    código que no existe. Tipear `AA009` no devolvía NADA, y nada explicaba
+    por qué — el de al lado, `AA010`, funcionaba bien.
+    """
+    from app.core.codigos import armar_codigo_completo, codigo_es_valido, digito_verificador
+
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Anillo de plata",
+    )
+
+    # El SKU sale de una secuencia, así que se fuerza uno de los que caen en
+    # la trampa. El código de su BASE se rearma con los mismos helpers que
+    # usa el servicio, para que la fila quede coherente y no fabricada.
+    p.sku = "AA009"
+    base = p.variantes[0]
+    base.codigo_completo = armar_codigo_completo("S", p.sku, None)
+    base.verificador = digito_verificador(base.codigo_completo)
+    db.flush()
+
+    assert codigo_es_valido("AA009"), "el SKU elegido ya no cae en la trampa"
+
+    filas, total = servicio.listar_variantes(db, busqueda="AA009")
+
+    assert total == 1, "el SKU tiene que encontrar su producto igual"
+    assert filas[0].producto.sku == "AA009"
+
+
 def test_buscar_por_descripcion_sigue_funcionando(db, catalogo):
     filas, total = servicio.listar_variantes(db, busqueda="luces")
 

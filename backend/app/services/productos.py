@@ -15,7 +15,7 @@ Los dos caminos son:
 
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -677,31 +677,46 @@ def listar_variantes(
     puede referirse a un artículo:
 
       1. Con el código de la etiqueta, que incluye el dígito verificador
-         (`SAB123R7`). Si el texto pasa la validación del dígito se le saca
-         el último carácter y se busca el código EXACTO: es el caso del
-         lector, y es el único que puede resolver a una sola fila.
+         (`SAB123R7`). Si el texto pasa la validación del dígito, se le saca
+         el último carácter y se busca además el código EXACTO: es el caso
+         del lector, y es el único que resuelve a una sola fila.
       2. Con el SKU del producto (`AB123`), que trae todas sus variantes.
       3. Con parte de la descripción.
 
     El paso 1 es lo que hace que el dígito verificador sirva para algo: un
-    código mal tipeado no valida, así que cae a la búsqueda por texto y no
-    se resuelve por accidente a otra variante.
+    código mal tipeado no valida, así que no se resuelve por accidente a
+    otra variante — solo queda la búsqueda por texto, que no lo encuentra.
     """
     consulta = select(Variante).join(Producto, Variante.producto_id == Producto.id)
 
     if busqueda:
         texto = busqueda.strip().upper()
+        patron = f"%{texto}%"
+
+        # Las tres formas se buscan SIEMPRE, y el código exacto se suma
+        # cuando corresponde. Antes eran excluyentes —o código, o texto— y
+        # eso hacía desaparecer resultados: un SKU también puede pasar la
+        # validación del dígito por casualidad (le pasa a 1 de cada 11), y
+        # ahí el buscador lo leía como etiqueta, le sacaba el último carácter
+        # y comparaba contra un código que no existe. Tipear `AA009` no
+        # devolvía nada, sin ninguna señal de por qué.
+        condiciones = [
+            Variante.codigo_completo.ilike(patron),
+            Producto.sku.ilike(patron),
+            Producto.descripcion.ilike(patron),
+        ]
 
         if codigo_es_valido(texto):
             # El dígito no se persiste: la columna guarda el cuerpo.
-            consulta = consulta.where(Variante.codigo_completo == texto[:-1])
-        else:
-            patron = f"%{texto}%"
-            consulta = consulta.where(
-                Variante.codigo_completo.ilike(patron)
-                | Producto.sku.ilike(patron)
-                | Producto.descripcion.ilike(patron)
-            )
+            #
+            # Sumar esta condición no relaja nada: el texto de un código
+            # válido no aparece como subcadena de ningún código guardado
+            # —al guardado le falta justamente el dígito— ni de un SKU ni de
+            # una descripción, así que el lector sigue resolviendo a la
+            # única fila de esa etiqueta.
+            condiciones.append(Variante.codigo_completo == texto[:-1])
+
+        consulta = consulta.where(or_(*condiciones))
 
     if categoria_id is not None:
         # Misma regla que en el listado de productos: incluye la descendencia.
