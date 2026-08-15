@@ -866,6 +866,38 @@ def test_crear_con_variantes_lleva_al_alta_de_la_primera_variante(client, crear_
     assert "this.abrirVariante()" in js
 
 
+def test_agregar_una_variante_deja_la_ficha_abierta_para_la_siguiente(
+    client, crear_usuario
+):
+    """
+    Un producto que viene en colores o talles necesita varias variantes
+    cargadas una atrás de la otra. Guardar cerraba el formulario Y la ficha,
+    y la pantalla quedaba en el listado: para la segunda había que buscar el
+    producto y volver a entrar.
+
+    Ahora se cierra solo el formulario y la ficha queda abierta y releída,
+    con "Agregar variante" ahí mismo. Es el mismo camino que ya usaba la
+    edición de variante.
+
+    Se relee SIN acotar a un código: la recién creada tiene que verse, y si
+    era la primera, el backend acaba de eliminar la BASE que el panel venía
+    mostrando —filtrar por ese id dejaría la ficha vacía—.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    js = _js_de("/productos")
+
+    # Cerrar la ficha al guardar era lo que obligaba a volver a buscar el
+    # producto: no puede volver a aparecer en el módulo.
+    assert "this.detalle.abierto = false" not in js
+    assert (
+        "await this.abrirProducto(this.detalle.producto.id, { varianteId: null })" in js
+    )
+    # El listado se recarga igual: se va la fila de la BASE y entra la nueva.
+    assert js.count("this.cargar();") >= 2
+
+
 def test_la_descripcion_va_despues_del_proveedor_y_su_sku(client, crear_usuario):
     """
     El orden del formulario es el del trabajo: primero dónde va y de quién

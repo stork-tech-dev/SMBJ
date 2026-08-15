@@ -563,8 +563,19 @@ function abmProductos() {
                     throw new Error(error.detail || 'No se pudo agregar la variante');
                 }
                 window.toast('Variante agregada', 'exito');
+                // Se cierra SOLO el formulario: la ficha queda abierta con la
+                // variante recién creada a la vista y "Agregar variante" a un
+                // clic. Un producto que viene en colores o talles necesita
+                // varias seguidas, y cerrando todo había que volver a
+                // buscarlo en el listado por cada una.
                 this.variante.abierto = false;
-                this.detalle.abierto = false;
+
+                // Se relee sin acotar a ninguna variante por dos motivos: la
+                // recién creada tiene que verse —el panel filtrado por un
+                // código la escondería—, y si era la primera, el backend
+                // acaba de eliminar la BASE que el panel venía mostrando, así
+                // que filtrar por ese id dejaría la ficha vacía.
+                await this.abrirProducto(this.detalle.producto.id, { varianteId: null });
                 this.cargar();
             } catch (e) {
                 window.toast(e.message, 'error');
