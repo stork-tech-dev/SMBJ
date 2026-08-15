@@ -27,6 +27,7 @@ from app.schemas.productos import (
     ProductoEditar,
     ProductoEstado,
     ProductoResponse,
+    ProductoSimilar,
     VarianteCrear,
     VarianteEditar,
     VarianteListadoResponse,
@@ -114,6 +115,42 @@ def precio_preview(
     return PrecioPreview(
         dolar_proveedor=proveedor.dolar_actual,
         precio_venta=servicio.calcular_precio_venta(db, precio_usd, proveedor.dolar_actual),
+    )
+
+
+@router.get(
+    "/similares",
+    response_model=list[ProductoSimilar],
+    summary="Productos ya cargados con descripción parecida",
+)
+def similares(
+    descripcion: str = Query(..., description="Lo que se está tipeando en Descripción"),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.PRODUCTOS, "ver")),
+):
+    """
+    Alimenta el desplegable del formulario de alta.
+
+    Sirve para dos cosas a la vez: ver que el producto tal vez ya existe
+    antes de duplicarlo —el alta lo rechaza si la descripción, la categoría
+    y el proveedor coinciden— y poder adoptar el nombre con el que ya quedó
+    cargado, para que el catálogo no tenga "Cadena plata 925" y "cadena de
+    plata 925" como si fueran cosas distintas.
+
+    Con menos de `MINIMO_CARACTERES_SIMILARES` devuelve una lista vacía en
+    lugar de un error: el umbral es parte de la búsqueda, no una condición
+    de uso, y el formulario consulta mientras se escribe.
+
+    Va declarado ANTES de `/{producto_id}`, igual que `/precio-preview`: si
+    no, FastAPI intentaría leer "similares" como un id.
+    """
+    return servicio.buscar_similares(
+        db,
+        descripcion=descripcion,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
     )
 
 

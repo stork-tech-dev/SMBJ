@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from fastapi import Request
+from sqlalchemy import func
 
 from config import settings
 
@@ -105,3 +106,43 @@ def capitalizar_inicial(valor: str) -> str:
     # `valor[:1]` y no `valor[0]`: con string vacío devuelve "" en vez de
     # reventar con IndexError.
     return valor[:1].upper() + valor[1:]
+
+
+# Las dos caras de la misma tabla de reemplazo: la de Python y la de SQL
+# tienen que decir exactamente lo mismo, o "café" tipeado sin tilde
+# encontraría distinto según de qué lado se limpie el texto. Por eso las
+# constantes están una sola vez y las dos funciones las comparten.
+#
+# Solo las letras del español: la `ü` de "vergüenza" y la `ñ` incluidas.
+_CON_TILDE = "áéíóúüñÁÉÍÓÚÜÑ"
+_SIN_TILDE = "aeiouunAEIOUUN"
+_TABLA_SIN_TILDE = str.maketrans(_CON_TILDE, _SIN_TILDE)
+
+
+def sin_tildes(valor: str) -> str:
+    """
+    El texto con las vocales acentuadas y la eñe reemplazadas por su letra
+    pelada, para comparar sin que la tilde decida.
+
+    Es la mitad de la operación: el otro lado de la comparación es una
+    columna de la base y se limpia con `sin_tildes_sql()`.
+    """
+    return valor.translate(_TABLA_SIN_TILDE)
+
+
+def sin_tildes_sql(columna):
+    """
+    Lo mismo que `sin_tildes()`, pero aplicado a una columna dentro de la
+    consulta.
+
+    Se resuelve con `translate()` de Postgres y no con la extensión
+    `unaccent` a propósito: `unaccent` hay que instalarla en la base y
+    exige permisos de superusuario, y el proyecto se despliega
+    self-hosted sin garantía de tenerlos. `translate` es SQL estándar y
+    no necesita nada.
+
+    El costo es que la comparación deja de poder usar el índice de la
+    columna, así que sirve para búsquedas acotadas (un desplegable de
+    sugerencias), no para barrer la tabla entera.
+    """
+    return func.translate(columna, _CON_TILDE, _SIN_TILDE)

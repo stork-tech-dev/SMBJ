@@ -499,7 +499,7 @@ def test_el_alta_de_producto_exige_categoria_y_proveedor_sin_el_required(
 
     html = client.get("/productos").text
 
-    assert '"form.guardando || !form.categoria_id || !form.proveedor_id"' in html, (
+    assert "form.guardando || !form.categoria_id || !form.proveedor_id" in html, (
         "el botón Guardar tiene que quedar deshabilitado sin categoría"
     )
 
@@ -671,6 +671,145 @@ def test_el_stock_infinito_solo_lo_ve_la_cuenta_maestra(client, crear_usuario):
     # Pero sigue viendo el dato en la tabla: saber que un producto no
     # descuenta stock es distinto de poder cambiarlo.
     assert "v.producto.stock_infinito" in html
+
+
+def test_el_alta_de_producto_acepta_una_foto(client, crear_usuario):
+    """
+    Antes había que crear el producto, buscarlo en el listado, abrir la ficha
+    y recién ahí subirle la foto. Ahora se elige en el mismo formulario.
+
+    No se sube al elegirla: el endpoint cuelga de `/productos/{id}/fotos` y
+    ese id no existe hasta que el producto está creado. El archivo espera en
+    el formulario y lo sube `guardar()` con el id que devuelve el alta.
+
+    Solo en el ALTA: en edición la ficha ya tiene la grilla de las cinco con
+    "principal" y "borrar", y dos lugares para lo mismo se contradicen.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # El campo existe y está dentro de la rama de alta (`!form.id`).
+    assert 'x-if="!form.id"' in html
+    assert "elegirFoto($event)" in html
+    assert "quitarFoto()" in html
+    # Mismos formatos que acepta la ficha.
+    assert html.count('accept="image/jpeg,image/png,image/gif,image/webp"') == 2
+
+    js = _js_de("/productos")
+    # Se sube DESPUÉS del alta, con el id que devolvió el backend.
+    assert "subirFotoDelAlta(guardado.id)" in js
+    assert "/fotos`" in js
+
+
+def test_crear_con_variantes_lleva_al_alta_de_la_primera_variante(client, crear_usuario):
+    """
+    El camino de quien ya sabe que el producto viene en colores o talles:
+    crear y seguir derecho, en vez de buscarlo en el listado y abrir la ficha
+    para recién ahí empezar.
+
+    El botón NO es submit: los dos envían el mismo formulario, y siendo
+    submit el Enter dentro de un campo abriría el modal de variante sin
+    haberlo pedido.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "Crear con variantes" in html
+    assert "guardar({ conVariantes: true })" in html
+    # Solo en el alta: editar un producto ya tiene su ficha con las variantes.
+    assert 'x-show="!form.id"' in html
+    # Con la misma guarda que "Crear": sin categoría ni proveedor —y con una
+    # descripción que ya está usada— no se crea.
+    assert html.count("!form.categoria_id || !form.proveedor_id") == 2
+    assert html.count("|| duplicadoExacto()") == 2
+
+    js = _js_de("/productos")
+    # El panel primero: `abrirVariante()` mira si todavía está la BASE para
+    # avisar que la primera variante real la reemplaza.
+    assert "await this.abrirProducto(guardado.id)" in js
+    assert "this.abrirVariante()" in js
+
+
+def test_la_descripcion_va_despues_del_proveedor_y_su_sku(client, crear_usuario):
+    """
+    El orden del formulario es el del trabajo: primero dónde va y de quién
+    viene, después cómo se llama.
+
+    No es cosmético. El buscador de parecidos del campo Descripción ofrece
+    solo lo que ya está cargado en ESA categoría y ESE proveedor, así que
+    con la descripción arriba de todo la lista salía sin acotar y ofrecía
+    medio catálogo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Se compara la posición de cada campo DENTRO del modal de alta/edición:
+    # 'pr-' es el prefijo de sus ids.
+    orden = [html.index(f'id="pr-{campo}"') for campo in ("categoria", "skuprov", "desc")]
+    assert orden == sorted(orden), "el formulario no sigue el orden esperado"
+    # El proveedor no tiene `id="pr-proveedor"` visible en edición (ahí es un
+    # dato fijo), pero su combobox se declara antes que la descripción.
+    assert html.index("'pr-proveedor'") < html.index('id="pr-desc"')
+
+
+def test_la_descripcion_ofrece_los_productos_ya_cargados_con_nombre_parecido(
+    client, crear_usuario
+):
+    """
+    Sirve para dos cosas a la vez: ver que el artículo tal vez ya existe
+    antes de duplicarlo —el alta lo rechaza si descripción, categoría y
+    proveedor coinciden— y adoptar el nombre con el que quedó cargado, para
+    que el catálogo no tenga "Cadena plata 925" y "cadena de plata 925" como
+    si fueran cosas distintas.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "buscarSimilares()" in html
+    assert "elegirSimilar(p)" in html
+    # Se puede recorrer con el teclado, como el resto de los desplegables.
+    assert "moverSimilar(1)" in html and "moverSimilar(-1)" in html
+    # Cambiar categoría o proveedor rehace la búsqueda: la lista está acotada
+    # a esos dos y quedaría vieja.
+    assert html.count("buscarSimilares();") == 2
+
+    js = _js_de("/productos")
+    # El umbral es el mismo que aplica el backend.
+    assert "const MINIMO_SIMILARES = 10;" in js
+    assert "/api/v1/productos/similares?" in js
+    # En la edición no se busca: la descripción ya viene puesta y el
+    # desplegable se abriría solo, ofreciendo el producto que se edita.
+    assert "if (this.form.id || texto.length < MINIMO_SIMILARES)" in js
+    # Las respuestas pueden llegar desordenadas; la vieja no pisa a la nueva.
+    assert "token !== this.similaresToken" in js
+
+
+def test_el_choque_de_descripcion_se_avisa_antes_de_apretar_crear(client, crear_usuario):
+    """
+    El alta lo rechaza igual —lo controla el service y lo garantiza un índice
+    único—, pero enterarse recién con el error obliga a volver a un campo que
+    quedó abajo del formulario.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "duplicadoExacto()" in html
+    assert "en esta categoría y proveedor" in html
+
+    js = _js_de("/productos")
+    # Solo con los dos elegidos: la lista se acota con ellos, y sin ellos un
+    # nombre repetido en otra categoría no es ningún choque.
+    assert "!this.form.categoria_id || !this.form.proveedor_id" in js
 
 
 def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario):

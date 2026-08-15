@@ -81,13 +81,15 @@ def test_el_sku_lo_genera_el_sistema(db, producto):
 
 def test_los_sku_no_se_repiten(db, autor, config, categoria, proveedor):
     """La secuencia entrega un correlativo distinto a cada alta."""
+    # Cada uno con su descripción: dos productos del mismo proveedor y
+    # categoría no pueden llamarse igual.
     skus = {
         servicio.crear_producto(
             db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"),
-            descripcion="Producto de prueba",
+            descripcion=f"Producto de prueba {n}",
         ).sku
-        for _ in range(20)
+        for n in range(20)
     }
     assert len(skus) == 20
 
@@ -804,9 +806,13 @@ def test_el_listado_va_alfabetico_por_descripcion(db, autor, config, categoria, 
             precio_usd=Decimal("10"), descripcion=nombre,
         )
         creado.descripcion = nombre
+    # Sin acentos y distinta de las cuatro de arriba: dos productos del
+    # mismo proveedor y categoría no pueden llamarse igual, y la
+    # comparación que lo controla ignora las tildes ("Mocasin" y "Mocasín"
+    # son el mismo nombre escrito de dos formas).
     multi = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
-        precio_usd=Decimal("10"), descripcion="Mocasín",
+        precio_usd=Decimal("10"), descripcion="Sandalia",
     )
     for sufijo in ("V", "R", "N"):
         servicio.agregar_variante(db, autor, multi.id, sufijo=sufijo, descripcion_sufijo=f"Color {sufijo}")
@@ -848,6 +854,355 @@ def test_no_se_puede_dejar_sin_descripcion_al_editar(db, autor, producto):
 
     db.refresh(producto)
     assert producto.descripcion == "Zapatilla running"
+
+
+# ============================================================================
+# DESCRIPCIÓN ÚNICA POR CATEGORÍA Y PROVEEDOR
+# ============================================================================
+
+
+def _crear(db, autor, categoria, proveedor, descripcion):
+    return servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion=descripcion,
+    )
+
+
+def test_no_se_repite_la_descripcion_en_el_mismo_proveedor_y_categoria(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Mirando el catálogo serían la misma fila cargada dos veces: no queda
+    ningún dato en pantalla para distinguirlas. Lo que corresponde cuando el
+    artículo viene en colores o talles es una variante del que ya existe.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+
+def test_el_choque_de_descripcion_nombra_el_producto_con_el_que_choca(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Sin el SKU en el mensaje hay que salir a buscar cuál es el que ya
+    estaba, y el formulario acaba de decir que no se puede guardar.
+    """
+    ya_estaba = _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+    with pytest.raises(ReglaDeNegocio, match=ya_estaba.sku):
+        _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+
+def test_la_descripcion_repetida_se_detecta_sin_tildes_ni_mayusculas(
+    db, autor, config, categoria, proveedor
+):
+    """
+    "Camión rojo" y "camion ROJO" no se distinguen mirando la tabla: son el
+    mismo duplicado escrito de dos formas.
+    """
+    _crear(db, autor, categoria, proveedor, "Camión rojo")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        _crear(db, autor, categoria, proveedor, "camion ROJO")
+
+
+def test_la_misma_descripcion_en_otra_categoria_se_permite(
+    db, autor, config, proveedor, arbol
+):
+    """
+    El choque es dentro del mismo par categoría/proveedor. Dos categorías
+    distintas pueden tener cada una su "Clásico"; ahí lo que distingue es
+    justamente dónde está colgado.
+    """
+    _, _, deportivas, urbanas, _ = arbol
+
+    _crear(db, autor, deportivas, proveedor, "Modelo clásico")
+    otro = _crear(db, autor, urbanas, proveedor, "Modelo clásico")
+
+    assert otro.id
+
+
+def test_la_misma_descripcion_en_otro_proveedor_se_permite(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Dos proveedores pueden vender el mismo artículo, y cada uno tiene su
+    precio en dólares y su cotización: son dos productos distintos.
+    """
+    otro_proveedor = servicio_proveedores.crear_proveedor(
+        db, autor, nombre="Distribuidora Sur", dolar_actual=Decimal("1200")
+    )
+
+    _crear(db, autor, categoria, proveedor, "Zapatilla running")
+    otro = _crear(db, autor, categoria, otro_proveedor, "Zapatilla running")
+
+    assert otro.id
+
+
+def test_la_categoria_del_choque_es_exacta_y_no_la_rama(
+    db, autor, config, proveedor, arbol
+):
+    """
+    A diferencia del FILTRO del listado, que sí incluye la descendencia: dos
+    productos iguales en categorías padre e hija son un problema de
+    clasificación, no una fila duplicada. El índice único de la base compara
+    `categoria_id` a secas, así que el service tiene que hacer lo mismo o
+    rechazaría cosas que la base acepta.
+    """
+    _, zapatillas, deportivas, _, _ = arbol
+
+    _crear(db, autor, zapatillas, proveedor, "Modelo clásico")
+    otro = _crear(db, autor, deportivas, proveedor, "Modelo clásico")
+
+    assert otro.id
+
+
+def test_un_producto_inactivo_sigue_ocupando_su_descripcion(
+    db, autor, config, categoria, proveedor
+):
+    """
+    La baja es lógica: el producto no se borra y se puede volver a activar.
+    Si mientras tanto se reusara el nombre, al reactivarlo quedarían las dos
+    filas idénticas.
+    """
+    viejo = _crear(db, autor, categoria, proveedor, "Zapatilla running")
+    servicio.cambiar_estado_producto(db, autor, viejo.id, activo=False)
+
+    with pytest.raises(ReglaDeNegocio, match="inactivo"):
+        _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+
+def test_editar_un_producto_no_choca_consigo_mismo(db, autor, producto):
+    """
+    Guardar el formulario sin tocar la descripción manda la misma que ya
+    tiene: si se comparara contra todo el catálogo sin excluirse, ninguna
+    edición se podría guardar.
+    """
+    servicio.editar_producto(db, autor, producto.id, descripcion="Zapatilla running")
+
+    db.refresh(producto)
+    assert producto.descripcion == "Zapatilla running"
+
+
+def test_renombrar_a_una_descripcion_ya_usada_se_rechaza(
+    db, autor, config, categoria, proveedor, producto
+):
+    """La edición no puede colarse por donde el alta no deja pasar."""
+    otro = _crear(db, autor, categoria, proveedor, "Zapatilla urbana")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        servicio.editar_producto(db, autor, otro.id, descripcion="Zapatilla running")
+
+    db.refresh(otro)
+    assert otro.descripcion == "Zapatilla urbana"
+
+
+def test_mover_de_categoria_hasta_chocar_se_rechaza(db, autor, config, proveedor, arbol):
+    """
+    El choque puede aparecer sin tocar la descripción: alcanza con mover el
+    producto a la categoría donde ya hay uno que se llama igual. Por eso la
+    validación mira cómo va a quedar y no cómo está.
+    """
+    _, _, deportivas, urbanas, _ = arbol
+
+    _crear(db, autor, deportivas, proveedor, "Modelo clásico")
+    mudo = _crear(db, autor, urbanas, proveedor, "Modelo clásico")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        servicio.editar_producto(db, autor, mudo.id, categoria_id=deportivas.id)
+
+    db.refresh(mudo)
+    assert mudo.categoria_id == urbanas.id
+
+
+def test_el_alta_duplicada_por_la_api_devuelve_409(
+    client, db, autor, config, categoria, proveedor, login
+):
+    """
+    El formulario muestra el `detail` tal cual en un toast: tiene que decir
+    qué pasó, no un error de integridad de Postgres.
+    """
+    headers = login("admin")
+    cuerpo = {
+        "categoria_id": categoria.id,
+        "proveedor_id": proveedor.id,
+        "precio_usd": "10",
+        "descripcion": "Zapatilla running",
+    }
+
+    assert client.post("/api/v1/productos", json=cuerpo, headers=headers).status_code == 201
+
+    resp = client.post("/api/v1/productos", json=cuerpo, headers=headers)
+    assert resp.status_code == 409
+    assert "Ya existe un producto" in resp.json()["detail"]
+
+
+def test_la_base_tambien_impide_el_duplicado(db, autor, config, categoria, proveedor):
+    """
+    El índice único es la garantía; el control del service existe para dar
+    un mensaje entendible. Si solo estuviera el service, cualquier camino que
+    no pase por él —una carga masiva, un script— metería el duplicado.
+    """
+    from sqlalchemy import text as sa_text
+
+    _crear(db, autor, categoria, proveedor, "Zapatilla running")
+    db.flush()
+
+    indices = db.execute(
+        sa_text("SELECT indexdef FROM pg_indexes WHERE tablename = 'productos'")
+    ).scalars().all()
+
+    unico = [i for i in indices if "uq_productos_descripcion_por_categoria_y_proveedor" in i]
+    assert unico, "falta el índice único de la migración 0020"
+    # La MISMA expresión que compara el service: si dejaran de coincidir, la
+    # base aceptaría lo que el service rechaza (o al revés).
+    assert "lower(translate" in unico[0]
+    assert "categoria_id" in unico[0] and "proveedor_id" in unico[0]
+
+
+# ============================================================================
+# DESCRIPCIONES PARECIDAS (buscador del formulario de alta)
+# ============================================================================
+
+
+def test_los_parecidos_necesitan_diez_caracteres(db, autor, config, categoria, proveedor):
+    """
+    Con menos, cualquier texto corto coincide con medio catálogo y el
+    desplegable es ruido justo cuando todavía no se terminó de escribir.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla running negra")
+    db.flush()
+
+    assert servicio.buscar_similares(db, descripcion="Zapatilla") == []
+    assert servicio.buscar_similares(db, descripcion="Zapatilla r")
+
+
+def test_los_parecidos_encuentran_por_palabras_y_no_por_la_frase_entera(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Es el punto del buscador: mientras se escribe, lo tipeado casi nunca es
+    un fragmento literal de lo ya cargado. Un ILIKE sobre la frase completa
+    —lo que hace el filtro del listado— no encontraría nada.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla Nike Air Max 90")
+    db.flush()
+
+    # Las mismas palabras, en otro orden y sin ser subcadena de la guardada.
+    assert len(servicio.buscar_similares(db, descripcion="nike zapatilla air")) == 1
+
+
+def test_los_parecidos_exigen_todas_las_palabras(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Con que alcanzara una sola, escribir "Nike" traería toda la marca y la
+    lista dejaría de decir nada.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla Nike Air Max 90")
+    _crear(db, autor, categoria, proveedor, "Campera Nike cortaviento")
+    db.flush()
+
+    encontrados = servicio.buscar_similares(db, descripcion="zapatilla nike")
+    assert [p.descripcion for p in encontrados] == ["Zapatilla Nike Air Max 90"]
+
+
+def test_los_parecidos_ignoran_las_palabras_de_menos_de_tres_letras(
+    db, autor, config, categoria, proveedor
+):
+    """Palabras como "de", "y" o "18k" aparecen en cualquier lado."""
+    _crear(db, autor, categoria, proveedor, "Cadena plata 925 eslabón")
+    db.flush()
+
+    assert servicio.buscar_similares(db, descripcion="cadena de plata")
+
+
+def test_los_parecidos_ignoran_las_tildes(db, autor, config, categoria, proveedor):
+    """Se tipea rápido y sin tildes; el catálogo está cargado con ellas."""
+    _crear(db, autor, categoria, proveedor, "Camión de bomberos rojo")
+    db.flush()
+
+    assert servicio.buscar_similares(db, descripcion="camion bomberos")
+
+
+def test_los_parecidos_se_acotan_al_proveedor_y_la_categoria(
+    db, autor, config, proveedor, arbol
+):
+    """
+    Es lo que hace que la lista sirva: son los productos con los que el que
+    se está cargando podría chocar, no todos los que se llaman parecido.
+    """
+    _, _, deportivas, urbanas, _ = arbol
+    otro_proveedor = servicio_proveedores.crear_proveedor(
+        db, autor, nombre="Distribuidora Sur", dolar_actual=Decimal("1200")
+    )
+
+    _crear(db, autor, deportivas, proveedor, "Zapatilla running negra")
+    _crear(db, autor, urbanas, proveedor, "Zapatilla running blanca")
+    _crear(db, autor, deportivas, otro_proveedor, "Zapatilla running gris")
+    db.flush()
+
+    encontrados = servicio.buscar_similares(
+        db, descripcion="zapatilla running",
+        categoria_id=deportivas.id, proveedor_id=proveedor.id,
+    )
+    assert [p.descripcion for p in encontrados] == ["Zapatilla running negra"]
+
+
+def test_los_parecidos_incluyen_la_descendencia_de_la_categoria(
+    db, autor, config, proveedor, arbol
+):
+    """
+    Los productos cuelgan de las hojas: elegir "Zapatillas" en el formulario
+    tiene que ofrecer lo que está en "Deportivas", igual que el filtro del
+    listado.
+    """
+    _, zapatillas, deportivas, _, _ = arbol
+
+    _crear(db, autor, deportivas, proveedor, "Zapatilla running negra")
+    db.flush()
+
+    assert servicio.buscar_similares(
+        db, descripcion="zapatilla running", categoria_id=zapatillas.id
+    )
+
+
+def test_los_parecidos_incluyen_los_inactivos(db, autor, config, categoria, proveedor):
+    """
+    Un producto dado de baja sigue ocupando su descripción, así que sigue
+    siendo un duplicado. La pantalla lo muestra marcado como inactivo.
+    """
+    viejo = _crear(db, autor, categoria, proveedor, "Zapatilla running negra")
+    servicio.cambiar_estado_producto(db, autor, viejo.id, activo=False)
+    db.flush()
+
+    encontrados = servicio.buscar_similares(db, descripcion="zapatilla running")
+    assert [p.id for p in encontrados] == [viejo.id]
+
+
+def test_los_parecidos_por_la_api_no_se_confunden_con_un_id(
+    client, db, autor, config, categoria, proveedor, login
+):
+    """
+    `/similares` tiene que estar declarado ANTES de `/{producto_id}`: si no,
+    FastAPI lee "similares" como un id y devuelve 422.
+    """
+    headers = login("admin")
+    _crear(db, autor, categoria, proveedor, "Zapatilla running negra")
+    db.flush()
+
+    resp = client.get(
+        "/api/v1/productos/similares",
+        params={"descripcion": "zapatilla running", "proveedor_id": proveedor.id},
+        headers=headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert [p["descripcion"] for p in resp.json()] == ["Zapatilla running negra"]
+    # Lo mínimo para reconocerlo: sin variantes, fotos ni precios.
+    assert set(resp.json()[0]) == {"id", "sku", "descripcion", "activo"}
 
 
 # ============================================================================

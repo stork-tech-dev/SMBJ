@@ -32,6 +32,8 @@ from app.core.utils import (
     capitalizar_inicial,
     normalizar_texto,
     redondear_hacia_arriba,
+    sin_tildes,
+    sin_tildes_sql,
 )
 from app.models.categoria import Categoria
 from app.models.configuracion import ConfiguracionSistema
@@ -201,6 +203,55 @@ def _validar_descripcion(descripcion: str) -> str:
     if not limpia:
         raise ReglaDeNegocio("La descripción del producto es obligatoria")
     return capitalizar_inicial(limpia)
+
+
+def _validar_descripcion_unica(
+    db: Session,
+    descripcion: str,
+    categoria_id: int,
+    proveedor_id: int,
+    excluir_id: int | None = None,
+) -> None:
+    """
+    Dos productos del mismo proveedor y la misma categoría no pueden
+    llamarse igual.
+
+    Mirando el catálogo serían la misma fila cargada dos veces: no queda
+    ningún dato en pantalla para distinguirlos. Lo que corresponde cuando
+    el artículo viene en colores o talles es una variante del que ya
+    existe, que además comparte precio y descripción.
+
+    Compara sin tildes y sin mayúsculas —"Cadena plata" y "cadena PLATA"
+    tampoco se distinguen— con la MISMA expresión del índice único
+    `uq_productos_descripcion_por_categoria_y_proveedor` (migración 0020).
+    La base es la que lo garantiza; esto existe para poder decir con cuál
+    choca en vez de devolver un error de integridad.
+
+    La categoría se compara exacta y no por rama: es lo que hace el índice,
+    y dos productos iguales colgados de hojas distintas son un problema de
+    clasificación, no un duplicado.
+
+    Los inactivos cuentan: no se borran, se pueden volver a activar, y ahí
+    quedarían las dos filas idénticas.
+    """
+    consulta = select(Producto).where(
+        func.lower(sin_tildes_sql(Producto.descripcion)) == sin_tildes(descripcion).lower(),
+        Producto.categoria_id == categoria_id,
+        Producto.proveedor_id == proveedor_id,
+    )
+    if excluir_id is not None:
+        consulta = consulta.where(Producto.id != excluir_id)
+
+    existente = db.execute(consulta.limit(1)).scalars().first()
+    if existente is None:
+        return
+
+    baja = "" if existente.activo else ", que está inactivo y se puede volver a activar"
+    raise ReglaDeNegocio(
+        f"Ya existe un producto con esa descripción en este proveedor y categoría: "
+        f"{existente.sku}{baja}. Si es el mismo artículo en otro color o talle, "
+        f"agregale una variante en lugar de crear otro producto."
+    )
 
 
 def _validar_nombre_variante(descripcion_sufijo: str) -> str:
@@ -502,6 +553,94 @@ def listar_productos(
     return list(filas), total
 
 
+# Cuántos caracteres hay que tener tipeados antes de buscar parecidos.
+#
+# Con menos, la búsqueda no dice nada útil: "cadena" coincide con medio
+# catálogo y el desplegable se convierte en ruido justo cuando todavía no
+# se terminó de escribir. Diez es el largo a partir del cual una
+# descripción ya tiene dos palabras y empieza a identificar algo.
+#
+# El formulario usa el mismo número para no pedirle a la API lo que sabe
+# que va a volver vacío (`MINIMO_SIMILARES` en productos.js), pero la
+# regla vive acá: el endpoint la aplica igual aunque lo llame otro cliente.
+MINIMO_CARACTERES_SIMILARES = 10
+
+# Cuántas palabras cortas ("de", "18k") se ignoran al comparar.
+_LARGO_PALABRA_UTIL = 3
+
+
+def buscar_similares(
+    db: Session,
+    descripcion: str,
+    categoria_id: int | None = None,
+    proveedor_id: int | None = None,
+    limite: int = 8,
+) -> list[Producto]:
+    """
+    Productos ya cargados cuya descripción se parece a la que se está
+    tipeando, acotados a la categoría y el proveedor elegidos.
+
+    Alimenta el desplegable del formulario de alta, que sirve para dos
+    cosas a la vez: ver que el producto tal vez ya existe antes de
+    duplicarlo, y poder adoptar el nombre con el que quedó cargado, para
+    que el catálogo no tenga "Cadena plata 925" y "cadena de plata 925"
+    como si fueran cosas distintas.
+
+    El parecido se resuelve palabra por palabra y no con un ILIKE sobre la
+    frase entera —que es lo que hace el filtro de `listar_productos`—:
+    mientras se escribe, el texto tipeado casi nunca es un fragmento
+    literal de lo ya cargado. "Zapatilla Nike Air" tiene que encontrar
+    "Zapatilla Nike Air Max 90", y también "Nike Air Zapatilla" si alguien
+    la cargó con las palabras en otro orden. Se exigen TODAS las palabras:
+    con una sola alcanzaría cualquier producto de la marca.
+
+    Las palabras de menos de tres letras no se exigen: "de", "y" o "18k"
+    aparecen en cualquier lado y no distinguen nada.
+
+    Devuelve también los inactivos: un producto dado de baja sigue siendo
+    un duplicado, y la pantalla lo marca como tal.
+    """
+    texto = normalizar_texto(descripcion) or ""
+    if len(texto) < MINIMO_CARACTERES_SIMILARES:
+        return []
+
+    consulta = select(Producto)
+
+    # Las dos caras de la comparación se limpian igual: la columna con
+    # `translate()` en SQL y el texto tipeado en Python. Así "cafe"
+    # encuentra "Café" y "café" encuentra "Cafe".
+    descripcion_plana = sin_tildes_sql(Producto.descripcion)
+
+    palabras = [p for p in texto.split() if len(p) >= _LARGO_PALABRA_UTIL]
+    # Si nada llegó a tres letras es una descripción de palabras sueltas
+    # ("18k 925 ar"): se busca la frase entera, que es lo único que queda.
+    for palabra in palabras or [texto]:
+        consulta = consulta.where(descripcion_plana.ilike(f"%{sin_tildes(palabra)}%"))
+
+    if categoria_id is not None:
+        # Incluye la descendencia, igual que el listado: los productos
+        # cuelgan de las hojas, así que elegir "Zapatillas" en el formulario
+        # tiene que encontrar lo que está en "Deportivas".
+        from app.services.categorias import rama_de_ids
+
+        consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
+    if proveedor_id is not None:
+        consulta = consulta.where(Producto.proveedor_id == proveedor_id)
+
+    # Alfabético y acotado: es un desplegable de sugerencias, no un listado.
+    # Sin el `id` de desempate dos descripciones iguales quedan en orden
+    # arbitrario y la lista puede cambiar de una tecla a la otra.
+    filas = (
+        db.execute(
+            consulta.order_by(func.lower(Producto.descripcion), Producto.id).limit(limite)
+        )
+        .unique()
+        .scalars()
+        .all()
+    )
+    return list(filas)
+
+
 def listar_variantes(
     db: Session,
     busqueda: str | None = None,
@@ -633,10 +772,15 @@ def crear_producto(
     if peso_gramos is not None and Decimal(peso_gramos) <= 0:
         raise ReglaDeNegocio("El peso debe ser mayor a cero")
 
+    # Antes de reservar el SKU: si el nombre choca, el alta no tiene que
+    # consumir un número del correlativo.
+    descripcion_limpia = _validar_descripcion(descripcion)
+    _validar_descripcion_unica(db, descripcion_limpia, categoria_id, proveedor_id)
+
     producto = Producto(
         sku=_siguiente_sku(db),
         sku_proveedor=normalizar_texto(sku_proveedor),
-        descripcion=_validar_descripcion(descripcion),
+        descripcion=descripcion_limpia,
         categoria_id=categoria_id,
         proveedor_id=proveedor_id,
         precio_usd=Decimal(precio_usd),
@@ -697,10 +841,29 @@ def editar_producto(
 
     if categoria_id is not None:
         _validar_categoria(db, categoria_id)
-        producto.categoria_id = categoria_id
 
+    # La unicidad se controla sobre cómo va a quedar el producto, no sobre
+    # cómo está: mover un producto de categoría puede hacerlo chocar con
+    # otro sin que su descripción cambie, y renombrarlo también.
+    #
+    # Y se controla ANTES de asignar nada: con el objeto ya modificado, la
+    # consulta dispara el autoflush de SQLAlchemy y el choque volvería como
+    # error de integridad del índice, sin decir contra cuál chocó.
+    nueva_descripcion = (
+        _validar_descripcion(descripcion) if descripcion is not None else producto.descripcion
+    )
+    _validar_descripcion_unica(
+        db,
+        nueva_descripcion,
+        categoria_id if categoria_id is not None else producto.categoria_id,
+        producto.proveedor_id,
+        excluir_id=producto.id,
+    )
+
+    if categoria_id is not None:
+        producto.categoria_id = categoria_id
     if descripcion is not None:
-        producto.descripcion = _validar_descripcion(descripcion)
+        producto.descripcion = nueva_descripcion
     if sku_proveedor is not None:
         producto.sku_proveedor = normalizar_texto(sku_proveedor)
 

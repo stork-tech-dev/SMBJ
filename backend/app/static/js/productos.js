@@ -22,6 +22,33 @@ const TEMPORADAS = [
     { id: 'primavera_verano', etiqueta: 'Primavera-Verano' },
 ];
 
+// A partir de cuántos caracteres el campo Descripción empieza a buscar
+// productos parecidos. Es el mismo número que aplica el backend
+// (`MINIMO_CARACTERES_SIMILARES` en services/productos.py), que es donde
+// vive la regla: acá está solo para no pedirle a la API lo que ya se sabe
+// que va a volver vacío. Si cambia allá, cambia acá.
+const MINIMO_SIMILARES = 10;
+
+/**
+ * Texto comparable: sin mayúsculas, sin tildes y sin espacios de más.
+ *
+ * Es la misma normalización con la que el backend decide si dos
+ * descripciones son la misma (`sin_tildes()` + `lower()` en
+ * services/productos.py, y el índice único de la migración 0020),
+ * replicada acá SOLO para avisar antes de mandar el alta. Quien decide
+ * sigue siendo el backend, que además compara contra el catálogo entero y
+ * no contra las pocas sugerencias que se muestran.
+ */
+function textoPlano(valor) {
+    return (valor || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+        .join(' ');
+}
+
 function abmProductos() {
     return {
         TEMPORADAS,
@@ -78,11 +105,36 @@ function abmProductos() {
         // suficientes (falta el proveedor o el precio).
         preview: { dolar_proveedor: null, precio_venta: null },
 
+        // Productos ya cargados con descripción parecida a la que se está
+        // tipeando, acotados a la categoría y el proveedor elegidos.
+        //
+        // Sirve para dos cosas: ver que el artículo tal vez ya existe antes
+        // de duplicarlo —el backend rechaza el alta si los tres coinciden—
+        // y poder adoptar el nombre con el que quedó cargado, para que el
+        // catálogo no tenga "Cadena plata 925" y "cadena de plata 925" como
+        // si fueran cosas distintas.
+        //
+        // `resaltado` es el índice de la fila marcada con las flechas; -1
+        // es "ninguna", que es como se abre.
+        similares: { abierto: false, buscando: false, lista: [], resaltado: -1 },
+
+        // Número de la última búsqueda pedida. Las respuestas pueden llegar
+        // desordenadas —una consulta corta tarda menos que la anterior— y
+        // sin esto la lista podría quedar mostrando el resultado de un texto
+        // que ya no está en el campo.
+        similaresToken: 0,
+
         form: {
             abierto: false, guardando: false, id: null, sku: '',
             descripcion: '', categoria_id: '', proveedor_id: '', precio_usd: '',
             sku_proveedor: '', descuento_producto: '', peso_gramos: '',
             temporada: 'atemporal', stock_infinito: false,
+            // Foto elegida en el alta. No se sube acá: el endpoint de fotos
+            // cuelga de `/productos/{id}/fotos` y ese id no existe hasta
+            // que el producto está creado. Queda esperando en el formulario
+            // y se sube apenas hay id. `previo` es el object URL de la
+            // miniatura, que hay que revocar para no filtrar memoria.
+            foto: { archivo: null, previo: '' },
         },
 
         /* --- Formato: la API manda números, no strings con símbolo --- */
@@ -520,19 +572,197 @@ function abmProductos() {
             }
         },
 
+        /* --- Descripciones parecidas --- */
+
+        /**
+         * Busca productos ya cargados con descripción parecida a la que se
+         * está tipeando, dentro de la categoría y el proveedor elegidos.
+         *
+         * El umbral de caracteres lo aplica también el backend: acá está
+         * para no pedir lo que ya se sabe que vuelve vacío.
+         */
+        async buscarSimilares() {
+            const texto = (this.form.descripcion || '').trim();
+
+            // Solo en el ALTA. En la edición la descripción ya viene puesta:
+            // el desplegable se abriría solo al abrir el formulario y encima
+            // ofrecería el producto que se está editando.
+            if (this.form.id || texto.length < MINIMO_SIMILARES) {
+                this.cerrarSimilares();
+                return;
+            }
+
+            const token = ++this.similaresToken;
+            this.similares.buscando = true;
+            try {
+                const params = new URLSearchParams({ descripcion: texto });
+                // Los dos son obligatorios para guardar, pero se puede estar
+                // tipeando antes de elegirlos: sin ellos la búsqueda sale
+                // sobre todo el catálogo, que ofrece de más pero no de menos.
+                if (this.form.categoria_id) {
+                    params.set('categoria_id', this.form.categoria_id);
+                }
+                if (this.form.proveedor_id) {
+                    params.set('proveedor_id', this.form.proveedor_id);
+                }
+
+                const resp = await fetch('/api/v1/productos/similares?' + params, {
+                    credentials: 'same-origin',
+                });
+                if (!resp.ok) throw new Error();
+                const lista = await resp.json();
+
+                // Llegó tarde: ya se pidió otra búsqueda y esta corresponde a
+                // un texto que el campo ya no tiene.
+                if (token !== this.similaresToken) return;
+
+                this.similares.lista = lista;
+                this.similares.abierto = lista.length > 0;
+                this.similares.resaltado = -1;
+            } catch {
+                // Silencioso: es una ayuda para no duplicar, y no puede
+                // trabar la carga del producto.
+                if (token === this.similaresToken) this.cerrarSimilares();
+            } finally {
+                if (token === this.similaresToken) this.similares.buscando = false;
+            }
+        },
+
+        cerrarSimilares() {
+            this.similares = { abierto: false, buscando: false, lista: [], resaltado: -1 };
+        },
+
+        /** Mueve la fila marcada con las flechas, dando la vuelta en los extremos. */
+        moverSimilar(paso) {
+            if (!this.similares.abierto || !this.similares.lista.length) return;
+            const ultimo = this.similares.lista.length - 1;
+            const siguiente = this.similares.resaltado + paso;
+            if (siguiente < 0) this.similares.resaltado = ultimo;
+            else if (siguiente > ultimo) this.similares.resaltado = 0;
+            else this.similares.resaltado = siguiente;
+        },
+
+        /**
+         * Copia al campo la descripción del producto elegido.
+         *
+         * Es para completarla, no para dejarla igual: dos productos del
+         * mismo proveedor y categoría no pueden llamarse idéntico —lo
+         * rechaza el backend—, así que lo que se adopta es la forma de
+         * nombrar ("Cadena plata 925" y no "cadena de plata 925") y después
+         * se le agrega lo que distingue a este.
+         */
+        elegirSimilar(p) {
+            if (!p) return;
+            this.form.descripcion = p.descripcion;
+            // Se cierra el desplegable pero la lista NO se descarta: el texto
+            // quedó idéntico al de un producto que ya existe, y es la lista lo
+            // que hace que `duplicadoExacto()` lo avise en el acto en vez de
+            // esperar al error del alta. Al seguir escribiendo se rehace.
+            this.similares.abierto = false;
+            this.similares.resaltado = -1;
+        },
+
+        /**
+         * El producto sugerido cuya descripción es EXACTAMENTE la tipeada, o
+         * null si no hay ninguno.
+         *
+         * Con eso el formulario avisa del choque antes de mandar el alta, en
+         * vez de que aparezca como error después de apretar Crear.
+         *
+         * Solo con categoría y proveedor elegidos: la lista se acota con
+         * esos dos, y sin ellos un nombre repetido en OTRA categoría no es
+         * ningún choque. Es una ayuda, no el control: el que decide es el
+         * backend, que compara contra el catálogo entero.
+         */
+        duplicadoExacto() {
+            if (this.form.id || !this.form.categoria_id || !this.form.proveedor_id) {
+                return null;
+            }
+            const texto = textoPlano(this.form.descripcion);
+            if (!texto) return null;
+            return this.similares.lista.find((p) => textoPlano(p.descripcion) === texto) || null;
+        },
+
         /* --- Alta y edición --- */
 
         abrirAlta() {
+            this.quitarFoto();
+            this.cerrarSimilares();
             this.form = {
                 abierto: true, guardando: false, id: null, sku: '',
                 descripcion: '', categoria_id: '', proveedor_id: '', precio_usd: '',
                 sku_proveedor: '', descuento_producto: '', peso_gramos: '',
                 temporada: 'atemporal', stock_infinito: false,
+                foto: { archivo: null, previo: '' },
             };
             this.preview = { dolar_proveedor: null, precio_venta: null };
         },
 
+        /* --- Foto del alta --- */
+
+        /**
+         * Guarda el archivo elegido y arma la miniatura, sin subir nada: no
+         * hay a qué producto colgársela todavía.
+         *
+         * Una sola foto y no las cinco: el alta es el momento de dejar el
+         * producto identificable de un vistazo en el listado, y el resto se
+         * carga desde la ficha, que ya tiene la grilla con "principal" y
+         * "borrar".
+         */
+        elegirFoto(evento) {
+            const archivo = evento.target.files?.[0];
+            // Se limpia el input: sin esto, elegir el mismo archivo dos
+            // veces seguidas no dispara el change la segunda vez.
+            evento.target.value = '';
+            if (!archivo) return;
+
+            this.quitarFoto();
+            this.form.foto = { archivo, previo: URL.createObjectURL(archivo) };
+        },
+
+        quitarFoto() {
+            if (this.form.foto?.previo) URL.revokeObjectURL(this.form.foto.previo);
+            this.form.foto = { archivo: null, previo: '' };
+        },
+
+        /**
+         * Sube la foto que esperaba en el formulario, ya con el producto
+         * creado.
+         *
+         * Devuelve si pudo. El error NO se propaga: el producto ya está
+         * guardado y hacer fallar todo el alta por la foto haría creer que
+         * no se creó nada. Se avisa qué pasó y desde dónde arreglarlo.
+         */
+        async subirFotoDelAlta(productoId) {
+            const archivo = this.form.foto?.archivo;
+            if (!archivo) return true;
+
+            const cuerpo = new FormData();
+            cuerpo.append('archivo', archivo);
+
+            try {
+                const resp = await fetch(`/api/v1/productos/${productoId}/fotos`, {
+                    method: 'POST', credentials: 'same-origin', body: cuerpo,
+                });
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo subir la foto');
+                }
+                return true;
+            } catch (e) {
+                window.toast(
+                    `El producto se creó, pero la foto no se subió: ${e.message}. `
+                    + 'Se puede cargar desde la ficha.',
+                    'error'
+                );
+                return false;
+            }
+        },
+
         abrirEdicion(p) {
+            // El buscador de parecidos es del alta: acá se limpia por si el
+            // formulario venía de una y quedó la lista de aquella.
+            this.cerrarSimilares();
             this.form = {
                 abierto: true, guardando: false, id: p.id, sku: p.sku,
                 descripcion: p.descripcion || '',
@@ -549,7 +779,16 @@ function abmProductos() {
             this.calcularPreview();
         },
 
-        async guardar() {
+        /**
+         * Guarda el producto.
+         *
+         * `conVariantes` es el segundo botón del alta: deja el producto
+         * creado y sigue derecho al alta de su primera variante, en vez de
+         * obligar a buscarlo en el listado, abrir la ficha y recién ahí
+         * empezar. Es el camino de quien ya sabe que el producto viene en
+         * colores o talles.
+         */
+        async guardar({ conVariantes = false } = {}) {
             this.form.guardando = true;
             try {
                 const alta = !this.form.id;
@@ -583,12 +822,30 @@ function abmProductos() {
                 }
 
                 const guardado = await resp.json();
+
+                // La foto va después del alta y antes de cerrar: si falla,
+                // el aviso aparece con el formulario todavía en pantalla.
+                const habiaFoto = alta && !!this.form.foto.archivo;
+                const fotoOk = alta && await this.subirFotoDelAlta(guardado.id);
+
+                this.quitarFoto();
                 this.form.abierto = false;
                 window.toast(
-                    alta ? `Producto creado con SKU ${guardado.sku}` : 'Producto actualizado',
+                    alta
+                        ? `Producto creado con SKU ${guardado.sku}`
+                          + (habiaFoto && fotoOk ? ' y su foto' : '')
+                        : 'Producto actualizado',
                     'exito'
                 );
                 this.cargar();
+
+                if (alta && conVariantes) {
+                    // El panel primero: `abrirVariante()` necesita saber si
+                    // el producto todavía tiene la BASE, para avisar que la
+                    // primera variante real la reemplaza.
+                    await this.abrirProducto(guardado.id);
+                    if (this.detalle.abierto) this.abrirVariante();
+                }
             } catch (e) {
                 window.toast(e.message, 'error');
             } finally {

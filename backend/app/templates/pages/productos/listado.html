@@ -634,16 +634,6 @@
 
             <form @submit.prevent="guardar()" class="px-6 sm:px-10 pb-8 pt-4">
                 <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    <div class="sm:col-span-2 flex flex-col gap-1">
-                        <label for="pr-desc" class="text-sm font-semibold text-texto-header">
-                            Descripción<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        {# Obligatoria: es por donde se lee y se ordena el
-                           catálogo, y la columna es NOT NULL desde 0012. #}
-                        <input id="pr-desc" x-model="form.descripcion" required
-                               class="campo-linea">
-                    </div>
-
                     {# Categoría ocupa la fila entera: muestra el camino
                        completo y a media fila los caminos largos se cortaban
                        con puntos suspensivos en el select cerrado. #}
@@ -657,9 +647,13 @@
                            Sin opción para vaciar: la categoría es obligatoria,
                            y lo que la exige es el botón Guardar deshabilitado
                            —el `required` era del `<select>` que ya no está. #}
+                        {# `al_elegir` rebusca los parecidos: la lista que
+                           ofrece Descripción está acotada a esta categoría,
+                           así que cambiarla la deja vieja. #}
                         {{ combobox('pr-categoria', 'categorias', 'rutaCategoria(o)',
                                     'form.categoria_id',
                                     etiqueta='Categoría', obligatorio=true,
+                                    al_elegir='buscarSimilares();',
                                     clases='w-full h-control pl-3 pr-9 text-base font-light
                                             bg-surface text-texto border-[0.5px]
                                             border-texto-disabled rounded-input
@@ -684,11 +678,13 @@
                                obligatorio, y lo exige el botón Guardar
                                deshabilitado igual que la categoría.
                                Al elegir cambia la cotización, así que los
-                               valores informativos se recalculan. #}
+                               valores informativos se recalculan, y cambia
+                               también el conjunto donde se buscan las
+                               descripciones parecidas. #}
                             {{ combobox('pr-proveedor', 'proveedores', 'o.nombre',
                                         'form.proveedor_id',
                                         etiqueta='Proveedor', obligatorio=true,
-                                        al_elegir='calcularPreview();',
+                                        al_elegir='calcularPreview(); buscarSimilares();',
                                         clases='w-full h-control pl-3 pr-9 text-base font-light
                                                 bg-surface text-texto border-[0.5px]
                                                 border-texto-disabled rounded-input
@@ -715,6 +711,113 @@
                         </label>
                         <input id="pr-skuprov" x-model="form.sku_proveedor" maxlength="30"
                                class="campo-linea">
+                    </div>
+
+                    {# Descripción va DESPUÉS de categoría, proveedor y su
+                       SKU, y no primero: su buscador de parecidos ofrece
+                       solo lo que ya está cargado en esa categoría y ese
+                       proveedor, así que los dos tienen que estar elegidos
+                       antes para que lo que ofrezca sirva de algo. #}
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="pr-desc" class="text-sm font-semibold text-texto-header">
+                            Descripción<span class="text-danger ml-0.5">*</span>
+                        </label>
+
+                        {# El input y la lista van juntos en un `relative`
+                           propio: así el desplegable se ubica debajo del
+                           CAMPO y no del label. Mismo armado que el
+                           combobox, que no se reutiliza acá porque aquel
+                           elige entre opciones fijas y este es texto libre
+                           con sugerencias que llegan del backend. #}
+                        <div class="relative" @click.outside="similares.abierto = false">
+                            {# Obligatoria: es por donde se lee y se ordena el
+                               catálogo, y la columna es NOT NULL desde 0012. #}
+                            <input id="pr-desc" x-model="form.descripcion" required
+                                   {# El autocompletado del navegador tapa la
+                                      lista con su propio desplegable. #}
+                                   autocomplete="off" role="combobox"
+                                   aria-autocomplete="list" aria-controls="pr-desc-lista"
+                                   :aria-expanded="similares.abierto ? 'true' : 'false'"
+                                   {# La lista aparece al escribir y no al
+                                      enfocar: después de elegir una sugerencia
+                                      sigue cargada —es lo que detecta el
+                                      choque— y reabrirla al volver al campo
+                                      taparía justamente ese aviso. #}
+                                   @input.debounce.300ms="buscarSimilares()"
+                                   @keydown.arrow-down.prevent="moverSimilar(1)"
+                                   @keydown.arrow-up.prevent="moverSimilar(-1)"
+                                   {# Enter elige la fila marcada; sin el
+                                      `preventDefault` además enviaría el
+                                      formulario. Sin ninguna marcada no se
+                                      toca: ahí Enter guarda, como siempre. #}
+                                   @keydown.enter="if (similares.abierto && similares.resaltado >= 0) {
+                                                       $event.preventDefault();
+                                                       elegirSimilar(similares.lista[similares.resaltado]);
+                                                   }"
+                                   {# Escape cierra la lista y NO el modal: el
+                                      `stopPropagation` frena el
+                                      `@keydown.escape.window` del diálogo, que
+                                      si no cerraría todo el formulario. Con la
+                                      lista cerrada se deja pasar. #}
+                                   @keydown.escape="if (similares.abierto) {
+                                                        $event.stopPropagation();
+                                                        similares.abierto = false;
+                                                    }"
+                                   class="campo-linea">
+
+                            <ul id="pr-desc-lista" x-show="similares.abierto" x-cloak
+                                role="listbox"
+                                class="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-y-auto
+                                       bg-surface border border-borde rounded-input
+                                       shadow-[0_4px_12px_0_rgba(0,0,0,0.15)]">
+
+                                <li class="px-3 py-2 text-xs text-texto-muted border-b border-borde">
+                                    Ya cargados con nombre parecido. Elegí uno para copiar
+                                    su descripción y completarla.
+                                </li>
+
+                                <template x-for="(p, indice) in similares.lista" :key="p.id">
+                                    {# `min-h-toque`: blanco táctil mínimo del
+                                       Principio 6, y acá importa más porque las
+                                       filas están pegadas una a la otra. #}
+                                    <li role="option"
+                                        :aria-selected="indice === similares.resaltado ? 'true' : 'false'"
+                                        @click="elegirSimilar(p)"
+                                        @mouseenter="similares.resaltado = indice"
+                                        class="flex flex-wrap items-center gap-x-3 min-h-toque
+                                               px-3 py-2 text-base cursor-pointer"
+                                        :class="indice === similares.resaltado
+                                                ? 'bg-primary/10 text-texto' : 'text-texto'">
+                                        <span class="font-mono text-sm text-texto-muted"
+                                              x-text="p.sku"></span>
+                                        <span x-text="p.descripcion"></span>
+                                        <span x-show="!p.activo" x-cloak
+                                              class="text-xs font-medium text-danger">Inactivo</span>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+
+                        {# El choque se avisa acá y no al apretar Crear: el
+                           alta lo rechaza igual —lo controla el service y lo
+                           garantiza un índice único— y enterarse recién con
+                           el error obliga a volver a un campo que quedó
+                           arriba de todo. #}
+                        <template x-if="duplicadoExacto()">
+                            <p class="text-xs text-danger">
+                                Ese nombre ya lo tiene
+                                <span class="font-mono font-medium"
+                                      x-text="duplicadoExacto().sku"></span>
+                                en esta categoría y proveedor. Si es el mismo artículo en
+                                otro color o talle, agregale una variante desde su ficha.
+                            </p>
+                        </template>
+
+                        <span x-show="!form.id && !duplicadoExacto()"
+                              class="text-xs text-texto-disabled">
+                            Desde el décimo carácter se ofrecen los productos ya cargados
+                            con nombre parecido.
+                        </span>
                     </div>
 
                     {# El precio ocupa la fila entera: el campo editable a la
@@ -822,6 +925,55 @@
                         <span>Stock infinito (no descuenta al vender)</span>
                     </label>
                     {% endif %}
+
+                    {# Foto, solo en el ALTA: deja el producto identificable
+                       de un vistazo sin tener que volver a buscarlo en el
+                       listado y abrir la ficha. En EDICIÓN no va, porque la
+                       ficha ya tiene la grilla de las cinco con "principal"
+                       y "borrar", y dos lugares para lo mismo se contradicen.
+
+                       No se sube al elegirla: el endpoint cuelga de
+                       `/productos/{id}/fotos` y ese id todavía no existe.
+                       Espera acá y la sube `guardar()`. #}
+                    <template x-if="!form.id">
+                        <div class="sm:col-span-2 flex flex-col gap-1">
+                            <span class="text-sm font-semibold text-texto-header">Foto</span>
+
+                            <div class="flex items-center gap-3">
+                                {# El input va oculto y lo dispara el label:
+                                   el control nativo de archivo no se puede
+                                   estilar. Mismo patrón que la ficha. #}
+                                <label class="h-boton px-4 inline-flex items-center gap-2
+                                              rounded-input border border-borde text-sm
+                                              font-semibold cursor-pointer
+                                              hover:border-primary hover:text-primary">
+                                    {{ icono('mas', clases='w-4 h-4') }}
+                                    <span x-text="form.foto.archivo ? 'Cambiar foto' : 'Elegir foto'"></span>
+                                    <input type="file" class="sr-only"
+                                           accept="image/jpeg,image/png,image/gif,image/webp"
+                                           @change="elegirFoto($event)">
+                                </label>
+
+                                <template x-if="form.foto.archivo">
+                                    <div class="flex items-center gap-3">
+                                        <img :src="form.foto.previo" alt=""
+                                             class="w-14 h-14 rounded-input object-cover
+                                                    border border-borde">
+                                        <button type="button" @click="quitarFoto()"
+                                                class="min-h-toque text-sm font-semibold
+                                                       text-danger hover:opacity-80">
+                                            Quitar
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <span x-show="!form.foto.archivo"
+                                  class="text-xs text-texto-disabled">
+                                Opcional. Las otras cuatro se cargan desde la ficha.
+                            </span>
+                        </div>
+                    </template>
                 </div>
 
                 <div class="flex justify-end gap-3 mt-8">
@@ -833,8 +985,28 @@
                        de texto libre, así que la restricción pasa acá, como en
                        los dos modales de variante. En edición no bloquea nada:
                        `editar()` carga el proveedor del producto. #}
+                    {# Segunda salida del alta: crea el producto y sigue
+                       derecho al alta de su primera variante, en vez de
+                       obligar a buscarlo en el listado y abrir la ficha.
+                       Es para quien ya sabe que el producto viene en colores
+                       o talles.
+
+                       `type="button"`: los dos botones envían el mismo
+                       formulario, y si este fuera submit el Enter dentro de
+                       un campo abriría el modal de variante sin haberlo
+                       pedido. Comparte la misma guarda que "Crear". #}
+                    <button type="button" x-show="!form.id" x-cloak
+                            @click="guardar({ conVariantes: true })"
+                            :disabled="form.guardando || !form.categoria_id || !form.proveedor_id
+                                       || duplicadoExacto()"
+                            class="h-boton px-5 rounded-input border-2 border-primary
+                                   text-primary text-base font-medium
+                                   hover:bg-primary hover:text-white disabled:opacity-60">
+                        Crear con variantes
+                    </button>
                     <button type="submit"
-                            :disabled="form.guardando || !form.categoria_id || !form.proveedor_id"
+                            :disabled="form.guardando || !form.categoria_id || !form.proveedor_id
+                                       || duplicadoExacto()"
                             class="h-boton px-8 rounded-input bg-primary text-white text-base
                                    font-medium hover:bg-primary-hover disabled:opacity-60"
                             x-text="form.guardando ? 'Guardando…'

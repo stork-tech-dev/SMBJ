@@ -173,6 +173,28 @@ class ProductoResponse(BaseModel):
     updated_at: datetime
 
 
+class ProductoSimilar(BaseModel):
+    """
+    Lo mínimo para reconocer un producto ya cargado desde el formulario de
+    alta, mientras se tipea la descripción.
+
+    Ni `ProductoResponse` ni `ProductoResumen`: el primero arrastra
+    variantes y fotos y el segundo la categoría, el proveedor y los
+    precios. Nada de eso se muestra en el desplegable —la lista ya viene
+    acotada a la categoría y el proveedor elegidos— y se pagaría en cada
+    tecleo.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sku: str
+    descripcion: str
+    # Un producto inactivo sigue siendo un duplicado. La pantalla lo marca
+    # para que se entienda por qué aparece.
+    activo: bool
+
+
 class ProductoResumen(BaseModel):
     """
     Datos del producto que necesita una fila del listado de variantes.
