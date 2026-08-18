@@ -58,7 +58,7 @@ def crear(
             autor,
             nombre=datos.nombre,
             tipo=TipoPuntoVenta(datos.tipo),
-            codigo_confirmacion=datos.codigo_confirmacion,
+            codigo=datos.codigo,
             ip_origen=ip_de_request(request),
         )
     except ReglaDeNegocio as exc:
@@ -83,7 +83,7 @@ def editar(
             punto_id,
             nombre=datos.nombre,
             tipo=TipoPuntoVenta(datos.tipo) if datos.tipo else None,
-            codigo_confirmacion=datos.codigo_confirmacion,
+            codigo=datos.codigo,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:

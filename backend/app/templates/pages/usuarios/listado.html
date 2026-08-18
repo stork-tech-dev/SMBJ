@@ -5,9 +5,11 @@
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/switch_activos.html" import switch_activos %}
 
 {% block contenido %}
-<div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarLocales()">
+<div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarPuntosDeVenta()">
 
     {% call encabezado('Usuarios', volver_url='/configuracion', volver_texto='Configuraciones') %}
         <button type="button" @click="abrirAlta()"
@@ -45,18 +47,19 @@
             </span>
         </div>
 
-        {# Local: mismas opciones que el selector del formulario, que ya
-           están cargadas en memoria. Filtra por `local_asignado_id`, y el
-           filtrado lo resuelve el backend (Principio 5). #}
+        {# Punto de venta: mismas opciones que el selector del formulario, que
+           ya están cargadas en memoria. Filtra por `local_asignado_id` —la
+           columna conserva su nombre histórico— y el filtrado lo resuelve el
+           backend (Principio 5). #}
         <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-local">Local</label>
+            <label class="sr-only" for="f-local">Punto de Venta</label>
             <select id="f-local" x-model="filtros.local_asignado_id" @change="cargar()"
                     class="h-control w-full sm:w-[13.75rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2
                            border-borde rounded-input appearance-none focus:outline-none
                            focus:border-primary"
                     :class="filtros.local_asignado_id ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Local</option>
-                <template x-for="l in localesAsignables" :key="l.id">
+                <option value="">Punto de Venta</option>
+                <template x-for="l in puntosDeVentaAsignables" :key="l.id">
                     <option :value="l.id" x-text="l.nombre" class="text-texto"></option>
                 </template>
             </select>
@@ -69,6 +72,8 @@
             <span x-text="total"></span>
             <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
         </p>
+        {{ switch_activos('filtros.activo') }}
+
     </div>
 
     {# ---------- Tarjeta con la tabla ---------- #}
@@ -144,7 +149,8 @@
     {# ---------- Panel de detalle (botón "Ver") ---------- #}
     <div x-show="detalle.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="detalle.abierto = false" role="dialog" aria-modal="true">
+         @keydown.escape.window="detalle.abierto = false"
+         role="dialog" aria-modal="true">
         <div class="w-full max-w-lg bg-surface rounded-[20px] shadow-xl">
             <div class="flex items-center justify-between px-8 py-5 border-b border-borde">
                 <h2 class="text-lg font-semibold" x-text="detalle.usuario?.nombre"></h2>
@@ -181,7 +187,7 @@
                         x-text="formatearFechaCorta(detalle.usuario?.fecha_nacimiento)"></dd>
                 </div>
                 <div class="col-span-2">
-                    <dt class="text-sm text-texto-disabled">Local Asignado</dt>
+                    <dt class="text-sm text-texto-disabled">Punto de Venta</dt>
                     <dd class="font-medium"
                         x-text="detalle.usuario?.local_asignado?.nombre || '—'"></dd>
                 </div>
@@ -220,7 +226,7 @@
        entero (Principio 2: DRY). #}
     <div x-show="form.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-usuario">
 
         <div class="w-full max-w-full sm:w-[35rem] my-8 bg-surface rounded-[10px]
@@ -300,11 +306,15 @@
                         </div>
                     </div>
 
-                    {# "Local Asignado" al lado de Perfil y en caja: el diseño
-                       los muestra como la única dupla de selects. #}
+                    {# Al lado de Perfil y en caja: el diseño los muestra como
+                       la única dupla de selects.
+
+                       Dice "Punto de Venta" y no "Local Asignado" porque la
+                       lista incluye el centro de distribución y la tienda
+                       online, que no son locales. #}
                     <div class="flex flex-col gap-1">
                         <label for="u-local" class="text-sm font-semibold text-texto-header">
-                            Local Asignado
+                            Punto de Venta
                         </label>
                         <div class="relative w-full sm:w-auto">
                             <select id="u-local" x-model="form.local_asignado_id"
@@ -313,7 +323,7 @@
                                            appearance-none focus:outline-none focus:border-primary"
                                     :class="form.local_asignado_id ? 'text-texto' : 'text-texto-disabled'">
                                 <option value="">Seleccionar</option>
-                                <template x-for="l in localesAsignables" :key="l.id">
+                                <template x-for="l in puntosDeVentaAsignables" :key="l.id">
                                     <option :value="l.id" x-text="l.nombre" class="text-texto"></option>
                                 </template>
                             </select>
@@ -398,22 +408,7 @@
     </div>
 
     {# ---------- Confirmación de activar / desactivar ---------- #}
-    <div x-show="confirmacion.abierta" x-cloak
-         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="confirmacion.abierta = false" role="dialog" aria-modal="true">
-        <div class="w-full max-w-md bg-surface rounded-[20px] shadow-xl p-8">
-            <h2 class="text-lg font-semibold" x-text="confirmacion.titulo"></h2>
-            <p class="mt-3 text-base text-texto-muted" x-text="confirmacion.mensaje"></p>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" @click="confirmacion.abierta = false"
-                        class="h-boton px-5 rounded-input border border-borde
-                               hover:border-primary hover:text-primary">Cancelar</button>
-                <button type="button" @click="confirmacion.accion()"
-                        class="h-boton px-5 rounded-input bg-danger text-white font-medium
-                               hover:opacity-90">Confirmar</button>
-            </div>
-        </div>
-    </div>
+    {{ modal_confirmacion() }}
 </div>
 {% endblock %}
 

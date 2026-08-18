@@ -27,6 +27,7 @@ from app.schemas.productos import (
     ProductoEditar,
     ProductoEstado,
     ProductoResponse,
+    ProductoSimilar,
     VarianteCrear,
     VarianteEditar,
     VarianteListadoResponse,
@@ -43,6 +44,10 @@ def _404(exc):
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
+def _403(exc):
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+
+
 def _409(exc):
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
@@ -53,7 +58,7 @@ def listar(
     descripcion: str | None = Query(default=None),
     categoria_id: int | None = Query(default=None),
     proveedor_id: int | None = Query(default=None),
-    estacionalidad: str | None = Query(default=None),
+    temporada: str | None = Query(default=None),
     activo: bool | None = Query(default=None),
     precio_desde: Decimal | None = Query(default=None),
     precio_hasta: Decimal | None = Query(default=None),
@@ -69,7 +74,7 @@ def listar(
         descripcion=descripcion,
         categoria_id=categoria_id,
         proveedor_id=proveedor_id,
-        estacionalidad=estacionalidad,
+        temporada=temporada,
         activo=activo,
         precio_desde=precio_desde,
         precio_hasta=precio_hasta,
@@ -114,6 +119,42 @@ def precio_preview(
 
 
 @router.get(
+    "/similares",
+    response_model=list[ProductoSimilar],
+    summary="Productos ya cargados con descripción parecida",
+)
+def similares(
+    descripcion: str = Query(..., description="Lo que se está tipeando en Descripción"),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.PRODUCTOS, "ver")),
+):
+    """
+    Alimenta el desplegable del formulario de alta.
+
+    Sirve para dos cosas a la vez: ver que el producto tal vez ya existe
+    antes de duplicarlo —el alta lo rechaza si la descripción, la categoría
+    y el proveedor coinciden— y poder adoptar el nombre con el que ya quedó
+    cargado, para que el catálogo no tenga "Cadena plata 925" y "cadena de
+    plata 925" como si fueran cosas distintas.
+
+    Con menos de `MINIMO_CARACTERES_SIMILARES` devuelve una lista vacía en
+    lugar de un error: el umbral es parte de la búsqueda, no una condición
+    de uso, y el formulario consulta mientras se escribe.
+
+    Va declarado ANTES de `/{producto_id}`, igual que `/precio-preview`: si
+    no, FastAPI intentaría leer "similares" como un id.
+    """
+    return servicio.buscar_similares(
+        db,
+        descripcion=descripcion,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+    )
+
+
+@router.get(
     "/variantes",
     response_model=RespuestaPaginada[VarianteListadoResponse],
     summary="Listado a nivel variante (lo que tiene stock y etiqueta)",
@@ -124,7 +165,7 @@ def listar_variantes(
     ),
     categoria_id: int | None = Query(default=None),
     proveedor_id: int | None = Query(default=None),
-    estacionalidad: str | None = Query(default=None),
+    temporada: str | None = Query(default=None),
     activo: bool | None = Query(default=None),
     precio_desde: Decimal | None = Query(default=None),
     precio_hasta: Decimal | None = Query(default=None),
@@ -146,7 +187,7 @@ def listar_variantes(
         busqueda=busqueda,
         categoria_id=categoria_id,
         proveedor_id=proveedor_id,
-        estacionalidad=estacionalidad,
+        temporada=temporada,
         activo=activo,
         precio_desde=precio_desde,
         precio_hasta=precio_hasta,
@@ -191,10 +232,12 @@ def crear(
             sku_proveedor=datos.sku_proveedor,
             descuento_producto=datos.descuento_producto,
             peso_gramos=datos.peso_gramos,
-            estacionalidad=datos.estacionalidad,
+            temporada=datos.temporada,
             stock_infinito=datos.stock_infinito,
             ip_origen=ip_de_request(request),
         )
+    except servicio.SinPermiso as exc:
+        raise _403(exc) from exc
     except NoEncontrado as exc:
         raise _404(exc) from exc
     except ReglaDeNegocio as exc:
@@ -223,10 +266,12 @@ def editar(
             precio_usd=datos.precio_usd,
             descuento_producto=datos.descuento_producto,
             peso_gramos=datos.peso_gramos,
-            estacionalidad=datos.estacionalidad,
+            temporada=datos.temporada,
             stock_infinito=datos.stock_infinito,
             ip_origen=ip_de_request(request),
         )
+    except servicio.SinPermiso as exc:
+        raise _403(exc) from exc
     except NoEncontrado as exc:
         raise _404(exc) from exc
     except ReglaDeNegocio as exc:
@@ -278,6 +323,7 @@ def agregar_variante(
             producto_id,
             sufijo=datos.sufijo,
             descripcion_sufijo=datos.descripcion_sufijo,
+            sku_proveedor=datos.sku_proveedor,
             ubicacion_deposito=datos.ubicacion_deposito,
             stock_minimo=datos.stock_minimo,
             ip_origen=ip_de_request(request),
@@ -304,7 +350,8 @@ def editar_variante(
     autor=Depends(requiere_permiso(Modulo.PRODUCTOS, "editar")),
 ):
     """
-    Cambia el nombre de la variante, su ubicación y su stock mínimo.
+    Cambia el nombre de la variante, su código de proveedor, su ubicación y
+    su stock mínimo.
 
     El sufijo no se toca: forma parte del código impreso en la etiqueta.
     """
@@ -321,6 +368,10 @@ def editar_variante(
             # significa volver al precio del producto. Mismo patrón que usan
             # usuarios.py y admin_dispositivos.py.
             editar_precio="precio_usd" in datos.model_fields_set,
+            sku_proveedor=datos.sku_proveedor,
+            # Mismo caso: NULL acá es "volvé al código del proveedor que
+            # tiene el producto", no "sin cambios".
+            editar_sku_proveedor="sku_proveedor" in datos.model_fields_set,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:

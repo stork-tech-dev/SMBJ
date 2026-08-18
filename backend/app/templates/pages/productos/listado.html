@@ -3,8 +3,11 @@
 {% extends "base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/combobox.html" import combobox %}
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/switch_activos.html" import switch_activos %}
 
 {% block contenido %}
 <div x-data="abmProductos()" x-init="cargar(); cargarCatalogos()">
@@ -41,55 +44,51 @@
            Deportivas"): dos ramas pueden tener hojas con el mismo nombre y
            el nombre suelto no alcanza para distinguirlas.
            Elegir una trae también sus subcategorías (lo resuelve el backend). #}
-        <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-categoria">Categoría</label>
-            <select id="f-categoria" x-model="filtros.categoria_id" @change="cargar()"
-                    class="h-control w-full sm:w-[18rem] pl-4 pr-10 text-sm font-semibold
-                           bg-surface border-2 border-borde rounded-input appearance-none
-                           focus:outline-none focus:border-primary"
-                    :class="filtros.categoria_id ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Categoría</option>
-                <template x-for="c in categorias" :key="c.id">
-                    <option :value="c.id" x-text="rutaCategoria(c)" class="text-texto"></option>
-                </template>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
-                {{ icono('chevron') }}
-            </span>
+        <div class="w-full sm:w-[18rem]">
+            {{ combobox('f-categoria', 'categorias', 'rutaCategoria(o)',
+                        'filtros.categoria_id',
+                        etiqueta='Categoría', label_oculto=true,
+                        placeholder='Categoría',
+                        vacio='Todas las categorías',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
         </div>
 
-        <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-proveedor">Proveedor</label>
-            <select id="f-proveedor" x-model="filtros.proveedor_id" @change="cargar()"
-                    class="h-control w-full sm:w-[12.5rem] pl-4 pr-10 text-sm font-semibold
-                           bg-surface border-2 border-borde rounded-input appearance-none
-                           focus:outline-none focus:border-primary"
-                    :class="filtros.proveedor_id ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Proveedor</option>
-                <template x-for="p in proveedores" :key="p.id">
-                    <option :value="p.id" x-text="p.nombre" class="text-texto"></option>
-                </template>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
-                {{ icono('chevron') }}
-            </span>
+        {# Mismo componente que categoría: con decenas de proveedores, el
+           `<select>` obligaba a bajar con la rueda —tipear ahí solo salta por
+           la primera letra— mientras el campo de al lado ya se buscaba
+           escribiendo. #}
+        <div class="w-full sm:w-[12.5rem]">
+            {{ combobox('f-proveedor', 'proveedores', 'o.nombre',
+                        'filtros.proveedor_id',
+                        etiqueta='Proveedor', label_oculto=true,
+                        placeholder='Proveedor',
+                        vacio='Todos los proveedores',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
         </div>
 
-        <div class="relative w-full sm:w-auto">
-            <label class="sr-only" for="f-temporada">Estacionalidad</label>
-            <select id="f-temporada" x-model="filtros.estacionalidad" @change="cargar()"
-                    class="h-control w-full sm:w-[10rem] pl-4 pr-10 text-sm font-semibold
-                           bg-surface border-2 border-borde rounded-input appearance-none
-                           focus:outline-none focus:border-primary"
-                    :class="filtros.estacionalidad ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Temporada</option>
-                <template x-for="e in ESTACIONES" :key="e">
-                    <option :value="e" x-text="e" class="text-texto capitalize"></option>
-                </template>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-texto pointer-events-none">
-                {{ icono('chevron') }}
-            </span>
+        {# Mismo componente y mismas clases que los dos de al lado, pero sin
+           buscador: con tres opciones no hay nada que buscar. Lo que se gana
+           es que la lista se vea igual —la de un `<select>` la dibuja el
+           sistema operativo y no se puede estilar—. #}
+        <div class="w-full sm:w-[11rem]">
+            {{ combobox('f-temporada', 'TEMPORADAS', 'o.etiqueta',
+                        'filtros.temporada', buscable=false,
+                        etiqueta='Temporada', label_oculto=true,
+                        placeholder='Temporada',
+                        vacio='Todas las temporadas',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
         </div>
 
         <button type="button" @click="limpiar()"
@@ -103,6 +102,8 @@
                haría que el número no coincidiera con lo que se ve. #}
             <span x-text="total === 1 ? 'código encontrado' : 'códigos encontrados'"></span>
         </p>
+        {{ switch_activos('filtros.activo') }}
+
     </div>
 
     {# ---------- Tabla ---------- #}
@@ -209,11 +210,11 @@
                                                                   { editar: true })"') }}
                                     {{ accion('borrar',
                                               atributos='x-show="v.producto.activo"
-                                                         @click="cambiarEstado(v.producto, false)"
+                                                         @click="confirmarEstado(v.producto)"
                                                          title="Desactivar producto"') }}
                                     {{ accion('activar',
                                               atributos='x-show="!v.producto.activo" x-cloak
-                                                         @click="cambiarEstado(v.producto, true)"
+                                                         @click="confirmarEstado(v.producto)"
                                                          title="Activar producto"') }}
                                 {% endcall %}
                             </td>
@@ -233,7 +234,6 @@
     {# ---------- Panel de detalle: variantes y códigos ---------- #}
     <div x-show="detalle.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="detalle.abierto = false"
          {# El modal de variante se abre ENCIMA de este. Sin la guarda, un
             Escape cerraría los dos de una y el usuario perdería el detalle
             sin haberlo pedido. #}
@@ -364,6 +364,30 @@
                                       class="text-xs text-texto-disabled">Precio del producto</span>
                             </div>
 
+                            {# El código con el que se le pide esta variante al
+                               proveedor. Misma regla y misma forma de decirla
+                               que el precio: el propio manda sobre el del
+                               producto, y se aclara cuál de los dos se está
+                               viendo. Solo aparece si alguno de los dos existe:
+                               el campo es opcional en los dos niveles. #}
+                            <div x-show="v.sku_proveedor_efectivo" x-cloak
+                                 class="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1
+                                        text-sm text-texto-muted">
+                                <span>
+                                    SKU prov.
+                                    <span class="font-mono font-medium text-texto"
+                                          x-text="v.sku_proveedor_efectivo"></span>
+                                </span>
+                                <span x-show="v.tiene_sku_proveedor_propio" x-cloak
+                                      class="text-xs text-accent">
+                                    SKU del proveedor propio de esta variante
+                                </span>
+                                <span x-show="!v.tiene_sku_proveedor_propio && !v.es_base" x-cloak
+                                      class="text-xs text-texto-disabled">
+                                    SKU del proveedor del producto
+                                </span>
+                            </div>
+
                             {# El SVG lo genera el backend: el checksum módulo
                                103 de Code128 lo agrega la librería al codificar. #}
                             <img class="mt-3 max-w-full" alt=""
@@ -399,7 +423,7 @@
        y no avisaba de que la BASE se elimina. #}
     <div x-show="variante.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="variante.abierto = false" @keydown.escape.window="variante.abierto = false"
+         @keydown.escape.window="variante.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-variante">
 
         <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
@@ -462,6 +486,22 @@
                                class="campo-linea">
                     </div>
 
+                    {# El proveedor no numera por producto: numera por color y
+                       por talle. Vacío hereda el del producto, igual que el
+                       precio. #}
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="va-skuprov" class="text-sm font-semibold text-texto-header">
+                            SKU del proveedor
+                        </label>
+                        <input id="va-skuprov" x-model="variante.sku_proveedor"
+                               maxlength="30" placeholder="Usa el del producto"
+                               class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Vacío = usa el del producto<template x-if="detalle.producto?.sku_proveedor"><span>
+                                (<span class="font-mono" x-text="detalle.producto.sku_proveedor"></span>)</span></template>.
+                        </span>
+                    </div>
+
                     <div class="flex flex-col gap-1">
                         <label for="va-stock-min" class="text-sm font-semibold text-texto-header">
                             Stock mínimo
@@ -512,7 +552,6 @@
        etiqueta ya se imprimió y está pegada a la mercadería. #}
     <div x-show="edicionVariante.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="edicionVariante.abierto = false"
          @keydown.escape.window="edicionVariante.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-editar-variante">
 
@@ -540,6 +579,21 @@
                         </label>
                         <input id="ev-nombre" x-model="edicionVariante.descripcion_sufijo"
                                required maxlength="60" class="campo-linea">
+                    </div>
+
+                    {# Mismo campo y mismo trato que en el alta: vaciarlo
+                       devuelve la variante al código del producto. #}
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="ev-skuprov" class="text-sm font-semibold text-texto-header">
+                            SKU del proveedor
+                        </label>
+                        <input id="ev-skuprov" x-model="edicionVariante.sku_proveedor"
+                               maxlength="30" placeholder="Usa el del producto"
+                               class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Vacío = usa el del producto<template x-if="detalle.producto?.sku_proveedor"><span>
+                                (<span class="font-mono" x-text="detalle.producto.sku_proveedor"></span>)</span></template>.
+                        </span>
                     </div>
 
                     {# Precio propio de la variante, con el resultado en pesos
@@ -615,11 +669,31 @@
     {# ---------- Modal de alta / edición ---------- #}
     <div x-show="form.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-form-producto">
 
-        <div class="w-full max-w-[35rem] my-8 bg-surface rounded-[10px]
-                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+        {# El modal se ensancha a medida que la cascada de categorías suma
+           selects, para que no terminen apretados en dos renglones.
+
+           El ancho de arranque ya es el que entra los TRES primeros niveles
+           (hasta "Subcategoría 1"): así elegir Tipo y Material —que es el
+           camino de casi todo el catálogo— no mueve el modal. Recién del
+           cuarto en adelante se ve que crece, que es cuando de verdad hace
+           falta.
+
+           Las clases van escritas acá y no armadas en un helper de JS: el
+           CDN de Tailwind genera las que encuentra en el HTML, y una clase
+           que solo existiera dentro de un `.js` no se generaría nunca.
+
+           El `w-full` sigue mandando en pantallas chicas: el `max-w` es un
+           techo, no un ancho. #}
+        <div class="w-full my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]"
+             :class="{
+                 'max-w-[44rem]': nivelesCategoriaVisibles() <= 3,
+                 'max-w-[52rem]': nivelesCategoriaVisibles() === 4,
+                 'max-w-[60rem]': nivelesCategoriaVisibles() >= 5,
+             }">
             <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
                 <div>
                     <h2 id="titulo-form-producto" class="text-lg font-black text-welcome"
@@ -635,80 +709,123 @@
 
             <form @submit.prevent="guardar()" class="px-6 sm:px-10 pb-8 pt-4">
                 <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    <div class="sm:col-span-2 flex flex-col gap-1">
-                        <label for="pr-desc" class="text-sm font-semibold text-texto-header">
-                            Descripción<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        {# Obligatoria: es por donde se lee y se ordena el
-                           catálogo, y la columna es NOT NULL desde 0012. #}
-                        <input id="pr-desc" x-model="form.descripcion" required
-                               class="campo-linea">
-                    </div>
+                    {# ---------- Categoría: un select por nivel ----------
 
-                    {# Categoría ocupa la fila entera: muestra el camino
-                       completo y a media fila los caminos largos se cortaban
-                       con puntos suspensivos en el select cerrado. #}
+                       Se baja por el árbol en vez de elegir de una lista
+                       plana con el camino completo en cada fila ("Joyas -
+                       Anillos - Plata"): en cada paso se ve nada más que lo
+                       que cuelga de lo ya elegido, y el resultado es siempre
+                       una hoja, que antes nada garantizaba.
+
+                       Los selects se dibujan todos y se muestran los que
+                       correspondan (`x-show`), en vez de generarlos con un
+                       `x-for`: el macro `combobox` fija un `id` que usan el
+                       `<label for>` y el `aria-controls`, y clonarlo lo
+                       repetiría en el DOM. #}
                     <div class="sm:col-span-2 flex flex-col gap-1">
-                        <label for="pr-categoria" class="text-sm font-semibold text-texto-header">
+                        {# Un solo título para el grupo: cada campo ya se
+                           nombra con su leyenda gris ("Tipo", "Material",
+                           "Subcategoría 1"…), así que repetir "Categoría"
+                           encima de cada uno sería decirlo dos veces.
+                           Es un `<span>` y no un `<label>` porque no apunta a
+                           un campo: apunta a varios. #}
+                        <span class="text-sm font-semibold text-texto-header">
                             Categoría<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        <div class="relative">
-                            <select id="pr-categoria" x-model="form.categoria_id" required
-                                    class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
-                                           border-[0.5px] border-texto-disabled rounded-input
-                                           appearance-none focus:outline-none focus:border-primary">
-                                {# Mismo texto que el filtro del listado: el
-                                   camino completo ("Calzado - Zapatillas -
-                                   Deportivas"). La sangría con puntos no
-                                   alcanzaba: dos ramas pueden tener hojas con
-                                   el mismo nombre y, al elegir, en el select
-                                   cerrado solo se ve la hoja. #}
-                                <option value="">Seleccionar</option>
-                                <template x-for="c in categorias" :key="c.id">
-                                    <option :value="c.id" x-text="rutaCategoria(c)"></option>
-                                </template>
-                            </select>
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                {{ icono('chevron') }}
-                            </span>
+                        </span>
+
+                        {# `flex-wrap` con un mínimo por campo: entran en una
+                           fila mientras el modal dé —que se ensancha solo— y
+                           envuelven cuando no. En el teléfono quedan uno
+                           abajo del otro. #}
+                        <div class="flex flex-wrap gap-x-4 gap-y-4 mt-1">
+                            {% for nivel in range(1, nivel_maximo + 1) %}
+                            {# Los dos primeros niveles tienen nombre propio;
+                               del tercero en adelante son subcategorías
+                               numeradas. #}
+                            {% set nombre_nivel = ['Tipo', 'Material'][nivel - 1]
+                                                  if nivel <= 2
+                                                  else 'Subcategoría ' ~ (nivel - 2) %}
+                            {# En el teléfono cada uno ocupa su renglón; desde
+                               sm comparten fila y envuelven cuando no entran. #}
+                            <div class="w-full sm:w-auto sm:flex-1 sm:min-w-[9rem]"
+                                 x-show="nivelCategoriaVisible({{ nivel }})"
+                                 {# El primero se muestra siempre, así que no
+                                    parpadea; los demás sí hasta que Alpine
+                                    arranca. #}
+                                 {% if nivel > 1 %}x-cloak{% endif %}>
+                                {# `o.nombre` y no el camino completo: el
+                                   camino lo dicen los selects anteriores.
+
+                                   Sin opción para vaciar: la categoría es
+                                   obligatoria, y lo que la exige es el botón
+                                   Guardar deshabilitado —el `required` era
+                                   del `<select>` que ya no está—.
+
+                                   `al_elegir` corta lo que colgaba de la
+                                   rama anterior y rebusca los parecidos, que
+                                   están acotados a la categoría. #}
+                                {{ combobox('pr-categoria-' ~ nivel,
+                                            'opcionesCategoria(' ~ nivel ~ ')',
+                                            'o.nombre',
+                                            'form.categoriaRuta[' ~ (nivel - 1) ~ ']',
+                                            etiqueta=nombre_nivel, label_oculto=true,
+                                            placeholder=nombre_nivel,
+                                            al_elegir='elegirCategoria(' ~ nivel ~ ');',
+                                            clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                    bg-surface text-texto border-[0.5px]
+                                                    border-texto-disabled rounded-input
+                                                    focus:outline-none focus:border-primary') }}
+                            </div>
+                            {% endfor %}
                         </div>
+
+                        {# Mientras quede un select a la vista sin elegir, la
+                           categoría no está definida y Guardar sigue
+                           deshabilitado: sin este texto, el botón apagado no
+                           dice qué falta. #}
+                        <span x-show="!categoriaCompleta()" x-cloak
+                              class="text-xs text-texto-disabled">
+                            Elegí hasta el último nivel: la categoría del producto es
+                            la del final de la rama.
+                        </span>
                     </div>
 
                     <div class="flex flex-col gap-1">
-                        <label for="pr-proveedor" class="text-sm font-semibold text-texto-header">
-                            Proveedor<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        {# En ALTA es un desplegable; en EDICIÓN, un dato fijo.
+                        {# En ALTA es un desplegable con buscador; en EDICIÓN,
+                           un dato fijo. Cada rama pone su propio título: el
+                           combobox trae el suyo y el dato fijo no tiene campo
+                           al que apuntar, así que ahí no va un `<label>`.
 
                            El proveedor no se cambia, y no es una restricción de
                            la pantalla: `ProductoActualizar` no tiene el campo y
                            `actualizar_producto()` tampoco lo recibe. Antes esto
-                           se resolvía con el select deshabilitado, que se veía
+                           se resolvía con el campo deshabilitado, que se veía
                            igual que uno roto —no se desplegaba y nada explicaba
                            por qué—. Mostrarlo como valor con su motivo dice lo
                            mismo sin parecer una falla. #}
                         <template x-if="!form.id">
-                            <div class="relative">
-                                {# Al elegir proveedor cambia la cotización, así que
-                                   los valores informativos se recalculan. #}
-                                <select id="pr-proveedor" x-model="form.proveedor_id" required
-                                        @change="calcularPreview()"
-                                        class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
-                                               border-[0.5px] border-texto-disabled rounded-input
-                                               appearance-none focus:outline-none focus:border-primary">
-                                    <option value="">Seleccionar</option>
-                                    <template x-for="p in proveedores" :key="p.id">
-                                        <option :value="p.id" x-text="p.nombre"></option>
-                                    </template>
-                                </select>
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    {{ icono('chevron') }}
-                                </span>
-                            </div>
+                            {# Sin opción para vaciar: el proveedor es
+                               obligatorio, y lo exige el botón Guardar
+                               deshabilitado igual que la categoría.
+                               Al elegir cambia la cotización, así que los
+                               valores informativos se recalculan, y cambia
+                               también el conjunto donde se buscan las
+                               descripciones parecidas. #}
+                            {{ combobox('pr-proveedor', 'proveedores', 'o.nombre',
+                                        'form.proveedor_id',
+                                        etiqueta='Proveedor', obligatorio=true,
+                                        al_elegir='calcularPreview(); buscarSimilares();',
+                                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                bg-surface text-texto border-[0.5px]
+                                                border-texto-disabled rounded-input
+                                                focus:outline-none focus:border-primary') }}
                         </template>
 
                         <template x-if="form.id">
                             <div>
+                                <span class="block mb-1 text-sm font-semibold text-texto-header">
+                                    Proveedor
+                                </span>
                                 <p class="h-control flex items-center text-base font-light text-texto"
                                    x-text="nombreProveedor()"></p>
                                 <span class="text-xs text-texto-disabled">
@@ -724,6 +841,113 @@
                         </label>
                         <input id="pr-skuprov" x-model="form.sku_proveedor" maxlength="30"
                                class="campo-linea">
+                    </div>
+
+                    {# Descripción va DESPUÉS de categoría, proveedor y su
+                       SKU, y no primero: su buscador de parecidos ofrece
+                       solo lo que ya está cargado en esa categoría y ese
+                       proveedor, así que los dos tienen que estar elegidos
+                       antes para que lo que ofrezca sirva de algo. #}
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="pr-desc" class="text-sm font-semibold text-texto-header">
+                            Descripción<span class="text-danger ml-0.5">*</span>
+                        </label>
+
+                        {# El input y la lista van juntos en un `relative`
+                           propio: así el desplegable se ubica debajo del
+                           CAMPO y no del label. Mismo armado que el
+                           combobox, que no se reutiliza acá porque aquel
+                           elige entre opciones fijas y este es texto libre
+                           con sugerencias que llegan del backend. #}
+                        <div class="relative" @click.outside="similares.abierto = false">
+                            {# Obligatoria: es por donde se lee y se ordena el
+                               catálogo, y la columna es NOT NULL desde 0012. #}
+                            <input id="pr-desc" x-model="form.descripcion" required
+                                   {# El autocompletado del navegador tapa la
+                                      lista con su propio desplegable. #}
+                                   autocomplete="off" role="combobox"
+                                   aria-autocomplete="list" aria-controls="pr-desc-lista"
+                                   :aria-expanded="similares.abierto ? 'true' : 'false'"
+                                   {# La lista aparece al escribir y no al
+                                      enfocar: después de elegir una sugerencia
+                                      sigue cargada —es lo que detecta el
+                                      choque— y reabrirla al volver al campo
+                                      taparía justamente ese aviso. #}
+                                   @input.debounce.300ms="buscarSimilares()"
+                                   @keydown.arrow-down.prevent="moverSimilar(1)"
+                                   @keydown.arrow-up.prevent="moverSimilar(-1)"
+                                   {# Enter elige la fila marcada; sin el
+                                      `preventDefault` además enviaría el
+                                      formulario. Sin ninguna marcada no se
+                                      toca: ahí Enter guarda, como siempre. #}
+                                   @keydown.enter="if (similares.abierto && similares.resaltado >= 0) {
+                                                       $event.preventDefault();
+                                                       elegirSimilar(similares.lista[similares.resaltado]);
+                                                   }"
+                                   {# Escape cierra la lista y NO el modal: el
+                                      `stopPropagation` frena el
+                                      `@keydown.escape.window` del diálogo, que
+                                      si no cerraría todo el formulario. Con la
+                                      lista cerrada se deja pasar. #}
+                                   @keydown.escape="if (similares.abierto) {
+                                                        $event.stopPropagation();
+                                                        similares.abierto = false;
+                                                    }"
+                                   class="campo-linea">
+
+                            <ul id="pr-desc-lista" x-show="similares.abierto" x-cloak
+                                role="listbox"
+                                class="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-y-auto
+                                       bg-surface border border-borde rounded-input
+                                       shadow-[0_4px_12px_0_rgba(0,0,0,0.15)]">
+
+                                <li class="px-3 py-2 text-xs text-texto-muted border-b border-borde">
+                                    Ya cargados con nombre parecido. Elegí uno para copiar
+                                    su descripción y completarla.
+                                </li>
+
+                                <template x-for="(p, indice) in similares.lista" :key="p.id">
+                                    {# `min-h-toque`: blanco táctil mínimo del
+                                       Principio 6, y acá importa más porque las
+                                       filas están pegadas una a la otra. #}
+                                    <li role="option"
+                                        :aria-selected="indice === similares.resaltado ? 'true' : 'false'"
+                                        @click="elegirSimilar(p)"
+                                        @mouseenter="similares.resaltado = indice"
+                                        class="flex flex-wrap items-center gap-x-3 min-h-toque
+                                               px-3 py-2 text-base cursor-pointer"
+                                        :class="indice === similares.resaltado
+                                                ? 'bg-primary/10 text-texto' : 'text-texto'">
+                                        <span class="font-mono text-sm text-texto-muted"
+                                              x-text="p.sku"></span>
+                                        <span x-text="p.descripcion"></span>
+                                        <span x-show="!p.activo" x-cloak
+                                              class="text-xs font-medium text-danger">Inactivo</span>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+
+                        {# El choque se avisa acá y no al apretar Crear: el
+                           alta lo rechaza igual —lo controla el service y lo
+                           garantiza un índice único— y enterarse recién con
+                           el error obliga a volver a un campo que quedó
+                           arriba de todo. #}
+                        <template x-if="duplicadoExacto()">
+                            <p class="text-xs text-danger">
+                                Ese nombre ya lo tiene
+                                <span class="font-mono font-medium"
+                                      x-text="duplicadoExacto().sku"></span>
+                                en esta categoría y proveedor. Si es el mismo artículo en
+                                otro color o talle, agregale una variante desde su ficha.
+                            </p>
+                        </template>
+
+                        <span x-show="!form.id && !duplicadoExacto()"
+                              class="text-xs text-texto-disabled">
+                            Desde el décimo carácter se ofrecen los productos ya cargados
+                            con nombre parecido.
+                        </span>
                     </div>
 
                     {# El precio ocupa la fila entera: el campo editable a la
@@ -766,13 +990,13 @@
                         </p>
                     </div>
 
-                    {# Peso, descuento y estacionalidad comparten fila: los tres
+                    {# Peso, descuento y temporada comparten fila: los tres
                        son valores chicos y ninguno necesita media pantalla.
 
                        En cuatro columnas y no en tres iguales: los dos números
-                       ocupan una cada uno y la estacionalidad dos, porque es lo
-                       único con texto —a un tercio de fila "permanente" se
-                       cortaba—. `items-end` alinea los controles por abajo
+                       ocupan una cada uno y la temporada dos, porque es lo
+                       único con texto —a un tercio de fila "Primavera-Verano"
+                       se cortaba—. `items-end` alinea los controles por abajo
                        aunque algún label ocupe dos líneas. #}
                     <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-4 items-end">
                         <div class="flex flex-col gap-1">
@@ -796,38 +1020,123 @@
                                    x-model="form.descuento_producto" class="campo-linea">
                         </div>
 
-                        <div class="sm:col-span-2 flex flex-col gap-1">
-                            <label for="pr-temporada" class="text-sm font-semibold text-texto-header">
-                                Estacionalidad
-                            </label>
-                            <div class="relative">
-                                <select id="pr-temporada" x-model="form.estacionalidad"
-                                        class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
-                                               border-[0.5px] border-texto-disabled rounded-input
-                                               appearance-none focus:outline-none focus:border-primary">
-                                    <template x-for="e in ESTACIONES" :key="e">
-                                        <option :value="e" x-text="e" class="capitalize"></option>
-                                    </template>
-                                </select>
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    {{ icono('chevron') }}
-                                </span>
-                            </div>
+                        <div class="sm:col-span-2">
+                            {# Mismo componente que Categoría, sin buscador y
+                               sin opción para vaciar: la temporada siempre
+                               tiene valor y arranca en "Atemporal", que es lo
+                               que corresponde a la mayoría del catálogo. #}
+                            {{ combobox('pr-temporada', 'TEMPORADAS', 'o.etiqueta',
+                                        'form.temporada', buscable=false,
+                                        etiqueta='Temporada',
+                                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                bg-surface text-texto border-[0.5px]
+                                                border-texto-disabled rounded-input
+                                                focus:outline-none focus:border-primary') }}
                         </div>
                     </div>
 
+                    {# Solo la Cuenta Maestra. Es el interruptor que hace que
+                       el producto NO descuente stock al vender: prendido por
+                       error, el sistema deja de saber cuánto hay y nada avisa.
+
+                       Esconderlo no es la barrera —la API se puede llamar sin
+                       la pantalla—: eso lo cierra `_validar_stock_infinito()`
+                       en el service. Acá lo que se evita es ofrecerle a un
+                       vendedor una decisión que no es suya.
+
+                       Sacarlo del formulario no pisa el valor guardado:
+                       `editar()` lo carga del producto y `guardar()` lo
+                       reenvía igual, así que un producto con stock infinito
+                       lo sigue teniendo después de que lo edite un vendedor. #}
+                    {% if es_maestra %}
                     <label class="sm:col-span-2 flex items-center gap-2 min-h-toque text-sm
                                   font-semibold text-texto-header cursor-pointer">
                         <input type="checkbox" x-model="form.stock_infinito" class="acceso-check">
                         <span>Stock infinito (no descuenta al vender)</span>
                     </label>
+                    {% endif %}
+
+                    {# Foto, solo en el ALTA: deja el producto identificable
+                       de un vistazo sin tener que volver a buscarlo en el
+                       listado y abrir la ficha. En EDICIÓN no va, porque la
+                       ficha ya tiene la grilla de las cinco con "principal"
+                       y "borrar", y dos lugares para lo mismo se contradicen.
+
+                       No se sube al elegirla: el endpoint cuelga de
+                       `/productos/{id}/fotos` y ese id todavía no existe.
+                       Espera acá y la sube `guardar()`. #}
+                    <template x-if="!form.id">
+                        <div class="sm:col-span-2 flex flex-col gap-1">
+                            <span class="text-sm font-semibold text-texto-header">Foto</span>
+
+                            <div class="flex items-center gap-3">
+                                {# El input va oculto y lo dispara el label:
+                                   el control nativo de archivo no se puede
+                                   estilar. Mismo patrón que la ficha. #}
+                                <label class="h-boton px-4 inline-flex items-center gap-2
+                                              rounded-input border border-borde text-sm
+                                              font-semibold cursor-pointer
+                                              hover:border-primary hover:text-primary">
+                                    {{ icono('mas', clases='w-4 h-4') }}
+                                    <span x-text="form.foto.archivo ? 'Cambiar foto' : 'Elegir foto'"></span>
+                                    <input type="file" class="sr-only"
+                                           accept="image/jpeg,image/png,image/gif,image/webp"
+                                           @change="elegirFoto($event)">
+                                </label>
+
+                                <template x-if="form.foto.archivo">
+                                    <div class="flex items-center gap-3">
+                                        <img :src="form.foto.previo" alt=""
+                                             class="w-14 h-14 rounded-input object-cover
+                                                    border border-borde">
+                                        <button type="button" @click="quitarFoto()"
+                                                class="min-h-toque text-sm font-semibold
+                                                       text-danger hover:opacity-80">
+                                            Quitar
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <span x-show="!form.foto.archivo"
+                                  class="text-xs text-texto-disabled">
+                                Opcional. Las otras cuatro se cargan desde la ficha.
+                            </span>
+                        </div>
+                    </template>
                 </div>
 
                 <div class="flex justify-end gap-3 mt-8">
                     <button type="button" @click="form.abierto = false"
                             class="h-boton px-5 rounded-input border border-borde text-base
                                    hover:border-primary hover:text-primary">Cancelar</button>
-                    <button type="submit" :disabled="form.guardando"
+                    {# Sin categoría ni proveedor no se puede guardar. Lo exigía
+                       el `required` de los `<select>`; el combobox es un input
+                       de texto libre, así que la restricción pasa acá, como en
+                       los dos modales de variante. En edición no bloquea nada:
+                       `editar()` carga el proveedor del producto. #}
+                    {# Segunda salida del alta: crea el producto y sigue
+                       derecho al alta de su primera variante, en vez de
+                       obligar a buscarlo en el listado y abrir la ficha.
+                       Es para quien ya sabe que el producto viene en colores
+                       o talles.
+
+                       `type="button"`: los dos botones envían el mismo
+                       formulario, y si este fuera submit el Enter dentro de
+                       un campo abriría el modal de variante sin haberlo
+                       pedido. Comparte la misma guarda que "Crear". #}
+                    <button type="button" x-show="!form.id" x-cloak
+                            @click="guardar({ conVariantes: true })"
+                            :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
+                                       || duplicadoExacto()"
+                            class="h-boton px-5 rounded-input border-2 border-primary
+                                   text-primary text-base font-medium
+                                   hover:bg-primary hover:text-white disabled:opacity-60">
+                        Crear con variantes
+                    </button>
+                    <button type="submit"
+                            :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
+                                       || duplicadoExacto()"
                             class="h-boton px-8 rounded-input bg-primary text-white text-base
                                    font-medium hover:bg-primary-hover disabled:opacity-60"
                             x-text="form.guardando ? 'Guardando…'
@@ -836,6 +1145,8 @@
             </form>
         </div>
     </div>
+
+    {{ modal_confirmacion() }}
 </div>
 {% endblock %}
 

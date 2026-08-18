@@ -18,6 +18,9 @@ function arbolPermisos(urlDatos, urlGuardar, modo) {
         guardando: false,
         sucio: false,
 
+        // Diálogo de confirmación (components/modal_confirmacion).
+        confirmacion: { abierta: false, titulo: '', mensaje: '', accion: () => {} },
+
         acciones: ['ver', 'crear', 'editar', 'eliminar'],
         etiquetas: {
             ver: 'Ver',
@@ -114,9 +117,25 @@ function arbolPermisos(urlDatos, urlGuardar, modo) {
 
         /* --- Guardado explícito, con confirmación --- */
 
+        /**
+         * Pide confirmación antes de guardar el árbol de permisos.
+         *
+         * Antes usaba el `confirm()` del navegador. El diálogo del sistema
+         * además deja decir de quién son los permisos que se están tocando:
+         * esta pantalla sirve tanto para un rol como para un usuario, y con
+         * el cartel de Chrome no había forma de aclararlo.
+         */
         confirmarGuardado() {
-            if (!confirm('¿Guardar los cambios de permisos? La acción queda auditada.')) return;
-            this.guardar();
+            this.confirmacion = {
+                abierta: true,
+                titulo: 'Guardar permisos',
+                mensaje: this.modo === 'usuario'
+                    ? '¿Guardar los permisos de este usuario? Cambian lo que puede hacer '
+                      + 'apenas se aplique. Queda auditado.'
+                    : '¿Guardar los permisos de este rol? Cambian para TODOS los usuarios '
+                      + 'que lo tengan asignado. Queda auditado.',
+                accion: () => this.guardar(),
+            };
         },
 
         // Arma el payload que espera la API: una fila por módulo y una por
@@ -145,6 +164,7 @@ function arbolPermisos(urlDatos, urlGuardar, modo) {
         },
 
         async guardar() {
+            this.confirmacion.abierta = false;
             this.guardando = true;
             try {
                 const resp = await fetch(urlGuardar, {

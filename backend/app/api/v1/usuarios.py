@@ -91,22 +91,24 @@ def roles_asignables(
 
 
 @router.get(
-    "/locales-asignables",
+    "/puntos-de-venta-asignables",
     response_model=list[LocalResumen],
-    summary="Locales que se pueden asignar",
+    summary="Puntos de venta que se pueden asignar",
 )
-def locales_asignables(
+def puntos_de_venta_asignables(
     db: Session = Depends(get_db),
     _=Depends(requiere_permiso(Modulo.USUARIOS, "ver")),
 ):
     """
-    Alimenta el selector "Local Asignado" del formulario.
+    Alimenta el selector "Punto de Venta" del formulario y el filtro del
+    listado. Devuelve todos los activos, de cualquier tipo: en el centro de
+    distribución y en la tienda online también trabaja gente.
 
     Existe acá, y no se reusa GET /puntos-de-venta, porque ese endpoint
     exige permiso de CONFIGURACION: quien gestiona usuarios no tiene por
     qué tenerlo, y se quedaría sin opciones en el desplegable.
     """
-    return servicio_usuarios.locales_asignables(db)
+    return servicio_usuarios.puntos_de_venta_asignables(db)
 
 
 @router.get(

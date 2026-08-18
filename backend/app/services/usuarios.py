@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_SUPERVISOR, ROL_VENDEDOR
 from app.core.utils import ahora_db, normalizar_texto
-from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
+from app.models.punto_de_venta import PuntoDeVenta
 from app.models.rol import Rol
 from app.models.usuario import HistorialAcceso, Usuario
 from app.services.auth import hash_password, revocar_sesiones_de_usuario
@@ -58,9 +58,22 @@ def validar_puede_gestionar(autor: Usuario, objetivo_rol: Rol) -> None:
         raise SinPermiso("Un supervisor solo puede gestionar usuarios con rol vendedor")
 
 
-def _validar_local_asignado(db: Session, local_id: int | None) -> int | None:
+def _validar_local_asignado(
+    db: Session, local_id: int | None, actual: int | None = None
+) -> int | None:
     """
-    El local asignado debe ser un punto de venta de tipo 'local' y activo.
+    El punto de venta asignado tiene que existir y estar activo.
+
+    **Cualquier tipo sirve**: local, centro de distribución u online. La regla
+    exigía tipo 'local', y eso dejaba afuera al CD y a la tienda online, que
+    también tienen gente trabajando. `local_asignado` no alimenta ningún
+    cálculo —solo se muestra—, así que el tipo no cambia nada del sistema.
+
+    `actual` es el punto de venta que el usuario YA tenía. Si el nuevo es ese
+    mismo, se salta el control de activo: conservar no es asignar. Sin esta
+    excepción, desactivar un punto de venta dejaba a su gente imposible de
+    editar —el front manda siempre este campo, así que cambiarle el celular
+    a alguien fallaba con "no se puede asignar un punto de venta inactivo".
 
     La regla vive acá y no en el schema porque necesita la base: vale
     igual desde la API, desde un script o desde cualquier otro cliente.
@@ -70,25 +83,30 @@ def _validar_local_asignado(db: Session, local_id: int | None) -> int | None:
 
     local = db.get(PuntoDeVenta, local_id)
     if local is None:
-        raise ReglaDeNegocio("El local asignado no existe")
-    if local.tipo != TipoPuntoVenta.LOCAL:
-        raise ReglaDeNegocio("Solo se puede asignar un punto de venta de tipo local")
-    if not local.activo:
-        raise ReglaDeNegocio("No se puede asignar un local inactivo")
+        raise ReglaDeNegocio("El punto de venta asignado no existe")
+    if not local.activo and local_id != actual:
+        raise ReglaDeNegocio("No se puede asignar un punto de venta inactivo")
     return local.id
 
 
-def locales_asignables(db: Session) -> list[PuntoDeVenta]:
+def puntos_de_venta_asignables(db: Session) -> list[PuntoDeVenta]:
     """
-    Locales que se pueden asignar a un usuario. Alimenta el selector
-    "Local Asignado" del formulario.
+    Puntos de venta que se pueden asignar a un usuario. Alimenta el selector
+    "Punto de Venta" del formulario y el filtro del listado.
 
-    Delega en el service de puntos de venta en lugar de repetir la query
-    (Principio 2): es la misma lista que usa la asignación de dispositivos.
+    Consulta derecho en lugar de delegar en `locales_activos()`: esa devuelve
+    solo los de tipo 'local' y la sigue usando la asignación de dispositivos,
+    que conserva esa restricción.
     """
-    from app.services.puntos_de_venta import locales_activos
-
-    return locales_activos(db)
+    return list(
+        db.execute(
+            select(PuntoDeVenta)
+            .where(PuntoDeVenta.activo.is_(True))
+            .order_by(PuntoDeVenta.nombre)
+        )
+        .scalars()
+        .all()
+    )
 
 
 def roles_asignables(db: Session, autor: Usuario) -> list[Rol]:
@@ -293,7 +311,16 @@ def editar_usuario(
         usuario.celular = celular
 
     if editar_local:
-        usuario.local_asignado_id = _validar_local_asignado(db, local_asignado_id)
+        # El actual se lee ANTES de pisarlo: es lo que le permite a un usuario
+        # conservar un punto de venta que se desactivó después de asignárselo.
+        usuario.local_asignado_id = _validar_local_asignado(
+            db, local_asignado_id, actual=usuario.local_asignado_id
+        )
+        # Cambiar la FK no actualiza sola la relación ya cargada —viene con
+        # lazy="joined" desde antes—, así que la respuesta salía diciendo el
+        # id nuevo junto al NOMBRE del anterior. Se descarta para que se
+        # vuelva a leer al serializar.
+        db.expire(usuario, ["local_asignado"])
 
     if password:
         usuario.password_hash = hash_password(password)

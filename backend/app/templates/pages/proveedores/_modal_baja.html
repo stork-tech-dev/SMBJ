@@ -2,7 +2,7 @@
    proveedor tiene productos activos asociados. #}
 <div x-show="baja.abierta" x-cloak
      class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-     @click.self="baja.abierta = false" @keydown.escape.window="baja.abierta = false"
+     @keydown.escape.window="baja.abierta = false"
      role="dialog" aria-modal="true">
     <div class="w-full max-w-md bg-surface rounded-[10px] shadow-xl p-8">
         <h2 class="text-lg font-semibold">Dar de baja proveedor</h2>

@@ -145,7 +145,7 @@ def test_reactivar_dispositivo(db, servicio, autor):
 def test_solo_locales_en_asignacion(db, servicio, autor):
     """Asignar un punto de venta que no es local → error de negocio."""
     dispositivo, _ = servicio.identificar_dispositivo(None, None, "1.1.1.1", crear=True)
-    cd = pv_servicio.crear_punto(db, autor, "CD", TipoPuntoVenta.CD)
+    cd = pv_servicio.crear_punto(db, autor, "CD", TipoPuntoVenta.CD, "CD")
 
     with pytest.raises(ReglaDeNegocio, match="tipo local"):
         servicio.actualizar(
@@ -154,7 +154,7 @@ def test_solo_locales_en_asignacion(db, servicio, autor):
         )
 
     # A un local sí lo deja.
-    local = pv_servicio.crear_punto(db, autor, "Local", TipoPuntoVenta.LOCAL)
+    local = pv_servicio.crear_punto(db, autor, "Local", TipoPuntoVenta.LOCAL, "LOC")
     servicio.actualizar(
         dispositivo.id, usuario_id=autor.id, ip="1.1.1.1",
         punto_de_venta_id=local.id, asignar_local=True,
@@ -164,7 +164,7 @@ def test_solo_locales_en_asignacion(db, servicio, autor):
 
 def test_asignar_local_audita(db, servicio, autor):
     dispositivo, _ = servicio.identificar_dispositivo(None, None, "1.1.1.1", crear=True)
-    local = pv_servicio.crear_punto(db, autor, "Local", TipoPuntoVenta.LOCAL)
+    local = pv_servicio.crear_punto(db, autor, "Local", TipoPuntoVenta.LOCAL, "LOC")
 
     servicio.actualizar(
         dispositivo.id, usuario_id=autor.id, ip="1.1.1.1",

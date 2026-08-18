@@ -6,9 +6,12 @@ function abmPuntos() {
     return {
         puntos: [],
         cargando: false,
-        filtros: { nombre: '', tipo: '', activo: '' },
-        form: { abierto: false, guardando: false, id: null, nombre: '', tipo: 'local', codigo_confirmacion: '' },
-        baja: { abierta: false, punto: null, advertencia: '' },
+        filtros: { nombre: '', tipo: '', activo: 'true' },
+        form: { abierto: false, guardando: false, id: null, nombre: '', tipo: 'local', codigo: '' },
+        // Mismo diálogo que el resto del sistema (components/modal_confirmacion).
+        // `advertencia` es propia de acá: el backend responde 409 cuando el
+        // punto tiene dispositivos activos, y recién ahí se ofrece insistir.
+        baja: { abierta: false, punto: null, titulo: '', mensaje: '', advertencia: '' },
 
         etiquetaTipo(t) {
             return { cd: 'Centro de Distribución', local: 'Local', online: 'Online' }[t] || t;
@@ -37,17 +40,17 @@ function abmPuntos() {
         },
 
         limpiar() {
-            this.filtros = { nombre: '', tipo: '', activo: '' };
+            this.filtros = { nombre: '', tipo: '', activo: 'true' };
             this.cargar();
         },
 
         abrirAlta() {
-            this.form = { abierto: true, guardando: false, id: null, nombre: '', tipo: 'local', codigo_confirmacion: '' };
+            this.form = { abierto: true, guardando: false, id: null, nombre: '', tipo: 'local', codigo: '' };
         },
         abrirEdicion(p) {
             this.form = {
                 abierto: true, guardando: false, id: p.id, nombre: p.nombre,
-                tipo: p.tipo, codigo_confirmacion: p.codigo_confirmacion || '',
+                tipo: p.tipo, codigo: p.codigo || '',
             };
         },
 
@@ -55,10 +58,12 @@ function abmPuntos() {
             this.form.guardando = true;
             try {
                 const alta = !this.form.id;
-                const cuerpo = { nombre: this.form.nombre, tipo: this.form.tipo };
-                // El código solo se manda para locales.
-                cuerpo.codigo_confirmacion = (this.form.tipo === 'local' && this.form.codigo_confirmacion)
-                    ? this.form.codigo_confirmacion : null;
+                // El código va siempre y para cualquier tipo: es obligatorio.
+                const cuerpo = {
+                    nombre: this.form.nombre,
+                    tipo: this.form.tipo,
+                    codigo: this.form.codigo,
+                };
 
                 const resp = await fetch(
                     alta ? '/api/v1/puntos-de-venta' : '/api/v1/puntos-de-venta/' + this.form.id,
@@ -84,7 +89,14 @@ function abmPuntos() {
         },
 
         pedirBaja(p) {
-            this.baja = { abierta: true, punto: p, advertencia: '' };
+            this.baja = {
+                abierta: true,
+                punto: p,
+                titulo: 'Desactivar punto de venta',
+                mensaje: `¿Desactivar ${p.nombre}? Deja de estar disponible para `
+                    + 'asignar usuarios y dispositivos. No se borra y se puede reactivar.',
+                advertencia: '',
+            };
         },
 
         async confirmarBaja() {

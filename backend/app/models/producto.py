@@ -1,5 +1,5 @@
 """
-Modelos de `productos` y `variantes`.
+Modelos de `productos` y `producto_variantes`.
 
 Todo producto tiene al menos una variante: los que no manejan variantes
 reales reciben una BASE automática al crearse. Así el stock siempre cuelga
@@ -34,12 +34,20 @@ if TYPE_CHECKING:
     from app.models.proveedor import Proveedor
 
 
-class Estacionalidad(str, enum.Enum):
-    PERMANENTE = "permanente"
-    VERANO = "verano"
-    INVIERNO = "invierno"
-    OTONIO = "otoño"
-    PRIMAVERA = "primavera"
+class Temporada(str, enum.Enum):
+    """
+    Cómo se compra la mercadería, que es en dos temporadas y no en cuatro
+    estaciones: el rubro reposiciona por Otoño-Invierno y Primavera-Verano.
+
+    Antes eran las cinco estaciones sueltas (`permanente`, `verano`,
+    `invierno`, `otoño`, `primavera`), que obligaban a elegir entre dos
+    valores que en la práctica significan lo mismo —¿un buzo es de otoño o
+    de invierno?— y a filtrar dos veces para ver una temporada entera.
+    """
+
+    ATEMPORAL = "atemporal"
+    OTONIO_INVIERNO = "otoño_invierno"
+    PRIMAVERA_VERANO = "primavera_verano"
 
 
 def _enum(tipo, nombre):
@@ -90,10 +98,13 @@ class Producto(Base):
 
     peso_gramos: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
 
-    estacionalidad: Mapped[Estacionalidad] = mapped_column(
-        _enum(Estacionalidad, "estacionalidad_producto"),
+    # `atemporal` por defecto: es lo que corresponde a la mayoría del
+    # catálogo de una bijouterie, y hace que el alta no obligue a decidir
+    # una temporada para un producto que no la tiene.
+    temporada: Mapped[Temporada] = mapped_column(
+        _enum(Temporada, "temporada_producto"),
         nullable=False,
-        server_default=Estacionalidad.PERMANENTE.value,
+        server_default=Temporada.ATEMPORAL.value,
         index=True,
     )
 
@@ -154,7 +165,7 @@ class Variante(Base):
     recalcularlo invalidaría lo que ya está en el depósito.
     """
 
-    __tablename__ = "variantes"
+    __tablename__ = "producto_variantes"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
@@ -190,6 +201,15 @@ class Variante(Base):
     precio_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     precio_venta: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
+    # Código con el que el proveedor identifica ESTA variante. NULL = usa el
+    # del producto, misma regla que el precio.
+    #
+    # Existe porque el proveedor no numera por producto: numera por color y
+    # por talle. "NK-AM90-RJ" y "NK-AM90-BL" son dos códigos distintos del
+    # mismo artículo, y con un solo campo en el producto no había dónde
+    # anotarlos.
+    sku_proveedor: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+
     stock_actual: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     stock_minimo: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
@@ -210,7 +230,7 @@ class Variante(Base):
         # La BASE no lleva sufijo y las reales sí: son excluyentes.
         CheckConstraint(
             "(es_base AND sufijo IS NULL) OR (NOT es_base AND sufijo IS NOT NULL)",
-            name="ck_variantes_base_sin_sufijo",
+            name="ck_producto_variantes_base_sin_sufijo",
         ),
         # Espeja al de arriba: la BASE no es variante de nada, así que no
         # lleva nombre; las reales lo llevan siempre. Con el CHECK, que sea
@@ -218,19 +238,21 @@ class Variante(Base):
         CheckConstraint(
             "(es_base AND descripcion_sufijo IS NULL)"
             " OR (NOT es_base AND descripcion_sufijo IS NOT NULL)",
-            name="ck_variantes_base_sin_descripcion_sufijo",
+            name="ck_producto_variantes_base_sin_descripcion_sufijo",
         ),
-        CheckConstraint("stock_minimo >= 0", name="ck_variantes_stock_minimo_no_negativo"),
+        CheckConstraint(
+            "stock_minimo >= 0", name="ck_producto_variantes_stock_minimo_no_negativo"
+        ),
         CheckConstraint(
             "precio_usd IS NULL OR precio_usd > 0",
-            name="ck_variantes_precio_usd_positivo",
+            name="ck_producto_variantes_precio_usd_positivo",
         ),
         # `precio_venta` se deriva de `precio_usd`: uno sin el otro sería un
         # número que nadie puede recalcular al cambiar la cotización.
         CheckConstraint(
             "(precio_usd IS NULL AND precio_venta IS NULL)"
             " OR (precio_usd IS NOT NULL AND precio_venta IS NOT NULL)",
-            name="ck_variantes_precio_completo",
+            name="ck_producto_variantes_precio_completo",
         ),
     )
 
@@ -239,11 +261,11 @@ class Variante(Base):
         """Lo que se imprime en la etiqueta y se codifica en Code128."""
         return f"{self.codigo_completo}{self.verificador}"
 
-    # --- Precio efectivo ---------------------------------------------------
-    # La regla "el propio manda sobre el del producto" vive acá y en un solo
-    # lugar: la usan el listado, el detalle y cualquier pantalla futura. Si
-    # cada consumidor hiciera su propio COALESCE, alcanzaría con que uno se
-    # olvidara para mostrar un precio que no es el que se cobra.
+    # --- Lo propio manda sobre lo del producto ------------------------------
+    # La regla vive acá y en un solo lugar: la usan el listado, el detalle y
+    # cualquier pantalla futura. Si cada consumidor hiciera su propio
+    # COALESCE, alcanzaría con que uno se olvidara para mostrar un precio que
+    # no es el que se cobra, o pedirle al proveedor un código que no es.
 
     @property
     def tiene_precio_propio(self) -> bool:
@@ -259,6 +281,23 @@ class Variante(Base):
             self.precio_venta
             if self.precio_venta is not None
             else self.producto.precio_venta
+        )
+
+    @property
+    def tiene_sku_proveedor_propio(self) -> bool:
+        return self.sku_proveedor is not None
+
+    @property
+    def sku_proveedor_efectivo(self) -> str | None:
+        """
+        El código para pedirle esta variante al proveedor.
+
+        Puede ser None: el producto tampoco está obligado a tener uno.
+        """
+        return (
+            self.sku_proveedor
+            if self.sku_proveedor is not None
+            else self.producto.sku_proveedor
         )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug

@@ -15,6 +15,8 @@
    El árbol se carga por fetch desde la API: la página no lo pre-renderiza.
    =========================================================================== #}
 
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+
 {% macro arbol_permisos(url_datos, url_guardar, modo='rol') %}
 <div x-data="arbolPermisos('{{ url_datos }}', '{{ url_guardar }}', '{{ modo }}')"
      x-init="cargar()"
@@ -115,5 +117,10 @@
             </tbody>
         </table>
     </div>
+
+    {# El diálogo vive acá y no en las páginas: el `x-data` es de este
+       componente, así que afuera no vería `confirmacion`. Y de paso lo
+       heredan las dos pantallas que usan el árbol. #}
+    {{ modal_confirmacion(tono='primario') }}
 </div>
 {% endmacro %}

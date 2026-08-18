@@ -15,7 +15,7 @@ Los dos caminos son:
 
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -26,13 +26,47 @@ from app.core.codigos import (
     codigo_es_valido,
     digito_verificador,
 )
-from app.core.utils import ahora_db, normalizar_texto, redondear_hacia_arriba
+from app.core.permisos import ROL_CUENTA_MAESTRA
+from app.core.utils import (
+    ahora_db,
+    capitalizar_inicial,
+    normalizar_texto,
+    redondear_hacia_arriba,
+    sin_tildes,
+    sin_tildes_sql,
+)
 from app.models.categoria import Categoria
 from app.models.configuracion import ConfiguracionSistema
-from app.models.producto import Estacionalidad, Producto, Variante
+from app.models.producto import Producto, Temporada, Variante
 from app.models.proveedor import EstadoProveedor, Proveedor
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
+
+
+class SinPermiso(Exception):
+    """El autor no puede tocar este campo del producto (403)."""
+
+
+def _validar_stock_infinito(autor: Usuario, pedido: bool | None, actual: bool) -> None:
+    """
+    `stock_infinito` lo decide solo la Cuenta Maestra.
+
+    Es el interruptor que hace que un producto NO descuente stock al vender:
+    prendido por error, el sistema deja de saber cuánto hay de ese artículo y
+    no queda ninguna señal de que pasó. Por eso no alcanza con esconder el
+    checkbox del formulario —la API es el contrato (Principio 1) y se puede
+    llamar sin la pantalla— y por eso la regla vive acá, en el service, que
+    es por donde pasan todos los clientes.
+
+    Solo molesta si el valor CAMBIA: el formulario manda el producto entero
+    en cada guardado, así que rechazar la mera presencia del campo haría que
+    ninguna edición de un vendedor pudiera guardarse.
+    """
+    if pedido is None or pedido == actual:
+        return
+    if autor.rol is not None and autor.rol.nombre == ROL_CUENTA_MAESTRA:
+        return
+    raise SinPermiso("El stock infinito lo define la Cuenta Maestra")
 
 
 def obtener_producto(db: Session, producto_id: int) -> Producto:
@@ -158,11 +192,66 @@ def _validar_descripcion(descripcion: str) -> str:
     así que sin este control un valor de solo espacios llegaría como NULL a
     una columna NOT NULL: reventaría con un error de base en vez de decir
     qué está mal.
+
+    La inicial se pone en mayúscula acá y no en la pantalla porque este es el
+    único embudo por el que se escribe la descripción —`crear_producto` y
+    `editar_producto`—: así queda igual en el listado, en la ficha, en la
+    edición y en cualquier pantalla que se agregue después, sin que ninguna
+    tenga que acordarse de formatearla.
     """
     limpia = normalizar_texto(descripcion)
     if not limpia:
         raise ReglaDeNegocio("La descripción del producto es obligatoria")
-    return limpia
+    return capitalizar_inicial(limpia)
+
+
+def _validar_descripcion_unica(
+    db: Session,
+    descripcion: str,
+    categoria_id: int,
+    proveedor_id: int,
+    excluir_id: int | None = None,
+) -> None:
+    """
+    Dos productos del mismo proveedor y la misma categoría no pueden
+    llamarse igual.
+
+    Mirando el catálogo serían la misma fila cargada dos veces: no queda
+    ningún dato en pantalla para distinguirlos. Lo que corresponde cuando
+    el artículo viene en colores o talles es una variante del que ya
+    existe, que además comparte precio y descripción.
+
+    Compara sin tildes y sin mayúsculas —"Cadena plata" y "cadena PLATA"
+    tampoco se distinguen— con la MISMA expresión del índice único
+    `uq_productos_descripcion_por_categoria_y_proveedor` (migración 0020).
+    La base es la que lo garantiza; esto existe para poder decir con cuál
+    choca en vez de devolver un error de integridad.
+
+    La categoría se compara exacta y no por rama: es lo que hace el índice,
+    y dos productos iguales colgados de hojas distintas son un problema de
+    clasificación, no un duplicado.
+
+    Los inactivos cuentan: no se borran, se pueden volver a activar, y ahí
+    quedarían las dos filas idénticas.
+    """
+    consulta = select(Producto).where(
+        func.lower(sin_tildes_sql(Producto.descripcion)) == sin_tildes(descripcion).lower(),
+        Producto.categoria_id == categoria_id,
+        Producto.proveedor_id == proveedor_id,
+    )
+    if excluir_id is not None:
+        consulta = consulta.where(Producto.id != excluir_id)
+
+    existente = db.execute(consulta.limit(1)).scalars().first()
+    if existente is None:
+        return
+
+    baja = "" if existente.activo else ", que está inactivo y se puede volver a activar"
+    raise ReglaDeNegocio(
+        f"Ya existe un producto con esa descripción en este proveedor y categoría: "
+        f"{existente.sku}{baja}. Si es el mismo artículo en otro color o talle, "
+        f"agregale una variante en lugar de crear otro producto."
+    )
 
 
 def _validar_nombre_variante(descripcion_sufijo: str) -> str:
@@ -276,6 +365,7 @@ def agregar_variante(
     producto_id: int,
     sufijo: str,
     descripcion_sufijo: str,
+    sku_proveedor: str | None = None,
     ubicacion_deposito: str | None = None,
     stock_minimo: int = 0,
     ip_origen: str | None = None,
@@ -316,6 +406,8 @@ def agregar_variante(
     )
 
     variante.ubicacion_deposito = normalizar_texto(ubicacion_deposito)
+    # Vacío queda en NULL, que es "usa el del producto" y no "sin código".
+    variante.sku_proveedor = normalizar_texto(sku_proveedor)
     variante.stock_minimo = stock_minimo
 
     producto.tiene_variantes = True
@@ -326,7 +418,7 @@ def agregar_variante(
         db,
         usuario_id=autor.id,
         accion="variante.crear",
-        entidad="variantes",
+        entidad="producto_variantes",
         entidad_id=variante.id,
         estado_nuevo=variante,
         ip_origen=ip_origen,
@@ -343,6 +435,8 @@ def editar_variante(
     stock_minimo: int | None = None,
     precio_usd: Decimal | None = None,
     editar_precio: bool = False,
+    sku_proveedor: str | None = None,
+    editar_sku_proveedor: bool = False,
     ip_origen: str | None = None,
 ) -> Variante:
     """
@@ -382,7 +476,7 @@ def editar_variante(
             # Se resuelve TODO antes de asignar. Leer el proveedor y calcular
             # el precio disparan consultas, y cada consulta hace autoflush:
             # con `precio_usd` ya puesto y `precio_venta` todavía en NULL, el
-            # CHECK `ck_variantes_precio_completo` rechaza la fila a mitad de
+            # CHECK `ck_producto_variantes_precio_completo` rechaza la fila a mitad de
             # camino. Las dos asignaciones tienen que quedar pegadas.
             nuevo_usd = Decimal(precio_usd)
             dolar = variante.producto.proveedor.dolar_actual
@@ -391,6 +485,14 @@ def editar_variante(
             variante.precio_usd = nuevo_usd
             variante.precio_venta = nuevo_venta
 
+    # Misma mecánica que el precio, y por el mismo motivo: NULL acá no es
+    # "sin cambios" sino algo concreto —volver al código del producto—, así
+    # que hace falta la bandera para distinguirlo de "no lo mandes".
+    # `normalizar_texto` deja en NULL el string vacío, que es lo que manda la
+    # pantalla al borrar el campo.
+    if editar_sku_proveedor:
+        variante.sku_proveedor = normalizar_texto(sku_proveedor)
+
     variante.updated_at = ahora_db()
     db.flush()
 
@@ -398,7 +500,7 @@ def editar_variante(
         db,
         usuario_id=autor.id,
         accion="variante.editar",
-        entidad="variantes",
+        entidad="producto_variantes",
         entidad_id=variante.id,
         estado_anterior=antes,
         estado_nuevo=variante,
@@ -418,7 +520,7 @@ def listar_productos(
     descripcion: str | None = None,
     categoria_id: int | None = None,
     proveedor_id: int | None = None,
-    estacionalidad: str | None = None,
+    temporada: str | None = None,
     activo: bool | None = None,
     precio_desde: Decimal | None = None,
     precio_hasta: Decimal | None = None,
@@ -442,8 +544,8 @@ def listar_productos(
         consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
     if proveedor_id is not None:
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
-    if estacionalidad:
-        consulta = consulta.where(Producto.estacionalidad == estacionalidad)
+    if temporada:
+        consulta = consulta.where(Producto.temporada == temporada)
     if activo is not None:
         consulta = consulta.where(Producto.activo.is_(activo))
     if precio_desde is not None:
@@ -464,12 +566,100 @@ def listar_productos(
     return list(filas), total
 
 
+# Cuántos caracteres hay que tener tipeados antes de buscar parecidos.
+#
+# Con menos, la búsqueda no dice nada útil: "cadena" coincide con medio
+# catálogo y el desplegable se convierte en ruido justo cuando todavía no
+# se terminó de escribir. Diez es el largo a partir del cual una
+# descripción ya tiene dos palabras y empieza a identificar algo.
+#
+# El formulario usa el mismo número para no pedirle a la API lo que sabe
+# que va a volver vacío (`MINIMO_SIMILARES` en productos.js), pero la
+# regla vive acá: el endpoint la aplica igual aunque lo llame otro cliente.
+MINIMO_CARACTERES_SIMILARES = 10
+
+# Cuántas palabras cortas ("de", "18k") se ignoran al comparar.
+_LARGO_PALABRA_UTIL = 3
+
+
+def buscar_similares(
+    db: Session,
+    descripcion: str,
+    categoria_id: int | None = None,
+    proveedor_id: int | None = None,
+    limite: int = 8,
+) -> list[Producto]:
+    """
+    Productos ya cargados cuya descripción se parece a la que se está
+    tipeando, acotados a la categoría y el proveedor elegidos.
+
+    Alimenta el desplegable del formulario de alta, que sirve para dos
+    cosas a la vez: ver que el producto tal vez ya existe antes de
+    duplicarlo, y poder adoptar el nombre con el que quedó cargado, para
+    que el catálogo no tenga "Cadena plata 925" y "cadena de plata 925"
+    como si fueran cosas distintas.
+
+    El parecido se resuelve palabra por palabra y no con un ILIKE sobre la
+    frase entera —que es lo que hace el filtro de `listar_productos`—:
+    mientras se escribe, el texto tipeado casi nunca es un fragmento
+    literal de lo ya cargado. "Zapatilla Nike Air" tiene que encontrar
+    "Zapatilla Nike Air Max 90", y también "Nike Air Zapatilla" si alguien
+    la cargó con las palabras en otro orden. Se exigen TODAS las palabras:
+    con una sola alcanzaría cualquier producto de la marca.
+
+    Las palabras de menos de tres letras no se exigen: "de", "y" o "18k"
+    aparecen en cualquier lado y no distinguen nada.
+
+    Devuelve también los inactivos: un producto dado de baja sigue siendo
+    un duplicado, y la pantalla lo marca como tal.
+    """
+    texto = normalizar_texto(descripcion) or ""
+    if len(texto) < MINIMO_CARACTERES_SIMILARES:
+        return []
+
+    consulta = select(Producto)
+
+    # Las dos caras de la comparación se limpian igual: la columna con
+    # `translate()` en SQL y el texto tipeado en Python. Así "cafe"
+    # encuentra "Café" y "café" encuentra "Cafe".
+    descripcion_plana = sin_tildes_sql(Producto.descripcion)
+
+    palabras = [p for p in texto.split() if len(p) >= _LARGO_PALABRA_UTIL]
+    # Si nada llegó a tres letras es una descripción de palabras sueltas
+    # ("18k 925 ar"): se busca la frase entera, que es lo único que queda.
+    for palabra in palabras or [texto]:
+        consulta = consulta.where(descripcion_plana.ilike(f"%{sin_tildes(palabra)}%"))
+
+    if categoria_id is not None:
+        # Incluye la descendencia, igual que el listado: los productos
+        # cuelgan de las hojas, así que elegir "Zapatillas" en el formulario
+        # tiene que encontrar lo que está en "Deportivas".
+        from app.services.categorias import rama_de_ids
+
+        consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
+    if proveedor_id is not None:
+        consulta = consulta.where(Producto.proveedor_id == proveedor_id)
+
+    # Alfabético y acotado: es un desplegable de sugerencias, no un listado.
+    # Sin el `id` de desempate dos descripciones iguales quedan en orden
+    # arbitrario y la lista puede cambiar de una tecla a la otra.
+    filas = (
+        db.execute(
+            consulta.order_by(func.lower(Producto.descripcion), Producto.id).limit(limite)
+        )
+        .unique()
+        .scalars()
+        .all()
+    )
+    return list(filas)
+
+
 def listar_variantes(
     db: Session,
     busqueda: str | None = None,
     categoria_id: int | None = None,
     proveedor_id: int | None = None,
-    estacionalidad: str | None = None,
+    temporada: str | None = None,
     activo: bool | None = None,
     precio_desde: Decimal | None = None,
     precio_hasta: Decimal | None = None,
@@ -487,31 +677,46 @@ def listar_variantes(
     puede referirse a un artículo:
 
       1. Con el código de la etiqueta, que incluye el dígito verificador
-         (`SAB123R7`). Si el texto pasa la validación del dígito se le saca
-         el último carácter y se busca el código EXACTO: es el caso del
-         lector, y es el único que puede resolver a una sola fila.
+         (`SAB123R7`). Si el texto pasa la validación del dígito, se le saca
+         el último carácter y se busca además el código EXACTO: es el caso
+         del lector, y es el único que resuelve a una sola fila.
       2. Con el SKU del producto (`AB123`), que trae todas sus variantes.
       3. Con parte de la descripción.
 
     El paso 1 es lo que hace que el dígito verificador sirva para algo: un
-    código mal tipeado no valida, así que cae a la búsqueda por texto y no
-    se resuelve por accidente a otra variante.
+    código mal tipeado no valida, así que no se resuelve por accidente a
+    otra variante — solo queda la búsqueda por texto, que no lo encuentra.
     """
     consulta = select(Variante).join(Producto, Variante.producto_id == Producto.id)
 
     if busqueda:
         texto = busqueda.strip().upper()
+        patron = f"%{texto}%"
+
+        # Las tres formas se buscan SIEMPRE, y el código exacto se suma
+        # cuando corresponde. Antes eran excluyentes —o código, o texto— y
+        # eso hacía desaparecer resultados: un SKU también puede pasar la
+        # validación del dígito por casualidad (le pasa a 1 de cada 11), y
+        # ahí el buscador lo leía como etiqueta, le sacaba el último carácter
+        # y comparaba contra un código que no existe. Tipear `AA009` no
+        # devolvía nada, sin ninguna señal de por qué.
+        condiciones = [
+            Variante.codigo_completo.ilike(patron),
+            Producto.sku.ilike(patron),
+            Producto.descripcion.ilike(patron),
+        ]
 
         if codigo_es_valido(texto):
             # El dígito no se persiste: la columna guarda el cuerpo.
-            consulta = consulta.where(Variante.codigo_completo == texto[:-1])
-        else:
-            patron = f"%{texto}%"
-            consulta = consulta.where(
-                Variante.codigo_completo.ilike(patron)
-                | Producto.sku.ilike(patron)
-                | Producto.descripcion.ilike(patron)
-            )
+            #
+            # Sumar esta condición no relaja nada: el texto de un código
+            # válido no aparece como subcadena de ningún código guardado
+            # —al guardado le falta justamente el dígito— ni de un SKU ni de
+            # una descripción, así que el lector sigue resolviendo a la
+            # única fila de esa etiqueta.
+            condiciones.append(Variante.codigo_completo == texto[:-1])
+
+        consulta = consulta.where(or_(*condiciones))
 
     if categoria_id is not None:
         # Misma regla que en el listado de productos: incluye la descendencia.
@@ -520,8 +725,8 @@ def listar_variantes(
         consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
     if proveedor_id is not None:
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
-    if estacionalidad:
-        consulta = consulta.where(Producto.estacionalidad == estacionalidad)
+    if temporada:
+        consulta = consulta.where(Producto.temporada == temporada)
     if activo is not None:
         consulta = consulta.where(Producto.activo.is_(activo))
 
@@ -572,7 +777,7 @@ def crear_producto(
     sku_proveedor: str | None = None,
     descuento_producto: Decimal | None = None,
     peso_gramos: Decimal | None = None,
-    estacionalidad: str = Estacionalidad.PERMANENTE.value,
+    temporada: str = Temporada.ATEMPORAL.value,
     stock_infinito: bool = False,
     ip_origen: str | None = None,
 ) -> Producto:
@@ -580,6 +785,10 @@ def crear_producto(
     Alta de producto. Genera el SKU, calcula el precio de venta y crea la
     variante BASE, todo en la misma transacción.
     """
+    # En el alta el valor de partida es False: un vendedor puede mandarlo
+    # apagado —es lo que hace el formulario— pero no prenderlo.
+    _validar_stock_infinito(autor, stock_infinito, actual=False)
+
     _validar_categoria(db, categoria_id)
     proveedor = _validar_proveedor(db, proveedor_id)
 
@@ -591,17 +800,22 @@ def crear_producto(
     if peso_gramos is not None and Decimal(peso_gramos) <= 0:
         raise ReglaDeNegocio("El peso debe ser mayor a cero")
 
+    # Antes de reservar el SKU: si el nombre choca, el alta no tiene que
+    # consumir un número del correlativo.
+    descripcion_limpia = _validar_descripcion(descripcion)
+    _validar_descripcion_unica(db, descripcion_limpia, categoria_id, proveedor_id)
+
     producto = Producto(
         sku=_siguiente_sku(db),
         sku_proveedor=normalizar_texto(sku_proveedor),
-        descripcion=_validar_descripcion(descripcion),
+        descripcion=descripcion_limpia,
         categoria_id=categoria_id,
         proveedor_id=proveedor_id,
         precio_usd=Decimal(precio_usd),
         precio_venta=calcular_precio_venta(db, precio_usd, proveedor.dolar_actual),
         descuento_producto=descuento,
         peso_gramos=Decimal(peso_gramos) if peso_gramos is not None else None,
-        estacionalidad=Estacionalidad(estacionalidad),
+        temporada=Temporada(temporada),
         stock_infinito=stock_infinito,
         tiene_variantes=False,
         activo=True,
@@ -637,7 +851,7 @@ def editar_producto(
     precio_usd: Decimal | None = None,
     descuento_producto: Decimal | None = None,
     peso_gramos: Decimal | None = None,
-    estacionalidad: str | None = None,
+    temporada: str | None = None,
     stock_infinito: bool | None = None,
     ip_origen: str | None = None,
 ) -> Producto:
@@ -649,12 +863,35 @@ def editar_producto(
     producto = obtener_producto(db, producto_id)
     antes = snapshot(producto)
 
+    # Antes de tocar nada: si el pedido no está permitido, la edición entera
+    # se rechaza y no queda a medias.
+    _validar_stock_infinito(autor, stock_infinito, actual=producto.stock_infinito)
+
     if categoria_id is not None:
         _validar_categoria(db, categoria_id)
-        producto.categoria_id = categoria_id
 
+    # La unicidad se controla sobre cómo va a quedar el producto, no sobre
+    # cómo está: mover un producto de categoría puede hacerlo chocar con
+    # otro sin que su descripción cambie, y renombrarlo también.
+    #
+    # Y se controla ANTES de asignar nada: con el objeto ya modificado, la
+    # consulta dispara el autoflush de SQLAlchemy y el choque volvería como
+    # error de integridad del índice, sin decir contra cuál chocó.
+    nueva_descripcion = (
+        _validar_descripcion(descripcion) if descripcion is not None else producto.descripcion
+    )
+    _validar_descripcion_unica(
+        db,
+        nueva_descripcion,
+        categoria_id if categoria_id is not None else producto.categoria_id,
+        producto.proveedor_id,
+        excluir_id=producto.id,
+    )
+
+    if categoria_id is not None:
+        producto.categoria_id = categoria_id
     if descripcion is not None:
-        producto.descripcion = _validar_descripcion(descripcion)
+        producto.descripcion = nueva_descripcion
     if sku_proveedor is not None:
         producto.sku_proveedor = normalizar_texto(sku_proveedor)
 
@@ -676,8 +913,8 @@ def editar_producto(
             raise ReglaDeNegocio("El peso debe ser mayor a cero")
         producto.peso_gramos = Decimal(peso_gramos)
 
-    if estacionalidad is not None:
-        producto.estacionalidad = Estacionalidad(estacionalidad)
+    if temporada is not None:
+        producto.temporada = Temporada(temporada)
     if stock_infinito is not None:
         producto.stock_infinito = stock_infinito
 

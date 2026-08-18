@@ -4,6 +4,8 @@
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/switch_activos.html" import switch_activos %}
 
 {% block contenido %}
 <div x-data="abmDispositivos()" x-init="cargar(); cargarLocales()">
@@ -30,17 +32,6 @@
             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
         </div>
 
-        <div class="relative w-full sm:w-auto">
-            <select x-model="filtros.activo" @change="cargar()" aria-label="Estado"
-                    class="h-control w-full sm:w-[9.375rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
-                           rounded-input appearance-none focus:outline-none focus:border-primary"
-                    :class="filtros.activo ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Estado (todos)</option>
-                <option value="true">Activo</option>
-                <option value="false">Inactivo</option>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
-        </div>
 
         <div class="flex items-center gap-2">
             <span class="text-sm font-semibold text-texto-header">Último acceso</span>
@@ -59,6 +50,8 @@
             <span x-text="dispositivos.length"></span>
             <span x-text="dispositivos.length === 1 ? 'dispositivo' : 'dispositivos'"></span>
         </p>
+        {{ switch_activos('filtros.activo') }}
+
     </div>
 
     {# ---------- Tabla ---------- #}
@@ -115,9 +108,9 @@
                                 {% call acciones() %}
                                     {{ accion('editar', atributos='@click="abrirEdicion(d)"') }}
                                     {{ accion('borrar',
-                                              atributos='x-show="d.activo" @click="cambiarEstado(d, false)" title="Desactivar"') }}
+                                              atributos='x-show="d.activo" @click="confirmarEstado(d)" title="Desactivar"') }}
                                     {{ accion('activar',
-                                              atributos='x-show="!d.activo" x-cloak @click="cambiarEstado(d, true)" title="Activar"') }}
+                                              atributos='x-show="!d.activo" x-cloak @click="confirmarEstado(d)" title="Activar"') }}
                                 {% endcall %}
                             </td>
                         </tr>
@@ -132,7 +125,7 @@
 
     {# ---------- Modal de edición ---------- #}
     <div x-show="form.abierto" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false" role="dialog" aria-modal="true">
+         @keydown.escape.window="form.abierto = false" role="dialog" aria-modal="true">
         <div class="w-full max-w-md bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
             <div class="flex items-center justify-between px-8 pt-7 pb-2">
                 <h2 class="text-lg font-black text-welcome">Editar dispositivo</h2>
@@ -184,6 +177,8 @@
             </form>
         </div>
     </div>
+
+    {{ modal_confirmacion() }}
 </div>
 {% endblock %}
 

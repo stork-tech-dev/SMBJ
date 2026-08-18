@@ -209,3 +209,83 @@ def test_guardar_accesos_queda_auditado(db, crear_usuario, roles):
     assert registro.usuario_id == autor.id
     assert clave in registro.estado_nuevo["accesos"]
     assert clave not in (registro.estado_anterior["accesos"] or [])
+
+
+# ============================================================================
+# UNICIDAD CON recurso = NULL
+# ============================================================================
+#
+# `recurso = NULL` es el permiso general del módulo, el caso más común. El
+# UNIQUE no lo protegía: en PostgreSQL NULL no es igual a NULL, así que la
+# misma fila entraba dos veces. Así llegaron 45 duplicados a `rol_permisos`,
+# que rompían el guardado de accesos con un 500 —`_fila()` usa
+# `scalar_one_or_none()`— y neutralizaban el `ON CONFLICT DO NOTHING` del seed.
+
+
+def test_el_permiso_general_de_un_rol_no_se_puede_duplicar(db, roles, dar_permiso):
+    """El test del agujero: antes de `NULLS NOT DISTINCT` esto pasaba."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True)
+
+    # El nombre del constraint en la aserción: sin eso, el test daría verde
+    # con cualquier otro error de integridad que apareciera de casualidad.
+    with pytest.raises(IntegrityError, match="uq_rol_permisos_rol_modulo_recurso"):
+        dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True)
+
+
+def test_el_permiso_general_de_un_usuario_no_se_puede_duplicar(
+    db, crear_usuario, roles, dar_permiso
+):
+    """`usuario_permisos` tenía el mismo constraint débil."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    usuario = crear_usuario("juan", ROL_VENDEDOR)
+    dar_permiso(usuario_id=usuario.id, modulo=Modulo.VENTAS, ver=True)
+
+    with pytest.raises(IntegrityError, match="uq_usuario_permisos_usuario_modulo_recurso"):
+        dar_permiso(usuario_id=usuario.id, modulo=Modulo.VENTAS, ver=True)
+
+
+def test_la_unicidad_no_se_pasa_de_estricta(db, crear_usuario, roles, dar_permiso):
+    """
+    Lo que SÍ tiene que seguir entrando: el mismo módulo con recursos
+    distintos, y el mismo par (módulo, recurso) en roles distintos. Si esto
+    se rompiera, la restricción estaría de más.
+    """
+    vendedor = roles[ROL_VENDEDOR].id
+    supervisor = roles[ROL_SUPERVISOR].id
+
+    dar_permiso(rol_id=vendedor, modulo=Modulo.VENTAS, ver=True)
+    dar_permiso(rol_id=vendedor, modulo=Modulo.VENTAS, recurso=Recurso.VENTA_ANULAR, eliminar=True)
+    dar_permiso(rol_id=vendedor, modulo=Modulo.VENTAS, recurso=Recurso.VENTA_DESCUENTO, crear=True)
+    dar_permiso(rol_id=supervisor, modulo=Modulo.VENTAS, ver=True)
+
+    from sqlalchemy import func, select
+
+    from app.models.permiso import RolPermiso
+
+    total = db.execute(
+        select(func.count(RolPermiso.id)).where(RolPermiso.modulo == Modulo.VENTAS.value)
+    ).scalar_one()
+    assert total == 4
+
+
+def test_guardar_accesos_con_permisos_generales_del_rol(db, crear_usuario, roles, dar_permiso):
+    """
+    El 500 que motivó todo: con un permiso general duplicado, guardar los
+    accesos de un usuario reventaba con MultipleResultsFound. Con la
+    restricción arreglada el duplicado no existe y el guardado funciona.
+
+    No había ningún test que cubriera este camino de punta a punta.
+    """
+    autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    usuario = crear_usuario("juan", ROL_VENDEDOR)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
+
+    clave = f"{Modulo.TESORERIA.value}:{Recurso.CAJA_RETIRO.value}:crear"
+    accesos = servicio_permisos.actualizar_accesos_usuario(db, usuario, [clave], autor.id)
+
+    assert any(a["clave"] == clave and a["permitido"] for a in accesos)

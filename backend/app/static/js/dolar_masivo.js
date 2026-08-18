@@ -14,6 +14,9 @@ function dolarMasivo() {
         preview: [],
         aplicando: false,
 
+        // Diálogo de confirmación (components/modal_confirmacion).
+        confirmacion: { abierta: false, titulo: '', mensaje: '', accion: () => {} },
+
         archivo: null,
         errores: [],
         importando: false,
@@ -50,8 +53,27 @@ function dolarMasivo() {
             }
         },
 
+        /**
+         * Pide confirmación antes de aplicar el cambio masivo.
+         *
+         * Antes usaba el `confirm()` del navegador. Además de verse como un
+         * cartel de Chrome, el mensaje no decía lo importante: esto recalcula
+         * el precio de venta de TODOS los productos de esos proveedores.
+         */
+        confirmarAplicar() {
+            const n = this.preview.length;
+            this.confirmacion = {
+                abierta: true,
+                titulo: 'Aplicar cambio de dólar',
+                mensaje: `¿Aplicar el cambio a ${n} proveedor${n === 1 ? '' : 'es'}? `
+                    + 'Se recalcula el precio de venta de todos sus productos. '
+                    + 'Queda auditado y el valor anterior se puede consultar en el historial.',
+                accion: () => this.aplicar(),
+            };
+        },
+
         async aplicar() {
-            if (!confirm(`¿Aplicar el cambio a ${this.preview.length} proveedor(es)? Queda auditado.`)) return;
+            this.confirmacion.abierta = false;
             this.aplicando = true;
             try {
                 const resp = await fetch('/api/v1/proveedores/dolar/masivo', {

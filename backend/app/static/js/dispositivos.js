@@ -7,11 +7,14 @@ function abmDispositivos() {
         dispositivos: [],
         locales: [],
         cargando: false,
-        filtros: { descripcion: '', punto_de_venta_id: '', activo: '', acceso_desde: '', acceso_hasta: '' },
+        filtros: { descripcion: '', punto_de_venta_id: '', activo: 'true', acceso_desde: '', acceso_hasta: '' },
         form: {
             abierto: false, guardando: false, id: null, uuid: '',
             descripcion: '', punto_de_venta_id: '', observaciones: '', activo: false,
         },
+
+        // Diálogo de confirmación de las acciones destructivas.
+        confirmacion: { abierta: false, titulo: '', mensaje: '', accion: () => {} },
 
         /**
          * Sistema y navegador en una línea: "Android 13 · Chrome 120".
@@ -87,7 +90,7 @@ function abmDispositivos() {
         },
 
         limpiar() {
-            this.filtros = { descripcion: '', punto_de_venta_id: '', activo: '', acceso_desde: '', acceso_hasta: '' };
+            this.filtros = { descripcion: '', punto_de_venta_id: '', activo: 'true', acceso_desde: '', acceso_hasta: '' };
             this.cargar();
         },
 
@@ -127,9 +130,28 @@ function abmDispositivos() {
             }
         },
 
+        /**
+         * Pide confirmación antes de cambiar el estado de un dispositivo.
+         *
+         * Antes usaba el `confirm()` del navegador: se ve como un cartel de
+         * Chrome, no como el sistema, y no dice qué implica desactivar.
+         */
+        confirmarEstado(dispositivo) {
+            const desactivando = dispositivo.activo;
+            this.confirmacion = {
+                abierta: true,
+                titulo: desactivando ? 'Desactivar dispositivo' : 'Activar dispositivo',
+                mensaje: desactivando
+                    ? `¿Desactivar ${dispositivo.descripcion}? No va a poder operar hasta `
+                      + 'que se lo vuelva a activar.'
+                    : `¿Activar ${dispositivo.descripcion}? Vuelve a poder operar.`,
+                accion: () => this.cambiarEstado(dispositivo, !dispositivo.activo),
+            };
+        },
+
         async cambiarEstado(d, activo) {
             const accion = activo ? 'activar' : 'desactivar';
-            if (!activo && !confirm(`¿Desactivar el dispositivo "${d.descripcion}"?`)) return;
+            this.confirmacion.abierta = false;
             try {
                 const resp = await fetch(`/api/v1/admin/dispositivos/${d.id}/${accion}`, {
                     method: 'PATCH', credentials: 'same-origin',

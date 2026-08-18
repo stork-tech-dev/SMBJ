@@ -430,25 +430,601 @@ def test_ver_abre_el_panel_acotado_a_la_variante_de_la_fila(client, crear_usuari
     assert "variantesOcultas()" in html, "falta el aviso de las variantes restantes"
 
 
-def test_los_dos_selectores_de_categoria_muestran_el_camino_completo(client, crear_usuario):
+def test_el_filtro_de_categoria_muestra_el_camino_completo(client, crear_usuario):
     """
-    El filtro del listado y el selector del formulario tienen que decir lo
-    mismo. El del formulario mostraba solo la hoja con sangría de puntos
-    ("· · Deportivas"), y dos ramas distintas pueden tener hojas con el mismo
-    nombre: al elegir, no había forma de saber cuál se había elegido.
+    El filtro del listado elige de una lista plana de todo el árbol, así que
+    cada opción tiene que decir de qué rama es: dos ramas pueden tener hojas
+    con el mismo nombre y, con el nombre suelto, al elegir no habría forma de
+    saber cuál se eligió.
 
-    Los dos usan `rutaCategoria()`, que arma "Calzado - Zapatillas -
-    Deportivas" con la lista que ya está en memoria.
+    Lo arma `rutaCategoria()` con la lista que ya está en memoria.
+
+    El formulario NO usa esto: baja por el árbol con un select por nivel, y
+    ahí el camino lo dicen los selects anteriores.
     """
     crear_usuario("cm", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
 
     html = client.get("/productos").text
-    assert html.count('x-text="rutaCategoria(c)"') == 2, (
-        "los dos selectores de categoría tienen que usar el camino completo"
+
+    assert html.count("texto: (o) => rutaCategoria(o)") == 1, (
+        "el camino completo es del filtro, y solo de él"
     )
-    # La sangría con puntos era lo que los hacía distintos.
+    # La sangría con puntos del `<select>` viejo no puede volver.
     assert ".repeat(" not in html
+
+
+def test_el_selector_de_categoria_se_puede_buscar_tipeando(client, crear_usuario):
+    """
+    Era un `<select>` nativo, que no se filtra: tipear ahí solo salta por la
+    primera letra, y como cada opción muestra el camino completo, todas las de
+    una misma rama empiezan igual ("Joyas - …"). Con el árbol de 5 niveles de
+    una bijouterie, encontrar la categoría era bajar con la rueda.
+
+    Ahora es un combobox: un input que filtra la lista mientras se escribe.
+    Los de la cascada del formulario también, aunque cada uno ofrezca pocas
+    opciones: un nivel puede tener decenas (un "Material" de bijouterie).
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Tres filtros (categoría, proveedor, temporada), dos del formulario
+    # (proveedor y temporada) y los cinco niveles de categoría: todos el
+    # mismo componente. Temporada va sin buscador, pero es el mismo.
+    assert html.count("combobox({") == 10
+
+    for campo in ("f-categoria", "pr-categoria-1", "pr-categoria-5"):
+        assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
+        # Sin esto un lector de pantalla lee un campo de texto suelto y no
+        # anuncia ni que hay lista ni cuál fila está marcada.
+        assert f'aria-controls="{campo}-lista"' in html
+
+    # El desplegable viejo no puede quedar dando vueltas al lado del nuevo.
+    assert 'x-model="filtros.categoria_id"' not in html
+    assert 'x-model="form.categoria_id"' not in html
+
+
+def test_el_alta_de_producto_exige_categoria_y_proveedor_sin_el_required(
+    client, crear_usuario
+):
+    """
+    La obligatoriedad la daba el `required` del `<select>`. El combobox es un
+    input de texto libre —lo que se tipea es la búsqueda, no el valor— así que
+    un `required` ahí exigiría texto, no una categoría elegida: bastaría dejar
+    a medio escribir "ani" para que el navegador diera el formulario por bueno.
+
+    Pasa a exigirlo el botón, como en los dos modales de variante. Vale igual
+    para el proveedor desde que también es un combobox; en edición no bloquea
+    nada porque `editar()` carga el proveedor del producto.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "form.guardando || !categoriaCompleta() || !form.proveedor_id" in html, (
+        "el botón Guardar tiene que quedar deshabilitado sin categoría"
+    )
+
+
+def test_la_categoria_se_elige_bajando_por_el_arbol(client, crear_usuario):
+    """
+    Un select por nivel en vez de una lista plana con el camino completo en
+    cada fila: en cada paso se ve nada más que lo que cuelga de lo ya
+    elegido.
+
+    Se dibujan los cinco niveles y se muestran los que correspondan. No se
+    generan con un `x-for` porque el macro `combobox` fija un `id` que usan
+    el `<label for>` y el `aria-controls`, y clonarlo lo repetiría en el DOM.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Un select por cada nivel que admite el árbol (NIVEL_MAXIMO = 5), cada
+    # uno con sus propias opciones y escribiendo en su lugar de la ruta.
+    for nivel in range(1, 6):
+        assert f'id="pr-categoria-{nivel}"' in html
+        assert f"opciones: () => opcionesCategoria({nivel})" in html
+        assert f"form.categoriaRuta[{nivel - 1}]" in html
+        assert f"elegirCategoria({nivel})" in html
+
+    # El primero se muestra siempre; los demás, cuando hay algo que elegir.
+    assert html.count("nivelCategoriaVisible(") == 5
+
+    # El camino completo es cosa del filtro: acá cada opción es un nombre
+    # suelto, porque la rama la dicen los selects anteriores.
+    assert html.count("texto: (o) => o.nombre") >= 5
+
+
+def test_cada_nivel_de_categoria_tiene_su_propia_leyenda(client, crear_usuario):
+    """
+    La leyenda gris de cada campo es lo que lo nombra: los dos primeros
+    niveles tienen nombre propio y del tercero en adelante son subcategorías
+    numeradas.
+
+    Van como `placeholder` y como etiqueta oculta —no como `<label>` visible—
+    porque el grupo ya lleva un solo título "Categoría": repetirlo encima de
+    cada campo sería decirlo dos veces.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    for leyenda in ("Tipo", "Material", "Subcategoría 1", "Subcategoría 2",
+                    "Subcategoría 3"):
+        assert f'placeholder="{leyenda}"' in html, f"falta la leyenda {leyenda}"
+
+    # Cada nivel con la suya, y ninguno con la genérica del componente: los
+    # dos "Seleccionar" que quedan son de proveedor y temporada.
+    assert html.count('placeholder="Seleccionar"') == 2
+
+
+def test_no_se_guarda_sin_llegar_al_final_de_la_rama(client, crear_usuario):
+    """
+    Todos los selects a la vista son obligatorios. Dicho al revés: si queda
+    uno visible sin elegir es porque lo último elegido todavía tiene hijos, y
+    el producto quedaría colgado de un nodo intermedio.
+
+    `!form.categoria_id` no alcanzaba: con un intermedio elegido tiene valor.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Los dos botones del alta y el de la edición usan la misma guarda.
+    assert html.count("!categoriaCompleta()") == 3
+    # Y se dice por qué el botón está apagado, que si no no se entiende.
+    assert "Elegí hasta el último nivel" in html
+
+    js = _js_de("/productos")
+    # Completa = lo último elegido no tiene hijos.
+    assert "categoriaCompleta()" in js
+    assert "opcionesCategoria(ruta.length + 1).length === 0" in js
+
+
+def test_elegir_un_nivel_de_arriba_borra_los_de_abajo(client, crear_usuario):
+    """
+    Cambiar el Tipo invalida el Material que estaba puesto: era hijo de otra
+    rama. Sin cortar la cola, el producto terminaría guardado en una
+    categoría que ya no se ve en pantalla.
+
+    Se reemplaza el array entero y no se lo trunca con `length`: el
+    `x-effect` de cada combobox depende de `form.categoriaRuta`, y cambiar la
+    propiedad es lo que hace que los de abajo se vacíen.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    js = _js_de("/productos")
+
+    assert "this.form.categoriaRuta = this.form.categoriaRuta.slice(0, nivel)" in js
+    assert "categoriaRuta.length =" not in js, "truncar el array no dispara Alpine"
+    # La edición abre con el camino del producto ya puesto.
+    assert "categoriaRuta: this.rutaDeIds(p.categoria_id)" in js
+
+
+def test_el_modal_de_producto_se_ensancha_recien_en_el_cuarto_nivel(
+    client, crear_usuario
+):
+    """
+    El ancho de arranque ya entra los tres primeros selects, así que elegir
+    Tipo y Material —el camino de casi todo el catálogo— no mueve el modal.
+    Recién del cuarto en adelante se ve crecer, que es cuando hace falta: con
+    cuatro o cinco en fila, el ancho de siempre los dejaba apretados en dos
+    renglones.
+
+    Las clases van escritas en el HTML y no armadas en un helper de JS: el
+    CDN de Tailwind genera las que encuentra en el documento, y una que solo
+    existiera dentro de un `.js` no se generaría nunca.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    for ancho in ("max-w-[44rem]", "max-w-[52rem]", "max-w-[60rem]"):
+        assert ancho in html, f"falta el ancho {ancho}"
+    # Uno, dos o tres selects comparten ancho: el modal no se mueve.
+    assert "'max-w-[44rem]': nivelesCategoriaVisibles() <= 3" in html
+    # `w-full` sigue mandando en pantallas chicas: el max-w es un techo.
+    assert 'class="w-full my-8 bg-surface' in html
+
+
+def test_el_filtro_de_categoria_recarga_y_se_puede_limpiar(client, crear_usuario):
+    """
+    El `<select>` del filtro traía dos cosas que el combobox tiene que
+    conservar: recargaba la tabla al elegir (`@change="cargar()"`) y tenía una
+    opción vacía para sacar el filtro. Sin la primera el filtro no se aplica;
+    sin la segunda no hay forma de volver al catálogo completo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "filtros.categoria_id = v; cargar();" in html
+    assert "vacio: 'Todas las categorías'" in html
+
+    # Los del formulario NO la llevan: los cinco niveles de categoría, el
+    # proveedor y la temporada siempre tienen valor.
+    assert html.count("vacio: null") == 7
+
+
+def test_el_selector_de_proveedor_se_puede_buscar_tipeando(client, crear_usuario):
+    """
+    Mismo problema que tenía categoría: era un `<select>` nativo, que no se
+    filtra. Con el catálogo de una bijouterie los proveedores son decenas y
+    encontrar uno era bajar con la rueda, mientras el campo de al lado
+    —categoría— ya se buscaba tipeando. Dos campos pegados en la misma fila no
+    pueden comportarse distinto.
+
+    Es el mismo componente, no una copia: lo único que cambia es la etiqueta de
+    cada opción (`o.nombre` en vez del camino del árbol).
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    for campo in ("f-proveedor", "pr-proveedor"):
+        assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
+        assert f'aria-controls="{campo}-lista"' in html
+
+    # El desplegable viejo no puede quedar dando vueltas al lado del nuevo.
+    assert 'x-model="filtros.proveedor_id"' not in html
+    assert 'x-model="form.proveedor_id"' not in html
+
+
+def test_el_filtro_de_proveedor_recarga_y_se_puede_limpiar(client, crear_usuario):
+    """
+    Lo mismo que se le exige al filtro de categoría: el `<select>` recargaba la
+    tabla al elegir y tenía una opción vacía. Sin la primera el filtro no se
+    aplica; sin la segunda no hay forma de volver al catálogo completo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "filtros.proveedor_id = v; cargar();" in html
+    assert "vacio: 'Todos los proveedores'" in html
+
+
+def test_elegir_proveedor_en_el_alta_recalcula_el_precio(client, crear_usuario):
+    """
+    El precio en pesos sale de la cotización del proveedor, así que el
+    `@change="calcularPreview()"` del `<select>` no era decorativo: sin él los
+    valores informativos quedan con el dólar del proveedor anterior y el alta
+    muestra un precio que no es el que se va a guardar.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "form.proveedor_id = v; calcularPreview();" in html
+
+
+def test_la_temporada_ofrece_solo_las_tres_opciones(client, crear_usuario):
+    """
+    El desplegable decía "Estacionalidad" y listaba las cuatro estaciones más
+    "permanente", en minúscula y capitalizadas por CSS. Ahora es "Temporada"
+    con las tres que se compran, y la etiqueta visible no se deriva del valor:
+    "otoño_invierno" con el guion bajo cambiado por un espacio no da
+    "Otoño-Invierno".
+
+    Son los dos campos —el filtro del listado y el del formulario— y los dos
+    salen de la misma constante `TEMPORADAS`.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "Estacionalidad" not in html, "quedó el nombre viejo en pantalla"
+    for campo in ("f-temporada", "pr-temporada"):
+        assert f'id="{campo}"' in html
+    assert html.count("opciones: () => TEMPORADAS") == 2
+    assert "filtros.temporada = v; cargar();" in html
+    assert "form.temporada = v;" in html
+
+    js = _js_de("/productos")
+    for etiqueta in ("Atemporal", "Otoño-Invierno", "Primavera-Verano"):
+        assert etiqueta in js, f"falta la opción {etiqueta}"
+    # Las estaciones sueltas ya no existen como valor.
+    for vieja in ("'permanente'", "'invierno'", "'primavera'"):
+        assert vieja not in js, f"quedó la estación vieja {vieja}"
+    # El alta arranca en atemporal, que es lo que corresponde a la mayoría
+    # del catálogo.
+    assert "temporada: 'atemporal'" in js
+
+
+def test_temporada_es_el_mismo_desplegable_que_los_otros_pero_sin_buscador(
+    client, crear_usuario
+):
+    """
+    Los tres desplegables de la barra de filtros tienen que verse igual. Con
+    un `<select>` nativo no se puede: su lista la dibuja el sistema operativo,
+    así que al lado de Categoría y Proveedor —que abren una lista propia,
+    estilada— Temporada se veía como otra cosa.
+
+    Pasa al mismo componente con `buscable=false`: el campo va `readonly`, se
+    despliega y se navega con el teclado, pero no se tipea. Con tres opciones
+    un buscador no aporta nada, y un campo que invita a escribir donde no hay
+    nada que buscar confunde.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Ni un `<select>` de temporada ni el `x-for` de sus `<option>`.
+    assert "<select" not in html, "volvió un select nativo a la pantalla"
+
+    for campo in ("f-temporada", "pr-temporada"):
+        assert f'id="{campo}" type="text"' in html
+        assert f'aria-controls="{campo}-lista"' in html
+
+    # Los dos van de solo lectura; los ocho buscables, no.
+    assert html.count("readonly") == 2
+    # Y sin el `@input` que filtra, que es lo único que los diferencia.
+    assert html.count("alEscribir()") == 8
+
+
+def test_el_stock_infinito_solo_lo_ve_la_cuenta_maestra(client, crear_usuario):
+    """
+    El checkbox hace que el producto NO descuente stock al vender. No es una
+    decisión de quien carga mercadería: prendido por error, el sistema deja
+    de saber cuánto hay de ese artículo y nada avisa.
+
+    Esconderlo no es la barrera —la API se puede llamar sin la pantalla, y de
+    eso se ocupa `_validar_stock_infinito()` en el service—: lo que se evita
+    acá es ofrecerle a un vendedor una decisión que no es suya.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    crear_usuario("vende", ROL_VENDEDOR)
+
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+    assert "form.stock_infinito" in client.get("/productos").text, (
+        "la Cuenta Maestra tiene que poder elegirlo"
+    )
+
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+    html = client.get("/productos").text
+    assert "form.stock_infinito" not in html, "el vendedor no puede elegirlo"
+    assert "Stock infinito" not in html
+
+    # Pero sigue viendo el dato en la tabla: saber que un producto no
+    # descuenta stock es distinto de poder cambiarlo.
+    assert "v.producto.stock_infinito" in html
+
+
+def test_el_alta_de_producto_acepta_una_foto(client, crear_usuario):
+    """
+    Antes había que crear el producto, buscarlo en el listado, abrir la ficha
+    y recién ahí subirle la foto. Ahora se elige en el mismo formulario.
+
+    No se sube al elegirla: el endpoint cuelga de `/productos/{id}/fotos` y
+    ese id no existe hasta que el producto está creado. El archivo espera en
+    el formulario y lo sube `guardar()` con el id que devuelve el alta.
+
+    Solo en el ALTA: en edición la ficha ya tiene la grilla de las cinco con
+    "principal" y "borrar", y dos lugares para lo mismo se contradicen.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # El campo existe y está dentro de la rama de alta (`!form.id`).
+    assert 'x-if="!form.id"' in html
+    assert "elegirFoto($event)" in html
+    assert "quitarFoto()" in html
+    # Mismos formatos que acepta la ficha.
+    assert html.count('accept="image/jpeg,image/png,image/gif,image/webp"') == 2
+
+    js = _js_de("/productos")
+    # Se sube DESPUÉS del alta, con el id que devolvió el backend.
+    assert "subirFotoDelAlta(guardado.id)" in js
+    assert "/fotos`" in js
+
+
+def test_crear_con_variantes_lleva_al_alta_de_la_primera_variante(client, crear_usuario):
+    """
+    El camino de quien ya sabe que el producto viene en colores o talles:
+    crear y seguir derecho, en vez de buscarlo en el listado y abrir la ficha
+    para recién ahí empezar.
+
+    El botón NO es submit: los dos envían el mismo formulario, y siendo
+    submit el Enter dentro de un campo abriría el modal de variante sin
+    haberlo pedido.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "Crear con variantes" in html
+    assert "guardar({ conVariantes: true })" in html
+    # Solo en el alta: editar un producto ya tiene su ficha con las variantes.
+    assert 'x-show="!form.id"' in html
+    # Con la misma guarda que "Crear": sin categoría ni proveedor —y con una
+    # descripción que ya está usada— no se crea.
+    assert html.count("!categoriaCompleta() || !form.proveedor_id") == 2
+    assert html.count("|| duplicadoExacto()") == 2
+
+    js = _js_de("/productos")
+    # El panel primero: `abrirVariante()` mira si todavía está la BASE para
+    # avisar que la primera variante real la reemplaza.
+    assert "await this.abrirProducto(guardado.id)" in js
+    assert "this.abrirVariante()" in js
+
+
+def test_la_variante_tiene_su_propio_sku_de_proveedor(client, crear_usuario):
+    """
+    El proveedor no numera por producto: numera por color y por talle. El
+    campo va en los dos formularios de variante, debajo del sufijo y su
+    descripción, y vacío hereda el del producto —misma regla que el precio—.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # En el alta (va-) y en la edición (ev-) de variante.
+    for campo in ("va-skuprov", "ev-skuprov"):
+        assert f'id="{campo}"' in html, f"falta {campo}"
+    # Debajo del sufijo y de su descripción, no antes.
+    assert html.index('id="va-nombre"') < html.index('id="va-skuprov"')
+    assert html.index('id="va-sufijo"') < html.index('id="va-skuprov"')
+    assert html.index('id="ev-nombre"') < html.index('id="ev-skuprov"')
+
+    # Vacío = hereda, dicho en el campo y en la aclaración de abajo.
+    assert html.count('placeholder="Usa el del producto"') == 3
+    assert html.count("Vacío = usa el del producto") == 2
+
+    js = _js_de("/productos")
+    assert "sku_proveedor: this.variante.sku_proveedor || null" in js
+    # null explícito al vaciarlo: es lo que lo devuelve al del producto.
+    assert "sku_proveedor: e.sku_proveedor === '' ? null : e.sku_proveedor" in js
+
+
+def test_la_ficha_muestra_el_sku_de_proveedor_que_manda(client, crear_usuario):
+    """
+    Se ve el efectivo —el propio si lo tiene, el del producto si no— y se
+    aclara cuál de los dos es, igual que con el precio: sin la aclaración, un
+    código que no coincide con el del producto parece un error.
+
+    La línea no aparece si no hay ninguno de los dos: el campo es opcional en
+    los dos niveles.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert 'x-text="v.sku_proveedor_efectivo"' in html
+    assert 'x-show="v.sku_proveedor_efectivo"' in html
+    assert "SKU del proveedor propio de esta variante" in html
+    assert "SKU del proveedor del producto" in html
+
+
+def test_agregar_una_variante_deja_la_ficha_abierta_para_la_siguiente(
+    client, crear_usuario
+):
+    """
+    Un producto que viene en colores o talles necesita varias variantes
+    cargadas una atrás de la otra. Guardar cerraba el formulario Y la ficha,
+    y la pantalla quedaba en el listado: para la segunda había que buscar el
+    producto y volver a entrar.
+
+    Ahora se cierra solo el formulario y la ficha queda abierta y releída,
+    con "Agregar variante" ahí mismo. Es el mismo camino que ya usaba la
+    edición de variante.
+
+    Se relee SIN acotar a un código: la recién creada tiene que verse, y si
+    era la primera, el backend acaba de eliminar la BASE que el panel venía
+    mostrando —filtrar por ese id dejaría la ficha vacía—.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    js = _js_de("/productos")
+
+    # Cerrar la ficha al guardar era lo que obligaba a volver a buscar el
+    # producto: no puede volver a aparecer en el módulo.
+    assert "this.detalle.abierto = false" not in js
+    assert (
+        "await this.abrirProducto(this.detalle.producto.id, { varianteId: null })" in js
+    )
+    # El listado se recarga igual: se va la fila de la BASE y entra la nueva.
+    assert js.count("this.cargar();") >= 2
+
+
+def test_la_descripcion_va_despues_del_proveedor_y_su_sku(client, crear_usuario):
+    """
+    El orden del formulario es el del trabajo: primero dónde va y de quién
+    viene, después cómo se llama.
+
+    No es cosmético. El buscador de parecidos del campo Descripción ofrece
+    solo lo que ya está cargado en ESA categoría y ESE proveedor, así que
+    con la descripción arriba de todo la lista salía sin acotar y ofrecía
+    medio catálogo.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    # Se compara la posición de cada campo DENTRO del modal de alta/edición:
+    # 'pr-' es el prefijo de sus ids.
+    orden = [html.index(f'id="pr-{campo}"') for campo in ("categoria-1", "skuprov", "desc")]
+    assert orden == sorted(orden), "el formulario no sigue el orden esperado"
+    # El proveedor no tiene `id="pr-proveedor"` visible en edición (ahí es un
+    # dato fijo), pero su combobox se declara antes que la descripción.
+    assert html.index("'pr-proveedor'") < html.index('id="pr-desc"')
+
+
+def test_la_descripcion_ofrece_los_productos_ya_cargados_con_nombre_parecido(
+    client, crear_usuario
+):
+    """
+    Sirve para dos cosas a la vez: ver que el artículo tal vez ya existe
+    antes de duplicarlo —el alta lo rechaza si descripción, categoría y
+    proveedor coinciden— y adoptar el nombre con el que quedó cargado, para
+    que el catálogo no tenga "Cadena plata 925" y "cadena de plata 925" como
+    si fueran cosas distintas.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "buscarSimilares()" in html
+    assert "elegirSimilar(p)" in html
+    # Se puede recorrer con el teclado, como el resto de los desplegables.
+    assert "moverSimilar(1)" in html and "moverSimilar(-1)" in html
+    # Cambiar el proveedor rehace la búsqueda: la lista está acotada a él y
+    # quedaría vieja. La categoría hace lo mismo, pero por dentro de
+    # `elegirCategoria()`, que además corta los niveles de abajo.
+    assert html.count("buscarSimilares();") == 1
+    assert "elegirCategoria(1);" in html
+
+    js = _js_de("/productos")
+    # El umbral es el mismo que aplica el backend.
+    assert "const MINIMO_SIMILARES = 10;" in js
+    assert "/api/v1/productos/similares?" in js
+    # En la edición no se busca: la descripción ya viene puesta y el
+    # desplegable se abriría solo, ofreciendo el producto que se edita.
+    assert "if (this.form.id || texto.length < MINIMO_SIMILARES)" in js
+    # Las respuestas pueden llegar desordenadas; la vieja no pisa a la nueva.
+    assert "token !== this.similaresToken" in js
+
+
+def test_el_choque_de_descripcion_se_avisa_antes_de_apretar_crear(client, crear_usuario):
+    """
+    El alta lo rechaza igual —lo controla el service y lo garantiza un índice
+    único—, pero enterarse recién con el error obliga a volver a un campo que
+    quedó abajo del formulario.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    html = client.get("/productos").text
+
+    assert "duplicadoExacto()" in html
+    assert "en esta categoría y proveedor" in html
+
+    js = _js_de("/productos")
+    # Solo con los dos elegidos: la lista se acota con ellos, y sin ellos un
+    # nombre repetido en otra categoría no es ningún choque.
+    assert "!this.form.categoria_id || !this.form.proveedor_id" in js
 
 
 def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario):
@@ -1110,7 +1686,7 @@ def _local(db, crear_usuario, activo=True):
     from app.services import puntos_de_venta as servicio
 
     autor = crear_usuario("cm_local", ROL_CUENTA_MAESTRA)
-    punto = servicio.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "1234")
+    punto = servicio.crear_punto(db, autor, "Patio Olmos", TipoPuntoVenta.LOCAL, "PO")
     if not activo:
         servicio.cambiar_estado(db, autor, punto.id, activo=False)
     return punto
@@ -1422,3 +1998,191 @@ def test_el_error_de_login_se_muestra_en_el_formulario_y_no_como_toast(client):
 
     assert "this.error = e.message" in html
     assert "window.toast(e.message" not in html
+
+
+def test_ningun_desactivar_ejecuta_sin_confirmar(client, crear_usuario):
+    """
+    Toda baja pide confirmación antes de ejecutarse.
+
+    En /productos el botón llamaba derecho a `cambiarEstado(...)`: un clic al
+    lado de "Producto", en una tabla donde cada fila es una variante, y el
+    producto entero quedaba desactivado con todas sus variantes.
+
+    Se comprueba sobre el HTML porque es donde está el cableado: el botón
+    tiene que abrir el diálogo, no disparar la acción.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    # (pantalla, expresión que NO puede estar en un botón de desactivar)
+    pantallas = {
+        "/productos": "cambiarEstado(v.producto, false)",
+        "/usuarios": "cambiarEstado(u, false)",
+        "/dispositivos": "cambiarEstado(d, false)",
+        "/roles": "cambiarEstado(rol, false)",
+        "/puntos-de-venta": "cambiarEstado(p, false",
+    }
+
+    for url, ejecucion_directa in pantallas.items():
+        html = client.get(url).text
+        assert ejecucion_directa not in html, f"{url} desactiva sin confirmar"
+        # Y el diálogo está en la página para poder confirmar.
+        assert 'role="dialog"' in html and "Cancelar" in html, f"{url} no tiene el diálogo"
+
+
+def test_las_bajas_usan_el_mismo_componente_de_confirmacion(client, crear_usuario):
+    """
+    El diálogo estaba copiado en tres pantallas con diferencias que nadie
+    decidió (`rounded-[20px]` contra `rounded-input`, `p-8` contra `p-6`), y
+    dos pantallas no lo tenían. Ahora sale todo de un macro.
+
+    Se verifica por el `aria-labelledby` que genera el macro, que ninguna
+    copia a mano tenía.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url, estado in (
+        ("/productos", "confirmacion"),
+        ("/usuarios", "confirmacion"),
+        ("/dispositivos", "confirmacion"),
+        ("/roles", "confirmacion"),
+        ("/puntos-de-venta", "baja"),
+        ("/categorias", "confirmacion"),
+    ):
+        html = client.get(url).text
+        assert f'aria-labelledby="titulo-{estado}"' in html, f"{url} no usa el macro"
+
+
+def test_ninguna_pantalla_usa_los_dialogos_del_navegador(client, crear_usuario):
+    """
+    Ni `confirm()`, ni `alert()`, ni `prompt()`: todos se ven como un cartel
+    de Chrome en vez del sistema, no se pueden estilar y no dan lugar a
+    explicar la consecuencia de lo que se está por hacer.
+
+    Los tenían `/dispositivos` (dar de baja un equipo), el cambio masivo de
+    dólar y el guardado del árbol de permisos. Ahora todos usan
+    `components/modal_confirmacion.html`.
+    """
+    import pathlib
+    import re
+
+    js = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
+
+    # Se ignoran las menciones dentro de comentarios, que explican por qué se
+    # sacaron: lo que se busca es la LLAMADA.
+    nativo = re.compile(r"(?<![a-zA-Z.`])(confirm|alert|prompt)\s*\(")
+    culpables = {}
+    for archivo in js.glob("*.js"):
+        codigo = "\n".join(
+            linea for linea in archivo.read_text().split("\n")
+            if not linea.lstrip().startswith(("*", "//", "/*"))
+        )
+        hallazgos = nativo.findall(codigo)
+        if hallazgos:
+            culpables[archivo.name] = hallazgos
+
+    assert not culpables, f"diálogos nativos del navegador: {culpables}"
+
+
+def test_los_modales_no_se_cierran_al_clickear_afuera(client, crear_usuario):
+    """
+    Un clic al costado de un alta cerraba el modal y se llevaba todo lo
+    cargado. Ahora se sale por la X, por Cancelar o con Escape.
+
+    El test mira el HTML SERVIDO y no las plantillas —de eso se ocupa
+    `test_ningun_modal_se_cierra_al_clickear_el_velo`— porque acá interesa la
+    otra mitad del trato: sacar el clic afuera no puede dejar un modal sin
+    salida. Cada pantalla con modales tiene que seguir ofreciendo la X o el
+    botón Cancelar.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url in ("/productos", "/usuarios", "/proveedores", "/roles",
+                "/dispositivos", "/puntos-de-venta", "/categorias"):
+        html = client.get(url).text
+        assert "@click.self" not in html, f"{url} cierra el modal al clickear el velo"
+        assert 'aria-label="Cerrar"' in html or "Cancelar" in html, (
+            f"{url} quedó con un modal sin forma de salir"
+        )
+
+
+def test_los_listados_arrancan_mostrando_solo_los_activos(client, crear_usuario):
+    """
+    Lo dado de baja no ensucia la pantalla del día a día: se ve apagando el
+    switch, pero no de entrada. En /dispositivos la diferencia es enorme —de
+    36 filas cargadas, 4 están activas—.
+
+    El filtro es el string 'true' y no un booleano: así entra sin cambios en
+    el bucle que arma los query params de cada pantalla, que saltea los
+    vacíos y manda el resto tal cual.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+        html = client.get(url).text
+        assert "activo: 'true'" in html or "activo: 'true'" in _js_de(url), (
+            f"{url} no arranca filtrado por activos"
+        )
+
+
+def _js_de(url: str) -> str:
+    """El JS de cada pantalla, donde vive el estado inicial de los filtros."""
+    import pathlib
+
+    archivos = {
+        "/productos": "productos.js",
+        "/usuarios": "usuarios.js",
+        "/puntos-de-venta": "puntos_de_venta.js",
+        "/dispositivos": "dispositivos.js",
+        "/roles": "roles.js",
+        "/proveedores": "proveedores.js",
+    }
+    base = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
+    return (base / archivos[url]).read_text()
+
+
+def test_el_switch_solo_activos_esta_en_los_cinco_listados(client, crear_usuario):
+    """
+    Mismo control en todos: un `role="switch"` del macro `switch_activos`.
+    Antes eran tres selects distintos —y dos pantallas sin nada—, y ninguno
+    arrancaba filtrado.
+    """
+    crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
+
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+        html = client.get(url).text
+        assert 'role="switch"' in html, f"{url} no tiene el switch"
+        assert "Solo activos" in html, f"{url} no tiene el label"
+        # `ml-auto` es lo que lo alinea contra la derecha de la fila.
+        assert "ml-auto" in html, f"{url}: el switch no está alineado a la derecha"
+        # Y el select viejo de estado no puede haber quedado al lado.
+        assert 'x-model="filtros.activo"' not in html, f"{url} conserva el select viejo"
+
+
+def test_limpiar_filtros_no_muestra_los_inactivos(client, crear_usuario):
+    """
+    "Limpiar filtros" vuelve al estado de entrada, no a "mostrar todo": si
+    reseteara `activo` a vacío, limpiar traería los dados de baja, que es lo
+    contrario de lo que espera quien limpia para volver a empezar.
+    """
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+        js = _js_de(url)
+        limpiar = js[js.index("limpiar()"):]
+        limpiar = limpiar[:limpiar.index("cargar()")]
+        assert "activo: 'true'" in limpiar, f"{url}: limpiar() apaga el filtro de activos"
+
+
+def test_proveedores_arranca_en_activo_con_su_propio_select(client, crear_usuario):
+    """
+    Proveedores no lleva el switch: tiene TRES estados (activo, desactivado,
+    inhabilitado) y un sí/no no los distingue. Conserva su select, pero
+    arranca en 'activo' para que la pantalla abra igual que las demás.
+    """
+    js = _js_de("/proveedores")
+    assert "estado: 'activo'" in js
+    limpiar = js[js.index("limpiar()"):]
+    assert "estado: 'activo'" in limpiar[:limpiar.index("cargar()")]

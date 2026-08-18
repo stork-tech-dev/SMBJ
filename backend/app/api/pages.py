@@ -22,6 +22,7 @@ from app.core.permisos import (
     resolver_permiso,
 )
 from app.core.templates import templates
+from app.models.categoria import NIVEL_MAXIMO
 from app.services import configuracion as servicio_configuracion
 from app.services import roles as servicio_roles
 from app.services import usuarios as servicio_usuarios
@@ -198,6 +199,15 @@ def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
         "menu": menu,
         "menu_pie": menu_pie,
         "usuario_actual": actual,
+        # Para los campos que solo decide la Cuenta Maestra (hoy el stock
+        # infinito del producto). Va acá y no en cada ruta para que la
+        # pregunta se escriba una sola vez (Principio 2), y sale de la misma
+        # `_es_maestra()` que filtra el sidebar: una sola tabla de verdades.
+        #
+        # No es la barrera de seguridad —esconder un campo no impide mandarlo
+        # por la API—: esa vive en el service, que es por donde pasan todos
+        # los clientes.
+        "es_maestra": _es_maestra(actual),
         # Define qué logotipo se muestra ('S' Soleil / 'M' Mallorca).
         "letra_empresa": servicio_configuracion.letra_empresa(db),
         **extra,
@@ -456,7 +466,17 @@ async def productos(
     return templates.TemplateResponse(
         request,
         "pages/productos/listado.html",
-        contexto_base(request, db, usuario, titulo="Productos", ruta_activa="/productos"),
+        contexto_base(
+            request,
+            db,
+            usuario,
+            titulo="Productos",
+            ruta_activa="/productos",
+            # Cuántos selects de categoría dibuja el formulario: uno por nivel
+            # posible del árbol. Sale del modelo y no de un 5 escrito en la
+            # plantilla, que quedaría corto el día que el árbol admita más.
+            nivel_maximo=NIVEL_MAXIMO,
+        ),
     )
 
 

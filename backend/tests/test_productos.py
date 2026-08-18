@@ -9,11 +9,13 @@ probar es que ningún camino lo deje desactualizado.
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
-from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR
+from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR, Modulo
 from app.models.configuracion import ConfiguracionSistema
-from app.models.producto import Estacionalidad
+from app.models.producto import Temporada, Variante
 from app.models.proveedor import EstadoProveedor
+from app.schemas.productos import ProductoCrear
 from app.services import categorias as servicio_categorias
 from app.services import productos as servicio
 from app.services import proveedores as servicio_proveedores
@@ -79,13 +81,15 @@ def test_el_sku_lo_genera_el_sistema(db, producto):
 
 def test_los_sku_no_se_repiten(db, autor, config, categoria, proveedor):
     """La secuencia entrega un correlativo distinto a cada alta."""
+    # Cada uno con su descripción: dos productos del mismo proveedor y
+    # categoría no pueden llamarse igual.
     skus = {
         servicio.crear_producto(
             db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"),
-            descripcion="Producto de prueba",
+            descripcion=f"Producto de prueba {n}",
         ).sku
-        for _ in range(20)
+        for n in range(20)
     }
     assert len(skus) == 20
 
@@ -737,6 +741,43 @@ def test_buscar_por_sku_trae_todas_las_variantes_del_producto(db, catalogo):
     assert {f.sufijo for f in filas} == {"R", "N", "V"}
 
 
+def test_un_sku_que_el_validador_lee_como_codigo_igual_encuentra_el_producto(
+    db, autor, config, categoria, proveedor
+):
+    """
+    El SKU y el código de etiqueta comparten alfabeto, así que un SKU puede
+    pasar la validación del dígito verificador por casualidad: le pasa a 18
+    de cada 199 (`AA009`, `AA017`, `AA025`…).
+
+    Cuando el código y el texto eran excluyentes, esos SKU se leían como
+    etiqueta: se les sacaba el último carácter y se comparaba contra un
+    código que no existe. Tipear `AA009` no devolvía NADA, y nada explicaba
+    por qué — el de al lado, `AA010`, funcionaba bien.
+    """
+    from app.core.codigos import armar_codigo_completo, codigo_es_valido, digito_verificador
+
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Anillo de plata",
+    )
+
+    # El SKU sale de una secuencia, así que se fuerza uno de los que caen en
+    # la trampa. El código de su BASE se rearma con los mismos helpers que
+    # usa el servicio, para que la fila quede coherente y no fabricada.
+    p.sku = "AA009"
+    base = p.variantes[0]
+    base.codigo_completo = armar_codigo_completo("S", p.sku, None)
+    base.verificador = digito_verificador(base.codigo_completo)
+    db.flush()
+
+    assert codigo_es_valido("AA009"), "el SKU elegido ya no cae en la trampa"
+
+    filas, total = servicio.listar_variantes(db, busqueda="AA009")
+
+    assert total == 1, "el SKU tiene que encontrar su producto igual"
+    assert filas[0].producto.sku == "AA009"
+
+
 def test_buscar_por_descripcion_sigue_funcionando(db, catalogo):
     filas, total = servicio.listar_variantes(db, busqueda="luces")
 
@@ -790,15 +831,25 @@ def test_el_listado_va_alfabetico_por_descripcion(db, autor, config, categoria, 
     castellano— y no este código; compararlo contra el `sorted()` de Python,
     que ordena por punto de código y la manda al final de todo, probaría una
     diferencia entre dos algoritmos ajenos en vez de nuestro ORDER BY.
+
+    Las minúsculas se fuerzan sobre el modelo porque `crear_producto` ahora
+    capitaliza la inicial. Es el estado real de las filas creadas antes de la
+    migración 0015 y de cualquier escritura que no pase por el servicio: el
+    `lower()` del ORDER BY las tiene que seguir ordenando bien.
     """
     for nombre in ["zapato", "Alpargata", "alfajor", "Mocasin"]:
-        servicio.crear_producto(
+        creado = servicio.crear_producto(
             db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
             precio_usd=Decimal("10"), descripcion=nombre,
         )
+        creado.descripcion = nombre
+    # Sin acentos y distinta de las cuatro de arriba: dos productos del
+    # mismo proveedor y categoría no pueden llamarse igual, y la
+    # comparación que lo controla ignora las tildes ("Mocasin" y "Mocasín"
+    # son el mismo nombre escrito de dos formas).
     multi = servicio.crear_producto(
         db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
-        precio_usd=Decimal("10"), descripcion="Mocasín",
+        precio_usd=Decimal("10"), descripcion="Sandalia",
     )
     for sufijo in ("V", "R", "N"):
         servicio.agregar_variante(db, autor, multi.id, sufijo=sufijo, descripcion_sufijo=f"Color {sufijo}")
@@ -840,6 +891,434 @@ def test_no_se_puede_dejar_sin_descripcion_al_editar(db, autor, producto):
 
     db.refresh(producto)
     assert producto.descripcion == "Zapatilla running"
+
+
+# ============================================================================
+# DESCRIPCIÓN ÚNICA POR CATEGORÍA Y PROVEEDOR
+# ============================================================================
+
+
+def _crear(db, autor, categoria, proveedor, descripcion):
+    return servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion=descripcion,
+    )
+
+
+def test_no_se_repite_la_descripcion_en_el_mismo_proveedor_y_categoria(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Mirando el catálogo serían la misma fila cargada dos veces: no queda
+    ningún dato en pantalla para distinguirlas. Lo que corresponde cuando el
+    artículo viene en colores o talles es una variante del que ya existe.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+
+def test_el_choque_de_descripcion_nombra_el_producto_con_el_que_choca(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Sin el SKU en el mensaje hay que salir a buscar cuál es el que ya
+    estaba, y el formulario acaba de decir que no se puede guardar.
+    """
+    ya_estaba = _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+    with pytest.raises(ReglaDeNegocio, match=ya_estaba.sku):
+        _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+
+def test_la_descripcion_repetida_se_detecta_sin_tildes_ni_mayusculas(
+    db, autor, config, categoria, proveedor
+):
+    """
+    "Camión rojo" y "camion ROJO" no se distinguen mirando la tabla: son el
+    mismo duplicado escrito de dos formas.
+    """
+    _crear(db, autor, categoria, proveedor, "Camión rojo")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        _crear(db, autor, categoria, proveedor, "camion ROJO")
+
+
+def test_la_misma_descripcion_en_otra_categoria_se_permite(
+    db, autor, config, proveedor, arbol
+):
+    """
+    El choque es dentro del mismo par categoría/proveedor. Dos categorías
+    distintas pueden tener cada una su "Clásico"; ahí lo que distingue es
+    justamente dónde está colgado.
+    """
+    _, _, deportivas, urbanas, _ = arbol
+
+    _crear(db, autor, deportivas, proveedor, "Modelo clásico")
+    otro = _crear(db, autor, urbanas, proveedor, "Modelo clásico")
+
+    assert otro.id
+
+
+def test_la_misma_descripcion_en_otro_proveedor_se_permite(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Dos proveedores pueden vender el mismo artículo, y cada uno tiene su
+    precio en dólares y su cotización: son dos productos distintos.
+    """
+    otro_proveedor = servicio_proveedores.crear_proveedor(
+        db, autor, nombre="Distribuidora Sur", dolar_actual=Decimal("1200")
+    )
+
+    _crear(db, autor, categoria, proveedor, "Zapatilla running")
+    otro = _crear(db, autor, categoria, otro_proveedor, "Zapatilla running")
+
+    assert otro.id
+
+
+def test_la_categoria_del_choque_es_exacta_y_no_la_rama(
+    db, autor, config, proveedor, arbol
+):
+    """
+    A diferencia del FILTRO del listado, que sí incluye la descendencia: dos
+    productos iguales en categorías padre e hija son un problema de
+    clasificación, no una fila duplicada. El índice único de la base compara
+    `categoria_id` a secas, así que el service tiene que hacer lo mismo o
+    rechazaría cosas que la base acepta.
+    """
+    _, zapatillas, deportivas, _, _ = arbol
+
+    _crear(db, autor, zapatillas, proveedor, "Modelo clásico")
+    otro = _crear(db, autor, deportivas, proveedor, "Modelo clásico")
+
+    assert otro.id
+
+
+def test_un_producto_inactivo_sigue_ocupando_su_descripcion(
+    db, autor, config, categoria, proveedor
+):
+    """
+    La baja es lógica: el producto no se borra y se puede volver a activar.
+    Si mientras tanto se reusara el nombre, al reactivarlo quedarían las dos
+    filas idénticas.
+    """
+    viejo = _crear(db, autor, categoria, proveedor, "Zapatilla running")
+    servicio.cambiar_estado_producto(db, autor, viejo.id, activo=False)
+
+    with pytest.raises(ReglaDeNegocio, match="inactivo"):
+        _crear(db, autor, categoria, proveedor, "Zapatilla running")
+
+
+def test_editar_un_producto_no_choca_consigo_mismo(db, autor, producto):
+    """
+    Guardar el formulario sin tocar la descripción manda la misma que ya
+    tiene: si se comparara contra todo el catálogo sin excluirse, ninguna
+    edición se podría guardar.
+    """
+    servicio.editar_producto(db, autor, producto.id, descripcion="Zapatilla running")
+
+    db.refresh(producto)
+    assert producto.descripcion == "Zapatilla running"
+
+
+def test_renombrar_a_una_descripcion_ya_usada_se_rechaza(
+    db, autor, config, categoria, proveedor, producto
+):
+    """La edición no puede colarse por donde el alta no deja pasar."""
+    otro = _crear(db, autor, categoria, proveedor, "Zapatilla urbana")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        servicio.editar_producto(db, autor, otro.id, descripcion="Zapatilla running")
+
+    db.refresh(otro)
+    assert otro.descripcion == "Zapatilla urbana"
+
+
+def test_mover_de_categoria_hasta_chocar_se_rechaza(db, autor, config, proveedor, arbol):
+    """
+    El choque puede aparecer sin tocar la descripción: alcanza con mover el
+    producto a la categoría donde ya hay uno que se llama igual. Por eso la
+    validación mira cómo va a quedar y no cómo está.
+    """
+    _, _, deportivas, urbanas, _ = arbol
+
+    _crear(db, autor, deportivas, proveedor, "Modelo clásico")
+    mudo = _crear(db, autor, urbanas, proveedor, "Modelo clásico")
+
+    with pytest.raises(ReglaDeNegocio, match="Ya existe un producto"):
+        servicio.editar_producto(db, autor, mudo.id, categoria_id=deportivas.id)
+
+    db.refresh(mudo)
+    assert mudo.categoria_id == urbanas.id
+
+
+def test_el_alta_duplicada_por_la_api_devuelve_409(
+    client, db, autor, config, categoria, proveedor, login
+):
+    """
+    El formulario muestra el `detail` tal cual en un toast: tiene que decir
+    qué pasó, no un error de integridad de Postgres.
+    """
+    headers = login("admin")
+    cuerpo = {
+        "categoria_id": categoria.id,
+        "proveedor_id": proveedor.id,
+        "precio_usd": "10",
+        "descripcion": "Zapatilla running",
+    }
+
+    assert client.post("/api/v1/productos", json=cuerpo, headers=headers).status_code == 201
+
+    resp = client.post("/api/v1/productos", json=cuerpo, headers=headers)
+    assert resp.status_code == 409
+    assert "Ya existe un producto" in resp.json()["detail"]
+
+
+def test_la_base_tambien_impide_el_duplicado(db, autor, config, categoria, proveedor):
+    """
+    El índice único es la garantía; el control del service existe para dar
+    un mensaje entendible. Si solo estuviera el service, cualquier camino que
+    no pase por él —una carga masiva, un script— metería el duplicado.
+    """
+    from sqlalchemy import text as sa_text
+
+    _crear(db, autor, categoria, proveedor, "Zapatilla running")
+    db.flush()
+
+    indices = db.execute(
+        sa_text("SELECT indexdef FROM pg_indexes WHERE tablename = 'productos'")
+    ).scalars().all()
+
+    unico = [i for i in indices if "uq_productos_descripcion_por_categoria_y_proveedor" in i]
+    assert unico, "falta el índice único de la migración 0020"
+    # La MISMA expresión que compara el service: si dejaran de coincidir, la
+    # base aceptaría lo que el service rechaza (o al revés).
+    assert "lower(translate" in unico[0]
+    assert "categoria_id" in unico[0] and "proveedor_id" in unico[0]
+
+
+# ============================================================================
+# DESCRIPCIONES PARECIDAS (buscador del formulario de alta)
+# ============================================================================
+
+
+def test_los_parecidos_necesitan_diez_caracteres(db, autor, config, categoria, proveedor):
+    """
+    Con menos, cualquier texto corto coincide con medio catálogo y el
+    desplegable es ruido justo cuando todavía no se terminó de escribir.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla running negra")
+    db.flush()
+
+    assert servicio.buscar_similares(db, descripcion="Zapatilla") == []
+    assert servicio.buscar_similares(db, descripcion="Zapatilla r")
+
+
+def test_los_parecidos_encuentran_por_palabras_y_no_por_la_frase_entera(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Es el punto del buscador: mientras se escribe, lo tipeado casi nunca es
+    un fragmento literal de lo ya cargado. Un ILIKE sobre la frase completa
+    —lo que hace el filtro del listado— no encontraría nada.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla Nike Air Max 90")
+    db.flush()
+
+    # Las mismas palabras, en otro orden y sin ser subcadena de la guardada.
+    assert len(servicio.buscar_similares(db, descripcion="nike zapatilla air")) == 1
+
+
+def test_los_parecidos_exigen_todas_las_palabras(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Con que alcanzara una sola, escribir "Nike" traería toda la marca y la
+    lista dejaría de decir nada.
+    """
+    _crear(db, autor, categoria, proveedor, "Zapatilla Nike Air Max 90")
+    _crear(db, autor, categoria, proveedor, "Campera Nike cortaviento")
+    db.flush()
+
+    encontrados = servicio.buscar_similares(db, descripcion="zapatilla nike")
+    assert [p.descripcion for p in encontrados] == ["Zapatilla Nike Air Max 90"]
+
+
+def test_los_parecidos_ignoran_las_palabras_de_menos_de_tres_letras(
+    db, autor, config, categoria, proveedor
+):
+    """Palabras como "de", "y" o "18k" aparecen en cualquier lado."""
+    _crear(db, autor, categoria, proveedor, "Cadena plata 925 eslabón")
+    db.flush()
+
+    assert servicio.buscar_similares(db, descripcion="cadena de plata")
+
+
+def test_los_parecidos_ignoran_las_tildes(db, autor, config, categoria, proveedor):
+    """Se tipea rápido y sin tildes; el catálogo está cargado con ellas."""
+    _crear(db, autor, categoria, proveedor, "Camión de bomberos rojo")
+    db.flush()
+
+    assert servicio.buscar_similares(db, descripcion="camion bomberos")
+
+
+def test_los_parecidos_se_acotan_al_proveedor_y_la_categoria(
+    db, autor, config, proveedor, arbol
+):
+    """
+    Es lo que hace que la lista sirva: son los productos con los que el que
+    se está cargando podría chocar, no todos los que se llaman parecido.
+    """
+    _, _, deportivas, urbanas, _ = arbol
+    otro_proveedor = servicio_proveedores.crear_proveedor(
+        db, autor, nombre="Distribuidora Sur", dolar_actual=Decimal("1200")
+    )
+
+    _crear(db, autor, deportivas, proveedor, "Zapatilla running negra")
+    _crear(db, autor, urbanas, proveedor, "Zapatilla running blanca")
+    _crear(db, autor, deportivas, otro_proveedor, "Zapatilla running gris")
+    db.flush()
+
+    encontrados = servicio.buscar_similares(
+        db, descripcion="zapatilla running",
+        categoria_id=deportivas.id, proveedor_id=proveedor.id,
+    )
+    assert [p.descripcion for p in encontrados] == ["Zapatilla running negra"]
+
+
+def test_los_parecidos_incluyen_la_descendencia_de_la_categoria(
+    db, autor, config, proveedor, arbol
+):
+    """
+    Los productos cuelgan de las hojas: elegir "Zapatillas" en el formulario
+    tiene que ofrecer lo que está en "Deportivas", igual que el filtro del
+    listado.
+    """
+    _, zapatillas, deportivas, _, _ = arbol
+
+    _crear(db, autor, deportivas, proveedor, "Zapatilla running negra")
+    db.flush()
+
+    assert servicio.buscar_similares(
+        db, descripcion="zapatilla running", categoria_id=zapatillas.id
+    )
+
+
+def test_los_parecidos_incluyen_los_inactivos(db, autor, config, categoria, proveedor):
+    """
+    Un producto dado de baja sigue ocupando su descripción, así que sigue
+    siendo un duplicado. La pantalla lo muestra marcado como inactivo.
+    """
+    viejo = _crear(db, autor, categoria, proveedor, "Zapatilla running negra")
+    servicio.cambiar_estado_producto(db, autor, viejo.id, activo=False)
+    db.flush()
+
+    encontrados = servicio.buscar_similares(db, descripcion="zapatilla running")
+    assert [p.id for p in encontrados] == [viejo.id]
+
+
+def test_los_parecidos_por_la_api_no_se_confunden_con_un_id(
+    client, db, autor, config, categoria, proveedor, login
+):
+    """
+    `/similares` tiene que estar declarado ANTES de `/{producto_id}`: si no,
+    FastAPI lee "similares" como un id y devuelve 422.
+    """
+    headers = login("admin")
+    _crear(db, autor, categoria, proveedor, "Zapatilla running negra")
+    db.flush()
+
+    resp = client.get(
+        "/api/v1/productos/similares",
+        params={"descripcion": "zapatilla running", "proveedor_id": proveedor.id},
+        headers=headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert [p["descripcion"] for p in resp.json()] == ["Zapatilla running negra"]
+    # Lo mínimo para reconocerlo: sin variantes, fotos ni precios.
+    assert set(resp.json()[0]) == {"id", "sku", "descripcion", "activo"}
+
+
+# ============================================================================
+# CAPITALIZACIÓN DE LA DESCRIPCIÓN
+# ============================================================================
+
+
+def test_la_descripcion_se_guarda_con_la_inicial_en_mayuscula(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Se normaliza al GUARDAR y no al mostrar, así queda igual en el listado,
+    en la ficha, en la edición y en cualquier pantalla que se agregue después,
+    sin que ninguna tenga que acordarse de formatearla.
+    """
+    creado = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="anillo de plata",
+    )
+
+    assert creado.descripcion == "Anillo de plata"
+
+
+def test_la_capitalizacion_no_toca_el_resto_del_texto(
+    db, autor, config, categoria, proveedor
+):
+    """
+    El error fácil acá es usar `.capitalize()` o `.title()`, que bajan todo
+    lo que sigue: "PLATA" y "18K" son parte del dato y tienen que sobrevivir.
+    """
+    creado = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="anillo de PLATA 18K",
+    )
+
+    assert creado.descripcion == "Anillo de PLATA 18K"
+
+
+def test_una_descripcion_que_arranca_con_numero_queda_igual(
+    db, autor, config, categoria, proveedor
+):
+    """`upper()` sobre un dígito no hace nada: no hay nada que romper."""
+    creado = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="925 plata cadena",
+    )
+
+    assert creado.descripcion == "925 plata cadena"
+
+
+def test_la_edicion_tambien_capitaliza(db, autor, producto):
+    """
+    Si solo lo hiciera el alta, la primera edición desharía en un producto lo
+    que la migración 0015 arregló en todos.
+    """
+    servicio.editar_producto(db, autor, producto.id, descripcion="zapatilla nueva")
+
+    db.refresh(producto)
+    assert producto.descripcion == "Zapatilla nueva"
+
+
+def test_capitalizar_no_rompe_la_busqueda_en_minuscula(
+    db, autor, config, categoria, proveedor
+):
+    """
+    Se busca tipeando en minúscula. El filtro usa `ilike`, así que la
+    mayúscula guardada no lo puede afectar — pero es lo primero que notaría
+    un vendedor si se rompiera.
+    """
+    servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="anillo de plata",
+    )
+    db.flush()
+
+    filas, total = servicio.listar_variantes(db, busqueda="anillo")
+
+    assert total == 1
+    assert filas[0].producto.descripcion == "Anillo de plata"
 
 
 def test_existe_el_indice_del_orden_alfabetico(db):
@@ -938,7 +1417,7 @@ def test_editar_una_variante_queda_auditado(db, autor, producto):
     servicio.editar_variante(db, autor, variante.id, descripcion_sufijo="Rojo")
 
     acciones = db.execute(
-        sa_select(Auditoria.accion).where(Auditoria.entidad == "variantes")
+        sa_select(Auditoria.accion).where(Auditoria.entidad == "producto_variantes")
     ).scalars().all()
     assert "variante.editar" in acciones
 
@@ -951,6 +1430,165 @@ def test_el_listado_devuelve_el_nombre_de_la_variante(db, autor, producto):
     filas, _ = servicio.listar_variantes(db)
 
     assert [f.descripcion_sufijo for f in filas] == ["Rojo"]
+
+
+# ============================================================================
+# SKU DEL PROVEEDOR POR VARIANTE
+# ============================================================================
+#
+# Misma regla que el precio: el propio manda sobre el del producto. Existe
+# porque el proveedor no numera por producto sino por color y por talle.
+
+
+@pytest.fixture
+def producto_con_sku_prov(db, autor, config, categoria, proveedor):
+    """Producto cuyo proveedor lo identifica como 'NK-AM90'."""
+    return servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Zapatilla Nike Air Max 90",
+        sku_proveedor="NK-AM90",
+    )
+
+
+def test_el_sku_del_proveedor_propio_manda_sobre_el_del_producto(
+    db, autor, producto_con_sku_prov
+):
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="R", descripcion_sufijo="Rojo",
+        sku_proveedor="NK-AM90-RJ",
+    )
+
+    assert v.sku_proveedor == "NK-AM90-RJ"
+    assert v.tiene_sku_proveedor_propio is True
+    assert v.sku_proveedor_efectivo == "NK-AM90-RJ"
+    # El del producto queda intacto: la variante no lo pisa, lo tapa.
+    assert producto_con_sku_prov.sku_proveedor == "NK-AM90"
+
+
+def test_una_variante_sin_sku_propio_usa_el_del_producto(db, autor, producto_con_sku_prov):
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="N", descripcion_sufijo="Negro"
+    )
+
+    assert v.sku_proveedor is None
+    assert v.tiene_sku_proveedor_propio is False
+    assert v.sku_proveedor_efectivo == "NK-AM90"
+
+
+def test_sin_sku_en_ninguno_de_los_dos_queda_en_nada(db, autor, producto):
+    """
+    El campo es opcional en los dos niveles: hay proveedores que no dan
+    código. La pantalla no muestra la línea en ese caso.
+    """
+    v = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="U", descripcion_sufijo="Único"
+    )
+
+    assert producto.sku_proveedor is None
+    assert v.sku_proveedor_efectivo is None
+
+
+def test_el_sku_de_la_variante_se_normaliza(db, autor, producto_con_sku_prov):
+    """
+    Espacios de más al pegar de una planilla; vacío no es un código, es
+    "usa el del producto".
+    """
+    con_espacios = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="A", descripcion_sufijo="Azul",
+        sku_proveedor="  NK-AM90-AZ  ",
+    )
+    vacio = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="B", descripcion_sufijo="Blanco",
+        sku_proveedor="   ",
+    )
+
+    assert con_espacios.sku_proveedor == "NK-AM90-AZ"
+    assert vacio.sku_proveedor is None
+    assert vacio.sku_proveedor_efectivo == "NK-AM90"
+
+
+def test_vaciar_el_sku_devuelve_la_variante_al_del_producto(db, autor, producto_con_sku_prov):
+    """
+    NULL explícito significa algo concreto —volver al del producto— y por eso
+    hace falta la bandera: sin ella no se distingue de "no lo mandes".
+    """
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="R", descripcion_sufijo="Rojo",
+        sku_proveedor="NK-AM90-RJ",
+    )
+
+    servicio.editar_variante(db, autor, v.id, editar_sku_proveedor=True)
+
+    db.refresh(v)
+    assert v.sku_proveedor is None
+    assert v.sku_proveedor_efectivo == "NK-AM90"
+
+
+def test_no_mandar_el_sku_no_lo_toca(db, autor, producto_con_sku_prov):
+    """Editar la ubicación no puede borrar el código del proveedor."""
+    v = servicio.agregar_variante(
+        db, autor, producto_con_sku_prov.id, sufijo="R", descripcion_sufijo="Rojo",
+        sku_proveedor="NK-AM90-RJ",
+    )
+
+    servicio.editar_variante(db, autor, v.id, ubicacion_deposito="Estante 3")
+
+    db.refresh(v)
+    assert v.sku_proveedor == "NK-AM90-RJ"
+
+
+def test_el_sku_de_la_variante_viaja_por_la_api(
+    client, db, autor, login, producto_con_sku_prov
+):
+    """
+    Cuál de los dos manda lo resuelve el backend: es una regla de negocio, no
+    formato de pantalla (Principio 1).
+    """
+    headers = login("admin")
+    db.flush()
+
+    resp = client.post(
+        f"/api/v1/productos/{producto_con_sku_prov.id}/variantes",
+        json={"sufijo": "R", "descripcion_sufijo": "Rojo",
+              "sku_proveedor": "NK-AM90-RJ"},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    propia = resp.json()
+    assert propia["sku_proveedor"] == "NK-AM90-RJ"
+    assert propia["sku_proveedor_efectivo"] == "NK-AM90-RJ"
+    assert propia["tiene_sku_proveedor_propio"] is True
+
+    resp = client.post(
+        f"/api/v1/productos/{producto_con_sku_prov.id}/variantes",
+        json={"sufijo": "N", "descripcion_sufijo": "Negro"},
+        headers=headers,
+    )
+    heredada = resp.json()
+    assert heredada["sku_proveedor"] is None
+    assert heredada["sku_proveedor_efectivo"] == "NK-AM90"
+    assert heredada["tiene_sku_proveedor_propio"] is False
+
+    # Y el listado, que es el que dibuja la tabla, dice lo mismo.
+    #
+    # Se busca por la descripción y no por el código del proveedor: el
+    # buscador cubre código de etiqueta, SKU y descripción, y el del
+    # proveedor queda fuera a propósito.
+    filas = client.get(
+        "/api/v1/productos/variantes",
+        params={"busqueda": "Zapatilla Nike"},
+        headers=headers,
+    )
+    por_codigo = {f["sufijo"]: f for f in filas.json()["resultados"]}
+    assert por_codigo["R"]["sku_proveedor_efectivo"] == "NK-AM90-RJ"
+    assert por_codigo["N"]["sku_proveedor_efectivo"] == "NK-AM90"
+
+    # Vaciarlo desde la API la devuelve al del producto.
+    resp = client.patch(
+        f"/api/v1/productos/variantes/{propia['id']}",
+        json={"sku_proveedor": None}, headers=headers,
+    )
+    assert resp.json()["sku_proveedor_efectivo"] == "NK-AM90"
 
 
 # ============================================================================
@@ -1084,3 +1722,285 @@ def test_no_se_puede_dejar_un_precio_en_pesos_sin_su_origen(db, variante_con_pre
     with pytest.raises(IntegrityError):
         db.flush()
     db.rollback()
+
+
+# ============================================================================
+# TEMPORADA
+# ============================================================================
+
+
+def test_el_producto_arranca_atemporal(db, producto):
+    """
+    La mayoría del catálogo de una bijouterie no es de temporada, así que el
+    alta no tiene por qué obligar a elegir una. El default lo pone el modelo
+    y también la columna (`server_default`): una fila insertada por fuera del
+    service tampoco puede quedar sin temporada.
+    """
+    assert producto.temporada is Temporada.ATEMPORAL
+
+
+def test_la_temporada_son_tres_y_no_las_cuatro_estaciones():
+    """
+    El rubro compra por temporada, no por estación: repone en Otoño-Invierno
+    y en Primavera-Verano. Antes eran cinco valores sueltos, que obligaban a
+    elegir entre dos que significan lo mismo —¿un buzo es de otoño o de
+    invierno?— y a filtrar dos veces para ver una temporada entera.
+
+    Las estaciones viejas ya no existen: las rechazan las dos puertas, el
+    enum del modelo y el `pattern` del schema, así que ni el service ni la
+    API las dejan entrar.
+    """
+    assert [t.value for t in Temporada] == [
+        "atemporal", "otoño_invierno", "primavera_verano",
+    ]
+
+    for estacion_vieja in ("permanente", "verano", "invierno", "otoño", "primavera"):
+        with pytest.raises(ValueError):
+            Temporada(estacion_vieja)
+        with pytest.raises(ValidationError):
+            ProductoCrear(
+                categoria_id=1, proveedor_id=1, precio_usd=Decimal("10"),
+                descripcion="Producto de prueba", temporada=estacion_vieja,
+            )
+
+
+def test_el_filtro_por_temporada_no_mezcla(db, autor, config, categoria, proveedor):
+    """
+    Es el filtro del listado: elegir una temporada tiene que devolver solo
+    esa, y no arrastrar lo atemporal por ser el valor por defecto.
+    """
+    de_invierno = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Buzo de frisa",
+        temporada="otoño_invierno",
+    )
+    servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Anillo de plata",
+    )
+
+    filas, total = servicio.listar_productos(db, temporada="otoño_invierno")
+
+    assert total == 1
+    assert filas[0].id == de_invierno.id
+
+
+# ============================================================================
+# STOCK INFINITO — solo Cuenta Maestra
+# ============================================================================
+
+
+def test_un_vendedor_no_puede_prender_el_stock_infinito(db, autor, config, categoria,
+                                                        proveedor, crear_usuario):
+    """
+    Es el interruptor que hace que el producto NO descuente stock al vender:
+    prendido por error, el sistema deja de saber cuánto hay de ese artículo y
+    nada avisa. Lo decide la Cuenta Maestra.
+
+    La regla vive en el service y no en la pantalla: esconder el checkbox no
+    impide llamar a la API sin la pantalla (Principio 1).
+    """
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    with pytest.raises(servicio.SinPermiso):
+        servicio.crear_producto(
+            db, vendedor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+            precio_usd=Decimal("10"), descripcion="Producto de prueba",
+            stock_infinito=True,
+        )
+
+
+def test_un_vendedor_puede_dar_de_alta_sin_stock_infinito(db, config, categoria,
+                                                          proveedor, crear_usuario):
+    """
+    Lo que se rechaza es PRENDERLO, no que el campo viaje: el formulario
+    manda el producto entero en cada guardado, y `stock_infinito=False` en un
+    alta no cambia nada respecto del valor por defecto.
+    """
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    p = servicio.crear_producto(
+        db, vendedor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=False,
+    )
+
+    assert p.stock_infinito is False
+
+
+def test_un_vendedor_edita_un_producto_con_stock_infinito_sin_apagarlo(
+    db, autor, config, categoria, proveedor, crear_usuario
+):
+    """
+    El caso que hace falta que funcione: el formulario reenvía
+    `stock_infinito` tal como vino aunque el checkbox no esté en pantalla.
+    Rechazar la mera presencia del campo dejaría a un vendedor sin poder
+    guardar NINGUNA edición de un producto con stock infinito.
+    """
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=True,
+    )
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    servicio.editar_producto(
+        db, vendedor, p.id, descripcion="Otra descripción", stock_infinito=True
+    )
+
+    assert p.descripcion == "Otra descripción"
+    assert p.stock_infinito is True
+
+
+def test_un_vendedor_tampoco_puede_apagar_el_stock_infinito(db, autor, config, categoria,
+                                                            proveedor, crear_usuario):
+    """Apagarlo también es decidir sobre el descuento de stock."""
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=True,
+    )
+    vendedor = crear_usuario("vende", ROL_VENDEDOR)
+
+    with pytest.raises(servicio.SinPermiso):
+        servicio.editar_producto(db, vendedor, p.id, stock_infinito=False)
+
+    assert p.stock_infinito is True
+
+
+def test_la_cuenta_maestra_si_prende_el_stock_infinito(db, autor, config, categoria,
+                                                       proveedor):
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+        stock_infinito=True,
+    )
+    assert p.stock_infinito is True
+
+    servicio.editar_producto(db, autor, p.id, stock_infinito=False)
+    assert p.stock_infinito is False
+
+
+def test_la_api_responde_403_y_no_deja_la_edicion_a_medias(
+    client, db, autor, config, categoria, proveedor, crear_usuario, roles,
+    dar_permiso, login
+):
+    """
+    403 y no un descarte silencioso: quien lo intenta se entera. Y la
+    validación corre ANTES de tocar el producto, así que el resto de los
+    campos del mismo pedido tampoco se guardan.
+
+    El vendedor del test tiene `productos.editar`: lo que se prueba es que el
+    permiso de editar productos no alcanza para este campo, y no que le falte
+    el permiso de entrada —eso lo frenaría antes y el test no diría nada—.
+    """
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de prueba",
+    )
+    crear_usuario("vende", ROL_VENDEDOR)
+    dar_permiso(
+        rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.PRODUCTOS, ver=True, editar=True
+    )
+    db.commit()
+
+    resp = client.put(
+        f"/api/v1/productos/{p.id}",
+        json={"descripcion": "Cambiada", "stock_infinito": True},
+        headers=login("vende"),
+    )
+
+    assert resp.status_code == 403
+    assert "Cuenta Maestra" in resp.json()["detail"]
+
+    db.refresh(p)
+    assert p.stock_infinito is False
+    assert p.descripcion == "Producto de prueba", "la edición se guardó a medias"
+
+
+# ============================================================================
+# NOMBRE DE LA TABLA
+# ============================================================================
+
+
+def test_la_tabla_de_variantes_se_llama_producto_variantes(db, producto):
+    """
+    `variantes` a secas no decía de qué. El prefijo la agrupa con su
+    producto, igual que `producto_fotos`, y en plural como las otras 17
+    tablas del esquema.
+
+    Se verifica contra la base y no solo contra el `__tablename__`: si la
+    migración renombrara algo distinto de lo que dice el modelo, la clase
+    apuntaría a una tabla que no existe y esto lo agarra.
+
+    La clase Python sigue siendo `Variante` y la ruta `/productos/variantes`
+    tampoco cambia: lo que se renombró es la tabla, no el contrato de la API
+    ni el vocabulario del código.
+    """
+    from sqlalchemy import text
+
+    assert Variante.__tablename__ == "producto_variantes"
+
+    fila = db.execute(
+        text("SELECT count(*) FROM producto_variantes WHERE producto_id = :p"),
+        {"p": producto.id},
+    ).scalar()
+    assert fila == 1, "la variante BASE del producto tiene que estar en la tabla nueva"
+
+
+def test_los_indices_y_restricciones_llevan_el_nombre_nuevo(db):
+    """
+    Postgres NO renombra los índices ni las restricciones al renombrar la
+    tabla: sin el ALTER explícito quedaría un `ix_variantes_*` colgando de
+    `producto_variantes`, y la próxima migración que los busque por nombre
+    no los encontraría.
+    """
+    from sqlalchemy import text
+
+    def lleva_el_nombre_nuevo(nombre: str) -> bool:
+        return any(
+            nombre.startswith(p)
+            for p in ("ck_producto_variantes", "ix_producto_variantes",
+                      "uq_producto_variantes", "producto_variantes_")
+        )
+
+    restricciones = db.execute(
+        text(
+            "SELECT conname FROM pg_constraint"
+            " WHERE conrelid = 'producto_variantes'::regclass"
+        )
+    ).scalars().all()
+    assert restricciones, "no hay restricciones sobre la tabla"
+    viejas = [c for c in restricciones if not lleva_el_nombre_nuevo(c)]
+    assert not viejas, f"restricciones con el nombre viejo: {viejas}"
+
+    indices = db.execute(
+        text("SELECT indexname FROM pg_indexes WHERE tablename = 'producto_variantes'")
+    ).scalars().all()
+    assert indices, "no hay índices sobre la tabla"
+    viejos = [i for i in indices if not lleva_el_nombre_nuevo(i)]
+    assert not viejos, f"índices con el nombre viejo: {viejos}"
+
+
+def test_la_auditoria_de_variantes_usa_el_nombre_nuevo(db, autor, producto):
+    """
+    Las 12 entidades auditadas usan el nombre de su tabla; dejar "variantes"
+    rompería esa regla.
+
+    Lo que ya está escrito NO cambia: `auditoria` es append-only por trigger
+    (migración 0001) y no admite UPDATE ni desde una migración. El historial
+    anterior a este cambio sigue bajo "variantes", así que una consulta del
+    historial completo tiene que buscar por los dos nombres.
+    """
+    from app.models.auditoria import Auditoria
+    from sqlalchemy import select as sa_select
+
+    servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Rojo"
+    )
+
+    entidades = db.execute(
+        sa_select(Auditoria.entidad).where(Auditoria.accion == "variante.crear")
+    ).scalars().all()
+
+    assert entidades and set(entidades) == {"producto_variantes"}

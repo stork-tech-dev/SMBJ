@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-_ESTACIONALIDAD = "^(permanente|verano|invierno|otoño|primavera)$"
+_TEMPORADA = "^(atemporal|otoño_invierno|primavera_verano)$"
 
 
 class ProductoCrear(BaseModel):
@@ -26,7 +26,7 @@ class ProductoCrear(BaseModel):
     sku_proveedor: str | None = Field(default=None, max_length=30)
     descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
     peso_gramos: Decimal | None = Field(default=None, gt=0)
-    estacionalidad: str = Field(default="permanente", pattern=_ESTACIONALIDAD)
+    temporada: str = Field(default="atemporal", pattern=_TEMPORADA)
     stock_infinito: bool = False
 
 
@@ -45,7 +45,7 @@ class ProductoEditar(BaseModel):
     precio_usd: Decimal | None = Field(default=None, gt=0)
     descuento_producto: Decimal | None = Field(default=None, ge=0, le=100)
     peso_gramos: Decimal | None = Field(default=None, gt=0)
-    estacionalidad: str | None = Field(default=None, pattern=_ESTACIONALIDAD)
+    temporada: str | None = Field(default=None, pattern=_TEMPORADA)
     stock_infinito: bool | None = None
 
 
@@ -71,6 +71,10 @@ class VarianteCrear(BaseModel):
     descripcion_sufijo: str = Field(
         min_length=1, max_length=60, description="Nombre legible de la variante"
     )
+    # Código propio de esta variante en el catálogo del proveedor. Vacío =
+    # usa el del producto: el proveedor numera por color y por talle, pero no
+    # siempre.
+    sku_proveedor: str | None = Field(default=None, max_length=30)
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
     stock_minimo: int = Field(default=0, ge=0)
 
@@ -91,6 +95,9 @@ class VarianteEditar(BaseModel):
     # del producto; no mandarlo es "no lo toques". El endpoint distingue los
     # dos casos con `model_fields_set`.
     precio_usd: Decimal | None = Field(default=None, gt=0)
+    # Código propio en el catálogo del proveedor, con la misma mecánica que
+    # el precio: NULL vuelve al del producto, no mandarlo no lo toca.
+    sku_proveedor: str | None = Field(default=None, max_length=30)
 
 
 class VarianteResponse(BaseModel):
@@ -110,11 +117,16 @@ class VarianteResponse(BaseModel):
     # Precio propio; NULL = usa el del producto.
     precio_usd: Decimal | None
     precio_venta: Decimal | None
-    # Cuál de los dos precios manda lo resuelve el backend: es una regla de
-    # negocio, no formato de pantalla (Principio 1).
+    # Código propio en el catálogo del proveedor; NULL = usa el del producto.
+    sku_proveedor: str | None
+    # Cuál de los dos manda lo resuelve el backend: es una regla de negocio,
+    # no formato de pantalla (Principio 1). El SKU efectivo puede ser NULL,
+    # porque el producto tampoco está obligado a tener uno.
     precio_usd_efectivo: Decimal
     precio_venta_efectivo: Decimal
     tiene_precio_propio: bool
+    sku_proveedor_efectivo: str | None
+    tiene_sku_proveedor_propio: bool
 
 
 class FotoResponse(BaseModel):
@@ -163,7 +175,7 @@ class ProductoResponse(BaseModel):
     precio_venta: Decimal
     descuento_producto: Decimal
     peso_gramos: Decimal | None
-    estacionalidad: str
+    temporada: str
     stock_infinito: bool
     tiene_variantes: bool
     activo: bool
@@ -171,6 +183,28 @@ class ProductoResponse(BaseModel):
     fotos: list[FotoResponse]
     created_at: datetime
     updated_at: datetime
+
+
+class ProductoSimilar(BaseModel):
+    """
+    Lo mínimo para reconocer un producto ya cargado desde el formulario de
+    alta, mientras se tipea la descripción.
+
+    Ni `ProductoResponse` ni `ProductoResumen`: el primero arrastra
+    variantes y fotos y el segundo la categoría, el proveedor y los
+    precios. Nada de eso se muestra en el desplegable —la lista ya viene
+    acotada a la categoría y el proveedor elegidos— y se pagaría en cada
+    tecleo.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sku: str
+    descripcion: str
+    # Un producto inactivo sigue siendo un duplicado. La pantalla lo marca
+    # para que se entienda por qué aparece.
+    activo: bool
 
 
 class ProductoResumen(BaseModel):
@@ -192,7 +226,7 @@ class ProductoResumen(BaseModel):
     # Crudos: el formato lo pone el frontend (Principio 1).
     precio_usd: Decimal
     precio_venta: Decimal
-    estacionalidad: str
+    temporada: str
     stock_infinito: bool
     activo: bool
 
@@ -219,9 +253,14 @@ class VarianteListadoResponse(BaseModel):
     # Precio propio; NULL = usa el del producto.
     precio_usd: Decimal | None
     precio_venta: Decimal | None
-    # Cuál de los dos precios manda lo resuelve el backend: es una regla de
-    # negocio, no formato de pantalla (Principio 1).
+    # Código propio en el catálogo del proveedor; NULL = usa el del producto.
+    sku_proveedor: str | None
+    # Cuál de los dos manda lo resuelve el backend: es una regla de negocio,
+    # no formato de pantalla (Principio 1). El SKU efectivo puede ser NULL,
+    # porque el producto tampoco está obligado a tener uno.
     precio_usd_efectivo: Decimal
     precio_venta_efectivo: Decimal
     tiene_precio_propio: bool
+    sku_proveedor_efectivo: str | None
+    tiene_sku_proveedor_propio: bool
     producto: ProductoResumen

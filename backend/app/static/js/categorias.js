@@ -25,7 +25,9 @@ function arbolCategorias() {
             nombre: '', orden: 0, parent_id: null, ubicacion: '',
         },
 
-        confirmacion: { abierta: false, id: null, nombre: '' },
+        // Lo que espera `components/modal_confirmacion.html`: el diálogo es
+        // el mismo de todas las bajas y el texto lo pone quien lo abre.
+        confirmacion: { abierta: false, titulo: '', mensaje: '', accion: () => {} },
 
         /**
          * Nodos que se dibujan: cada raíz y, de forma recursiva, los hijos
@@ -158,12 +160,19 @@ function arbolCategorias() {
         /* --- Baja --- */
 
         confirmarBaja(nodo) {
-            this.confirmacion = { abierta: true, id: nodo.id, nombre: nodo.nombre };
+            this.confirmacion = {
+                abierta: true,
+                titulo: 'Eliminar categoría',
+                mensaje: `¿Confirmás eliminar "${nodo.nombre}"? La acción queda auditada.`,
+                accion: () => this.eliminar(nodo.id),
+            };
         },
 
-        async eliminar() {
+        // El id llega por parámetro y no desde `confirmacion`: el estado del
+        // diálogo compartido solo guarda lo que el macro muestra.
+        async eliminar(id) {
             try {
-                const resp = await fetch('/api/v1/categorias/' + this.confirmacion.id, {
+                const resp = await fetch('/api/v1/categorias/' + id, {
                     method: 'DELETE',
                     credentials: 'same-origin',
                 });

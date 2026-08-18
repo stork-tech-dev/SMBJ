@@ -74,11 +74,12 @@ class UsuarioEditar(BaseModel):
 
 class LocalResumen(BaseModel):
     """
-    Local asignado, en la respuesta de usuarios.
+    Punto de venta asignado, en la respuesta de usuarios.
 
-    Deliberadamente NO expone `codigo_confirmacion`: es el código con el
-    que un local confirma envíos y no tiene por qué viajar en el listado
-    de usuarios.
+    Solo `id` y `nombre`: es lo que el selector necesita para mostrarlo y
+    elegirlo. El resto de los campos del punto de venta —tipo, código,
+    estado— se piden a su propio endpoint cuando hacen falta, y no viajan
+    duplicados en cada fila del listado de usuarios.
     """
 
     model_config = ConfigDict(from_attributes=True)

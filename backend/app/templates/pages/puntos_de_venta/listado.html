@@ -4,6 +4,8 @@
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones, volver %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/switch_activos.html" import switch_activos %}
 
 {% block contenido %}
 <div x-data="abmPuntos()" x-init="cargar()">
@@ -36,17 +38,6 @@
             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
         </div>
 
-        <div class="relative w-full sm:w-auto">
-            <select x-model="filtros.activo" @change="cargar()" aria-label="Activo"
-                    class="h-control w-full sm:w-[10rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2 border-borde
-                           rounded-input appearance-none focus:outline-none focus:border-primary"
-                    :class="filtros.activo ? 'text-texto' : 'text-texto-disabled'">
-                <option value="">Estado (todos)</option>
-                <option value="true">Activo</option>
-                <option value="false">Inactivo</option>
-            </select>
-            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
-        </div>
 
         <button type="button" @click="limpiar()"
                 class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
@@ -56,6 +47,8 @@
             <span x-text="puntos.length"></span>
             <span x-text="puntos.length === 1 ? 'punto de venta' : 'puntos de venta'"></span>
         </p>
+        {{ switch_activos('filtros.activo') }}
+
     </div>
 
     {# ---------- Tabla ---------- #}
@@ -64,9 +57,11 @@
             <table class="w-full border-collapse text-base">
                 <thead>
                     <tr>
-                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        {# El código va primero: es la abreviatura con la que
+                           se nombra al punto de venta. #}
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Tipo</th>
-                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
@@ -75,12 +70,12 @@
                     <template x-for="p in puntos" :key="p.id">
                         <tr class="border-t border-borde transition-shadow hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!p.activo && 'opacity-60'">
-                            <td class="px-8 py-3 align-middle font-medium" x-text="p.nombre"></td>
+                            <td class="px-8 py-3 align-middle font-mono font-medium" x-text="p.codigo"></td>
+                            <td class="px-4 py-3 align-middle font-medium" x-text="p.nombre"></td>
                             <td class="px-4 py-3 align-middle">
                                 <span class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs font-medium"
                                       :class="badgeTipo(p.tipo)" x-text="etiquetaTipo(p.tipo)"></span>
                             </td>
-                            <td class="px-4 py-3 align-middle font-medium" x-text="p.codigo_confirmacion || '—'"></td>
                             <td class="px-4 py-3 align-middle">
                                 <span class="text-xs font-medium" :class="p.activo ? 'text-success' : 'text-danger'"
                                       x-text="p.activo ? 'Activo' : 'Inactivo'"></span>
@@ -107,7 +102,7 @@
     {# ---------- Modal alta / edición ---------- #}
     <div x-show="form.abierto" x-cloak
          class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="form.abierto = false" @keydown.escape.window="form.abierto = false"
+         @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true">
         <div class="w-full max-w-md bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
             <div class="flex items-center justify-between px-8 pt-7 pb-2">
@@ -135,12 +130,21 @@
                         <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
                     </div>
                 </div>
-                {# El código de confirmación solo se muestra para locales. #}
-                <div class="flex flex-col gap-1" x-show="form.tipo === 'local'" x-cloak>
-                    <label for="pdv-codigo" class="text-sm font-semibold text-texto-header">Código de confirmación</label>
-                    <input id="pdv-codigo" x-model="form.codigo_confirmacion" maxlength="4" minlength="4"
-                           inputmode="numeric" placeholder="4 dígitos" class="campo-linea">
-                    <span class="text-xs text-texto-disabled">Para confirmar la recepción de envíos del CD.</span>
+                {# Va para todos los tipos: el CD y la tienda online también se
+                   nombran en un reporte. #}
+                <div class="flex flex-col gap-1">
+                    <label for="pdv-codigo" class="text-sm font-semibold text-texto-header">
+                        Código<span class="text-danger ml-0.5">*</span>
+                    </label>
+                    {# Mayúsculas al tipear: el código se guarda siempre en
+                       mayúsculas, así lo que se ve es lo que se va a guardar. #}
+                    <input id="pdv-codigo" x-model="form.codigo" required
+                           maxlength="6" minlength="2"
+                           @input="form.codigo = form.codigo.toUpperCase()"
+                           placeholder="MPO" class="campo-linea font-mono uppercase">
+                    <span class="text-xs text-texto-disabled">
+                        Abreviatura del punto de venta, de 2 a 6 caracteres. Identifica sus reportes.
+                    </span>
                 </div>
                 <div class="flex justify-end gap-3 mt-2">
                     <button type="button" @click="form.abierto = false"
@@ -154,23 +158,11 @@
     </div>
 
     {# ---------- Confirmación de baja ---------- #}
-    <div x-show="baja.abierta" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         @click.self="baja.abierta = false" role="dialog" aria-modal="true">
-        <div class="w-full max-w-md bg-surface rounded-[10px] shadow-xl p-8">
-            <h2 class="text-lg font-semibold">Desactivar punto de venta</h2>
-            <p class="mt-3 text-base text-texto-muted">
-                ¿Desactivar <span class="font-medium" x-text="baja.punto?.nombre"></span>?
-            </p>
-            <p x-show="baja.advertencia" x-cloak class="mt-3 text-sm text-danger" x-text="baja.advertencia"></p>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" @click="baja.abierta = false"
-                        class="h-boton px-5 rounded-input border border-borde hover:border-primary hover:text-primary">Cancelar</button>
-                <button type="button" @click="confirmarBaja()"
-                        class="h-boton px-5 rounded-input bg-danger text-white font-medium hover:opacity-90"
-                        x-text="baja.advertencia ? 'Desactivar igualmente' : 'Confirmar'"></button>
-            </div>
-        </div>
-    </div>
+    {{ modal_confirmacion(
+        estado='baja',
+        accion='confirmarBaja()',
+        advertencia='baja.advertencia',
+        etiqueta_confirmar="baja.advertencia ? 'Desactivar igualmente' : 'Confirmar'") }}
 </div>
 {% endblock %}
 

@@ -6,7 +6,7 @@ function abmRoles() {
     return {
         roles: [],
         cargando: false,
-        filtros: { nombre: '', activo: '', es_sistema: '' },
+        filtros: { nombre: '', activo: 'true', es_sistema: '' },
 
         form: {
             abierto: false, guardando: false,
@@ -38,7 +38,7 @@ function abmRoles() {
         },
 
         limpiar() {
-            this.filtros = { nombre: '', activo: '', es_sistema: '' };
+            this.filtros = { nombre: '', activo: 'true', es_sistema: '' };
             this.cargar();
         },
 

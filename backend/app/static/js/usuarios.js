@@ -18,14 +18,15 @@ function abmUsuarios() {
         usuarios: [],
         roles: [],
         rolesAsignables: [],
-        // Locales activos para el selector "Local Asignado".
-        localesAsignables: [],
+        // Puntos de venta activos, de cualquier tipo, para el selector.
+        puntosDeVentaAsignables: [],
         total: 0,
         cargando: false,
 
         // Los tres filtros del diseño de Figma. El backend acepta además
         // username, email y activo: se pueden reactivar sin tocar la API.
-        filtros: { nombre: '', rol_id: '', local_asignado_id: '' },
+        // `activo: 'true'` = solo activos por defecto (ver components/switch_activos).
+        filtros: { nombre: '', rol_id: '', local_asignado_id: '', activo: 'true' },
 
         detalle: { abierto: false, usuario: null },
 
@@ -87,22 +88,23 @@ function abmUsuarios() {
         },
 
         /**
-         * Locales del selector "Local Asignado".
+         * Opciones del selector "Punto de Venta": todos los activos, de
+         * cualquier tipo (local, centro de distribución u online).
          *
          * Usa el endpoint del propio módulo y no /puntos-de-venta, que
          * exige permiso de configuración: quien gestiona usuarios no
          * tiene por qué tenerlo.
          */
-        async cargarLocales() {
-            const resp = await fetch('/api/v1/usuarios/locales-asignables', {
+        async cargarPuntosDeVenta() {
+            const resp = await fetch('/api/v1/usuarios/puntos-de-venta-asignables', {
                 credentials: 'same-origin',
             });
             if (!resp.ok) return;
-            this.localesAsignables = await resp.json();
+            this.puntosDeVentaAsignables = await resp.json();
         },
 
         limpiar() {
-            this.filtros = { nombre: '', rol_id: '', local_asignado_id: '' };
+            this.filtros = { nombre: '', rol_id: '', local_asignado_id: '', activo: 'true' };
             this.cargar();
         },
 
@@ -181,7 +183,28 @@ function abmUsuarios() {
                 celular: usuario.celular || '',
                 local_asignado_id: usuario.local_asignado_id || '',
             };
+            this.asegurarPuntoDeVentaActual(usuario);
             this.cargarAccesos();
+        },
+
+        /**
+         * Mete en el desplegable el punto de venta que el usuario ya tiene,
+         * si no está en la lista.
+         *
+         * Pasa cuando se lo desactivó después de asignárselo: el endpoint
+         * solo devuelve los activos, así que sin esto el campo se vería
+         * vacío y parecería que el usuario no tiene ninguno. El backend deja
+         * conservarlo —lo que prohíbe es asignar uno inactivo—, y el dato ya
+         * viene en la respuesta del usuario.
+         */
+        asegurarPuntoDeVentaActual(usuario) {
+            const actual = usuario.local_asignado;
+            if (!actual) return;
+            if (this.puntosDeVentaAsignables.some((p) => p.id === actual.id)) return;
+            this.puntosDeVentaAsignables = [
+                ...this.puntosDeVentaAsignables,
+                { id: actual.id, nombre: `${actual.nombre} (inactivo)` },
+            ];
         },
 
         /* --- Accesos permitidos --- */
