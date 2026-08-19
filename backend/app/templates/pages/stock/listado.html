@@ -27,7 +27,8 @@
 <div x-data="abmStock({ puntoFijo: {{ punto_fijo or 'null' }} })"
      x-init="cargarCatalogos(); cargar()">
 
-    {% call encabezado('Stock') %}
+    {% call encabezado('Movimientos de Stock', volver_url='/gestion-de-stock',
+                       volver_texto='Gestión de Stock') %}
         {# Puerta al catálogo que llena el combo del modal de baja. Va acá y
            no en Configuraciones porque es de esta pantalla, igual que
            Categorías cuelga de Productos. #}
@@ -198,7 +199,7 @@
                                               atributos='@click="abrirMinimos(f)"') }}
                                     {% endif %}
                                     {% if puede_baja %}
-                                    {{ accion('borrar', texto='Baja',
+                                    {{ accion('borrar', texto='Baja de Stock',
                                               atributos='@click="abrirBaja(f)"
                                                          title="Registrar una baja"') }}
                                     {% endif %}

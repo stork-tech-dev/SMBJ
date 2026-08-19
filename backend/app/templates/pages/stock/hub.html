@@ -1,0 +1,15 @@
+{# Página de menú del módulo de stock (diseño "CDGStock"): la puerta a las
+   tres pantallas, para que el módulo se lea como una cosa con tres accesos y
+   no como tres ítems sueltos del sidebar.
+
+   Misma tarjeta que Configuraciones, del macro compartido. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/hub.html" import hub %}
+
+{% block contenido %}
+{% call encabezado('Gestión de Stock') %}{% endcall %}
+
+{{ hub(secciones, vacio='No hay pantallas de stock disponibles para tu perfil.') }}
+{% endblock %}

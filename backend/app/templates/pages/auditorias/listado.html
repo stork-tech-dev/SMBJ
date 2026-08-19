@@ -24,7 +24,8 @@
 <div x-data="abmAuditorias({ puntoFijo: {{ punto_fijo or 'null' }} })"
      x-init="cargarCatalogos(); cargar()">
 
-    {% call encabezado('Auditoría de stock') %}
+    {% call encabezado('Auditorías de Stock', volver_url='/gestion-de-stock',
+                       volver_texto='Gestión de Stock') %}
         {% if puede_auditar %}
         <button type="button" @click="abrirInicio()"
                 class="h-control px-6 inline-flex items-center gap-2 rounded-input

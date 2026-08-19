@@ -1120,6 +1120,12 @@ def test_item_activo_del_sidebar_en_cada_pagina(client, crear_usuario, roles):
         f"/roles/{roles[ROL_VENDEDOR].id}/permisos": "/configuracion",
         "/puntos-de-venta": "/configuracion",
         "/dispositivos": "/configuracion",
+        # Las pantallas de stock mantienen "Gestión de Stock" activo.
+        "/gestion-de-stock": "/gestion-de-stock",
+        "/stock": "/gestion-de-stock",
+        "/remitos": "/gestion-de-stock",
+        "/auditorias-inventario": "/gestion-de-stock",
+        "/motivos-baja": "/gestion-de-stock",
     }
 
     for url, item_esperado in rutas.items():
@@ -1566,6 +1572,9 @@ def test_toda_pantalla_es_alcanzable_desde_la_navegacion(client, crear_usuario):
     # Páginas que no cuelgan del sidebar y necesitan un enlace de entrada.
     entradas = {
         "/categorias": "/productos",
+        "/stock": "/gestion-de-stock",
+        "/remitos": "/gestion-de-stock",
+        "/auditorias-inventario": "/gestion-de-stock",
         "/motivos-baja": "/stock",
         "/puntos-de-venta": "/configuracion",
         "/dispositivos": "/configuracion",
@@ -2222,17 +2231,28 @@ def test_las_tres_pantallas_de_stock_responden(client, crear_usuario):
         assert resp.status_code == 200, f"{url} devolvió {resp.status_code}"
 
 
-def test_las_tres_pantallas_estan_en_el_sidebar(client, crear_usuario):
+def test_las_tres_pantallas_estan_en_el_hub_del_modulo(client, crear_usuario):
     """
-    Van juntas y después de Productos: siguen el orden real de uso —primero
-    el catálogo, después la mercadería, y recién ahí lo que se mueve—.
+    El sidebar tiene UNA entrada de stock y las tres pantallas cuelgan de su
+    página de menú, igual que las secciones de Configuraciones. Con las tres
+    sueltas en el sidebar el módulo se leía como tres cosas separadas.
+
+    En el hub van en su orden real de uso: primero lo que hay, después lo que
+    se mueve entre locales, y al final lo que se cuenta.
     """
     _sesion_maestra(client, crear_usuario)
-    html = client.get("/stock").text
+    hub = client.get("/gestion-de-stock").text
 
-    posiciones = [html.index(f'href="{url}"') for url in PANTALLAS_STOCK]
-    assert posiciones == sorted(posiciones), "el sidebar no respeta el orden"
-    assert html.index('href="/productos"') < posiciones[0]
+    posiciones = [hub.index(f'href="{url}"') for url in PANTALLAS_STOCK]
+    assert posiciones == sorted(posiciones), "el hub no respeta el orden"
+
+    # Y el sidebar no las lleva: la entrada del módulo es la del hub, que va
+    # después de Productos porque primero está el catálogo.
+    menu = hub.split('<main')[0]
+    assert 'href="/gestion-de-stock"' in menu
+    for url in PANTALLAS_STOCK:
+        assert f'href="{url}"' not in menu, f"{url} quedó suelta en el sidebar"
+    assert menu.index('href="/productos"') < menu.index('href="/gestion-de-stock"')
 
 
 def test_un_vendedor_sin_local_asignado_ve_las_pantallas_vacias(

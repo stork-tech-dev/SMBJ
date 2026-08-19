@@ -23,7 +23,8 @@
 <div x-data="abmRemitos({ puntoFijo: {{ punto_fijo or 'null' }} })"
      x-init="cargarCatalogos(); cargar()">
 
-    {% call encabezado('Remitos') %}
+    {% call encabezado('Remitos', volver_url='/gestion-de-stock',
+                       volver_texto='Gestión de Stock') %}
         {% if puede_remitir %}
         <button type="button" @click="abrirAlta()"
                 class="h-control px-6 inline-flex items-center gap-2 rounded-input

@@ -1,0 +1,45 @@
+{# ===========================================================================
+   Macro: página de menú (hub).
+
+   Una tarjeta por sección, cada una lleva a su pantalla. Toda la tarjeta es
+   el enlace, con chevron a la derecha, como en el diseño.
+
+   La usan Configuraciones y Gestión de Stock. Estaba escrita adentro de la
+   primera; con un segundo hub idéntico, copiarla sería garantizar que se
+   separen a la primera corrección (Principio 2).
+
+   Cada sección es un dict con `nombre`, `url` y, opcional, `descripcion`.
+   Quién las ve lo resuelve el backend con `_visible()` en `api/pages.py`: acá
+   llegan ya filtradas.
+
+   Uso:
+     {% from "components/hub.html" import hub %}
+     {{ hub(secciones) }}
+   =========================================================================== #}
+
+{% from "components/icons.html" import icono %}
+
+{% macro hub(secciones, vacio='No hay secciones disponibles para tu perfil.') %}
+<div class="mt-8 max-w-2xl space-y-5">
+    {% for seccion in secciones %}
+        <a href="{{ seccion.url }}"
+           class="flex items-center justify-between gap-4 px-6 py-6 bg-surface border border-borde
+                  rounded-[10px] tarjeta-enlace hover:border-primary
+                  transition-all group">
+            <div>
+                <p class="text-lg font-semibold text-welcome group-hover:text-primary">
+                    {{ seccion.nombre }}
+                </p>
+                {% if seccion.descripcion %}
+                    <p class="mt-1 text-sm text-texto-muted">{{ seccion.descripcion }}</p>
+                {% endif %}
+            </div>
+            <span class="text-welcome group-hover:text-primary">
+                {{ icono('chevron-derecha', clases='w-6 h-6') }}
+            </span>
+        </a>
+    {% else %}
+        <p class="text-texto-muted">{{ vacio }}</p>
+    {% endfor %}
+</div>
+{% endmacro %}

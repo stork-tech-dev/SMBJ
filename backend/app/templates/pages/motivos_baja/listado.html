@@ -14,7 +14,8 @@
 {% block contenido %}
 <div x-data="abmMotivosBaja()" x-init="cargar()">
 
-    {% call encabezado('Motivos de baja', volver_url='/stock', volver_texto='Stock') %}
+    {% call encabezado('Motivos de baja', volver_url='/stock',
+                   volver_texto='Movimientos de Stock') %}
         {% if puede_editar %}
         <button type="button" @click="abrirAlta()"
                 class="h-control px-6 inline-flex items-center gap-2 rounded-input

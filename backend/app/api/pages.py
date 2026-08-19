@@ -40,19 +40,23 @@ router = APIRouter(include_in_schema=False)
 # muestra si el usuario puede ver al menos una de esas secciones.
 # `oculto` lo esconde de TODOS los perfiles, sin importar sus permisos: es
 # para módulos cuya pantalla todavía no existe.
+# La página de menú del módulo de stock. Es la que marca el sidebar mientras
+# se está en cualquiera de sus pantallas, así que vive en una constante: si
+# cambiara la URL, cambiaría en un solo lugar.
+RUTA_HUB_STOCK = "/gestion-de-stock"
+
 MENU_SIDEBAR = [
     {"nombre": "Home", "url": "/", "icono": "home", "modulo": None},
     {"nombre": "Proveedores", "url": "/proveedores", "icono": "truck", "modulo": Modulo.PROVEEDORES},
     {"nombre": "Productos", "url": "/productos", "icono": "box", "modulo": Modulo.PRODUCTOS},
-    # Las tres pantallas del control de stock. Van juntas y después de
-    # Productos porque siguen su orden real de uso: primero está el catálogo,
-    # después la mercadería, y recién ahí lo que se mueve entre locales.
-    {"nombre": "Stock", "url": "/stock", "icono": "almacen", "modulo": Modulo.STOCK},
-    {"nombre": "Remitos", "url": "/remitos", "icono": "remito", "modulo": Modulo.STOCK},
+    # El control de stock entra por su propia página de menú, no por una de
+    # sus pantallas: con las tres sueltas en el sidebar el módulo se leía como
+    # tres cosas separadas. Va después de Productos porque sigue el orden real
+    # de uso: primero el catálogo, después la mercadería.
     {
-        "nombre": "Auditoría de stock",
-        "url": "/auditorias-inventario",
-        "icono": "portapapeles",
+        "nombre": "Gestión de Stock",
+        "url": RUTA_HUB_STOCK,
+        "icono": "almacen",
         "modulo": Modulo.STOCK,
     },
     {"nombre": "Ventas", "url": "/ventas", "icono": "cart", "modulo": Modulo.VENTAS},
@@ -113,6 +117,31 @@ CONFIGURACION_SECCIONES = [
         "descripcion": "Celulares corporativos y su asignación a locales",
         "url": "/dispositivos",
         "modulo": Modulo.DISPOSITIVOS,
+    },
+]
+
+
+# Tarjetas de la página de Gestión de Stock (diseño "CDGStock"). Mismo formato
+# y mismo filtro de visibilidad que las de Configuraciones: agregar una
+# pantalla al módulo es una línea acá.
+SECCIONES_STOCK = [
+    {
+        "nombre": "Movimientos de Stock",
+        "descripcion": "Lo que hay en cada ubicación, ingresos y bajas",
+        "url": "/stock",
+        "modulo": Modulo.STOCK,
+    },
+    {
+        "nombre": "Remitos",
+        "descripcion": "Traslados de mercadería entre locales",
+        "url": "/remitos",
+        "modulo": Modulo.STOCK,
+    },
+    {
+        "nombre": "Auditorías de Stock",
+        "descripcion": "Conteos de inventario y sus diferencias",
+        "url": "/auditorias-inventario",
+        "modulo": Modulo.STOCK,
     },
 ]
 
@@ -196,6 +225,12 @@ def secciones_configuracion(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Configuraciones visibles para el usuario."""
     es_maestra = _es_maestra(usuario)
     return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]
+
+
+def secciones_stock(db: Session, usuario) -> list[dict]:
+    """Tarjetas de la página de Gestión de Stock visibles para el usuario."""
+    es_maestra = _es_maestra(usuario)
+    return [s for s in SECCIONES_STOCK if _visible(db, usuario, s, es_maestra)]
 
 
 def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
@@ -546,6 +581,28 @@ async def dispositivos(
 # por API obligaría a dibujar la pantalla entera y vaciarla después.
 
 
+@router.get(RUTA_HUB_STOCK, response_class=HTMLResponse)
+async def gestion_de_stock(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Página de menú del módulo: las tres pantallas cuelgan de acá.
+
+    No usa `_contexto_stock` porque no muestra mercadería: el aislamiento por
+    dispositivo lo resuelve cada pantalla, y el menú es el mismo para todos.
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/stock/hub.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Gestión de Stock",
+            ruta_activa=RUTA_HUB_STOCK,
+            secciones=secciones_stock(db, usuario),
+        ),
+    )
+
+
 def _contexto_stock(request, db, usuario, titulo, ruta):
     """
     Contexto común de las tres pantallas de stock.
@@ -608,7 +665,7 @@ async def stock(
     return templates.TemplateResponse(
         request,
         "pages/stock/listado.html",
-        _contexto_stock(request, db, usuario, "Stock", "/stock"),
+        _contexto_stock(request, db, usuario, "Movimientos de Stock", RUTA_HUB_STOCK),
     )
 
 
@@ -619,7 +676,7 @@ async def remitos(
     return templates.TemplateResponse(
         request,
         "pages/remitos/listado.html",
-        _contexto_stock(request, db, usuario, "Remitos", "/remitos"),
+        _contexto_stock(request, db, usuario, "Remitos", RUTA_HUB_STOCK),
     )
 
 
@@ -632,8 +689,8 @@ async def motivos_baja(
     cuelga de Productos: es un catálogo de apoyo de esa pantalla, no un
     módulo propio, y ahí es donde se lo va a buscar.
 
-    `ruta_activa` apunta a /stock para que el sidebar mantenga marcado Stock
-    mientras se está acá adentro.
+    `ruta_activa` apunta al hub del módulo para que el sidebar mantenga
+    marcada "Gestión de Stock" mientras se está acá adentro.
 
     No usa `_contexto_stock`: esta pantalla no muestra mercadería, así que el
     aislamiento por dispositivo no le aplica —los motivos son los mismos para
@@ -645,7 +702,7 @@ async def motivos_baja(
         contexto_base(
             request, db, usuario,
             titulo="Motivos de baja",
-            ruta_activa="/stock",
+            ruta_activa=RUTA_HUB_STOCK,
             # Esconder los botones no es la barrera —la API valida igual—, pero
             # ofrecer acciones que siempre terminan en 403 es peor que no
             # ofrecerlas.
@@ -663,7 +720,5 @@ async def auditorias_inventario(
     return templates.TemplateResponse(
         request,
         "pages/auditorias/listado.html",
-        _contexto_stock(
-            request, db, usuario, "Auditoría de stock", "/auditorias-inventario"
-        ),
+        _contexto_stock(request, db, usuario, "Auditorías de Stock", RUTA_HUB_STOCK),
     )
