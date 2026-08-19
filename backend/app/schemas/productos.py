@@ -76,7 +76,6 @@ class VarianteCrear(BaseModel):
     # siempre.
     sku_proveedor: str | None = Field(default=None, max_length=30)
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
-    stock_minimo: int = Field(default=0, ge=0)
 
 
 class VarianteEditar(BaseModel):
@@ -90,7 +89,6 @@ class VarianteEditar(BaseModel):
 
     descripcion_sufijo: str | None = Field(default=None, min_length=1, max_length=60)
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
-    stock_minimo: int | None = Field(default=None, ge=0)
     # Precio propio de la variante. Mandarlo en NULL la devuelve al precio
     # del producto; no mandarlo es "no lo toques". El endpoint distingue los
     # dos casos con `model_fields_set`.
@@ -110,8 +108,15 @@ class VarianteResponse(BaseModel):
     es_base: bool
     codigo_completo: str
     verificador: str
-    stock_actual: int
-    stock_minimo: int
+    # El stock ya no es una columna de la variante: vive en `stock`, una
+    # fila por ubicación. Acá viaja la SUMA de todas, que es lo que muestra
+    # la columna Stock del listado. El detalle por ubicación es del módulo
+    # de stock, que tiene su propia pantalla.
+    stock_total: int
+    # Si alguna ubicación está en su mínimo o por debajo. Lo resuelve el
+    # backend: qué mínimo aplica depende del tipo de punto de venta, y esa
+    # es una regla de negocio, no formato de pantalla (Principio 1).
+    bajo_minimo: bool
     ubicacion_deposito: str | None
     activo: bool
     # Precio propio; NULL = usa el del producto.
@@ -246,8 +251,15 @@ class VarianteListadoResponse(BaseModel):
     es_base: bool
     codigo_completo: str
     verificador: str
-    stock_actual: int
-    stock_minimo: int
+    # El stock ya no es una columna de la variante: vive en `stock`, una
+    # fila por ubicación. Acá viaja la SUMA de todas, que es lo que muestra
+    # la columna Stock del listado. El detalle por ubicación es del módulo
+    # de stock, que tiene su propia pantalla.
+    stock_total: int
+    # Si alguna ubicación está en su mínimo o por debajo. Lo resuelve el
+    # backend: qué mínimo aplica depende del tipo de punto de venta, y esa
+    # es una regla de negocio, no formato de pantalla (Principio 1).
+    bajo_minimo: bool
     ubicacion_deposito: str | None
     activo: bool
     # Precio propio; NULL = usa el del producto.

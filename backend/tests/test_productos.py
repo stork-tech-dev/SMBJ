@@ -258,12 +258,22 @@ def test_la_primera_variante_real_reemplaza_la_base(db, autor, producto):
     assert not any(v.es_base for v in producto.variantes)
 
 
-def test_no_se_divide_en_variantes_un_producto_con_stock(db, autor, producto):
+def test_no_se_divide_en_variantes_un_producto_con_stock(db, autor, producto, punto_de_venta):
     """
     El stock de la BASE quedaría huérfano al dividir el producto: no hay
     forma de saber a qué variante corresponde.
+
+    Desde la 0022 el stock está en `stock`, repartido por ubicación: la
+    guarda tiene que mirar ahí, y con que UNA ubicación tenga mercadería
+    alcanza para frenar la división.
     """
-    producto.variantes[0].stock_actual = 5
+    from app.models.stock import Stock
+
+    db.add(Stock(
+        variante_id=producto.variantes[0].id,
+        punto_de_venta_id=punto_de_venta.id,
+        cantidad=5,
+    ))
     db.flush()
 
     with pytest.raises(ReglaDeNegocio, match="stock cargado"):
@@ -276,21 +286,24 @@ def test_no_hay_dos_variantes_con_el_mismo_sufijo(db, autor, producto):
         servicio.agregar_variante(db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R")
 
 
-def test_la_variante_guarda_ubicacion_y_stock_minimo(db, autor, producto):
+def test_la_variante_guarda_su_ubicacion_en_el_deposito(db, autor, producto):
     """
-    Los dos campos existen en `VarianteCrear` desde siempre, pero la pantalla
-    los perdía: el alta se hacía con un `window.prompt()` que solo mandaba el
-    sufijo, así que entraban en NULL y 0 sin que nadie lo notara. Ahora que hay
-    formulario, este test cuida que lleguen hasta la base.
+    El campo existe en `VarianteCrear` desde siempre, pero la pantalla lo
+    perdía: el alta se hacía con un `window.prompt()` que solo mandaba el
+    sufijo, así que entraba en NULL sin que nadie lo notara. Ahora que hay
+    formulario, este test cuida que llegue hasta la base.
+
+    El stock mínimo ya no está acá: desde la 0022 es por ubicación
+    (`stock.stock_minimo_cd` / `stock_minimo_local`), porque el mismo
+    artículo necesita un colchón distinto en el CD que en un local.
     """
     variante = servicio.agregar_variante(
         db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R",
-        ubicacion_deposito="Estante 3 - Fila B", stock_minimo=7,
+        ubicacion_deposito="Estante 3 - Fila B",
     )
 
     db.refresh(variante)
     assert variante.ubicacion_deposito == "Estante 3 - Fila B"
-    assert variante.stock_minimo == 7
 
 
 def test_el_verificador_se_guarda_con_la_variante(db, producto):
@@ -809,7 +822,7 @@ def test_el_listado_de_variantes_por_la_api(client, db, catalogo, login):
     assert datos["total"] == 4
 
     fila = datos["resultados"][0]
-    assert {"codigo_completo", "verificador", "stock_actual", "producto"} <= set(fila)
+    assert {"codigo_completo", "verificador", "stock_total", "producto"} <= set(fila)
     # El producto va resumido: sin `variantes` ni `fotos`, que en una fila
     # que YA es una variante solo agregarían peso.
     assert "variantes" not in fila["producto"]
@@ -1380,13 +1393,11 @@ def test_editar_una_variante_cambia_lo_editable(db, autor, producto):
         db, autor, variante.id,
         descripcion_sufijo="Rojo furioso",
         ubicacion_deposito="Estante 3",
-        stock_minimo=7,
     )
 
     db.refresh(variante)
     assert variante.descripcion_sufijo == "Rojo furioso"
     assert variante.ubicacion_deposito == "Estante 3"
-    assert variante.stock_minimo == 7
 
 
 def test_editar_una_variante_no_toca_su_codigo(db, autor, producto):

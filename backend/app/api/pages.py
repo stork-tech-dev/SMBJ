@@ -42,6 +42,17 @@ MENU_SIDEBAR = [
     {"nombre": "Home", "url": "/", "icono": "home", "modulo": None},
     {"nombre": "Proveedores", "url": "/proveedores", "icono": "truck", "modulo": Modulo.PROVEEDORES},
     {"nombre": "Productos", "url": "/productos", "icono": "box", "modulo": Modulo.PRODUCTOS},
+    # Las tres pantallas del control de stock. Van juntas y después de
+    # Productos porque siguen su orden real de uso: primero está el catálogo,
+    # después la mercadería, y recién ahí lo que se mueve entre locales.
+    {"nombre": "Stock", "url": "/stock", "icono": "almacen", "modulo": Modulo.STOCK},
+    {"nombre": "Remitos", "url": "/remitos", "icono": "remito", "modulo": Modulo.STOCK},
+    {
+        "nombre": "Auditoría de stock",
+        "url": "/auditorias-inventario",
+        "icono": "portapapeles",
+        "modulo": Modulo.STOCK,
+    },
     {"nombre": "Ventas", "url": "/ventas", "icono": "cart", "modulo": Modulo.VENTAS},
     {"nombre": "Reportes", "url": "/reportes", "icono": "chart", "modulo": Modulo.REPORTES},
     # Oculto hasta que exista su pantalla: hoy /auditoria no tiene ruta HTML
@@ -515,4 +526,102 @@ async def dispositivos(
         request,
         "pages/dispositivos/listado.html",
         contexto_base(request, db, usuario, titulo="Dispositivos", ruta_activa="/configuracion"),
+    )
+
+
+# ============================================================================
+# CONTROL DE STOCK
+# ============================================================================
+#
+# Las tres pantallas resuelven el aislamiento por dispositivo del lado del
+# servidor: la plantilla necesita saber si este equipo tiene local asignado
+# para mostrar la pantalla o el cartel de "pendiente de asignación". Pedirlo
+# por API obligaría a dibujar la pantalla entera y vaciarla después.
+
+
+def _contexto_stock(request, db, usuario, titulo, ruta):
+    """
+    Contexto común de las tres pantallas de stock.
+
+    `scope` es el mismo objeto que usan los endpoints (`get_device_scope`),
+    resuelto acá con el dispositivo de la request: así la pantalla y la API
+    coinciden siempre en qué puede ver este equipo.
+    """
+    from app.core.device_scope import MENSAJE_SIN_ASIGNACION, get_punto_de_venta_scope
+    from app.services.device_service import DeviceService
+    from config import settings
+
+    # El equipo sale de la COOKIE y no de `request.state.device`: ese lo
+    # completa el middleware, que se puede apagar por configuración, y con él
+    # apagado la pantalla trataría a cualquier vendedor como si su equipo no
+    # tuviera local. Es solo lectura: dar de alta un dispositivo es del login.
+    uuid_cookie = request.cookies.get(settings.DEVICE_COOKIE_NAME)
+    dispositivo = DeviceService(db).repo.get_by_uuid(uuid_cookie) if uuid_cookie else None
+    scope = get_punto_de_venta_scope(usuario, dispositivo)
+
+    # Qué puede hacer este usuario, resuelto con la misma `resolver_permiso`
+    # de la API: no hay una segunda tabla de verdades.
+    #
+    # Esconder un botón NO es la barrera —el endpoint valida igual— pero
+    # ofrecer una acción que siempre termina en 403 es peor que no ofrecerla:
+    # el usuario no tiene forma de saber que nunca le iba a funcionar.
+    from app.core.permisos import Recurso
+
+    puede = lambda accion, recurso=None: resolver_permiso(  # noqa: E731
+        db, usuario.id, Modulo.STOCK, accion, recurso
+    )
+
+    return contexto_base(
+        request,
+        db,
+        usuario,
+        titulo=titulo,
+        ruta_activa=ruta,
+        sin_asignacion=scope.sin_asignacion,
+        mensaje_sin_asignacion=MENSAJE_SIN_ASIGNACION,
+        # Con un solo local a la vista, los filtros por punto de venta sobran:
+        # la pantalla ya está acotada a ese local.
+        punto_fijo=scope.punto_de_venta_id if scope.restringido else None,
+        puede_ingresar=puede("crear"),
+        puede_minimos=puede("editar"),
+        puede_baja=puede("crear", Recurso.STOCK_BAJA),
+        puede_remitir=puede("crear"),
+        puede_recibir=puede("editar", Recurso.STOCK_REMITO_RECEPCION),
+        puede_auditar=puede("crear", Recurso.STOCK_AUDITORIA),
+        puede_aprobar=puede("editar", Recurso.STOCK_AUDITORIA_APROBAR),
+    )
+
+
+@router.get("/stock", response_class=HTMLResponse)
+async def stock(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/stock/listado.html",
+        _contexto_stock(request, db, usuario, "Stock", "/stock"),
+    )
+
+
+@router.get("/remitos", response_class=HTMLResponse)
+async def remitos(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/remitos/listado.html",
+        _contexto_stock(request, db, usuario, "Remitos", "/remitos"),
+    )
+
+
+@router.get("/auditorias-inventario", response_class=HTMLResponse)
+async def auditorias_inventario(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/auditorias/listado.html",
+        _contexto_stock(
+            request, db, usuario, "Auditoría de stock", "/auditorias-inventario"
+        ),
     )

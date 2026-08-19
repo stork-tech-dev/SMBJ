@@ -166,8 +166,17 @@
                                 <span x-show="v.producto.stock_infinito" x-cloak
                                       class="text-texto-muted">∞</span>
                                 <span x-show="!v.producto.stock_infinito"
-                                      :class="v.stock_actual <= v.stock_minimo && 'text-danger font-medium'"
-                                      x-text="v.stock_actual"></span>
+                                      {# El total de todas las ubicaciones. Se pinta
+                                         cuando ALGUNA está en su mínimo o por
+                                         debajo: qué mínimo aplica depende del tipo
+                                         de punto de venta y lo resuelve el backend.
+                                         Cuál es y cuánto falta se ve en la pantalla
+                                         de stock. #}
+                                      :class="v.bajo_minimo && 'text-danger font-medium'"
+                                      :title="v.bajo_minimo
+                                              ? 'Alguna ubicación está en su mínimo o por debajo'
+                                              : null"
+                                      x-text="v.stock_total"></span>
                             </td>
 
                             {# La API manda los números crudos: el formato de
@@ -328,7 +337,7 @@
                                 </div>
                                 <div class="flex items-center gap-3">
                                     <span class="text-sm text-texto-muted"
-                                          x-text="'Stock: ' + v.stock_actual"></span>
+                                          x-text="'Stock: ' + v.stock_total"></span>
                                     {# La BASE no se edita: no tiene sufijo, así
                                        que no tiene nombre que corregir. #}
                                     <button type="button" x-show="!v.es_base" x-cloak
@@ -503,14 +512,6 @@
                     </div>
 
                     <div class="flex flex-col gap-1">
-                        <label for="va-stock-min" class="text-sm font-semibold text-texto-header">
-                            Stock mínimo
-                        </label>
-                        <input id="va-stock-min" type="number" min="0" step="1"
-                               x-model="variante.stock_minimo" class="campo-linea">
-                    </div>
-
-                    <div class="flex flex-col gap-1">
                         <label for="va-ubicacion" class="text-sm font-semibold text-texto-header">
                             Ubicación en depósito
                         </label>
@@ -629,14 +630,6 @@
                             Vacío = usa el precio del producto. El precio en pesos lo calcula
                             el sistema con el dólar del proveedor y el redondeo configurado.
                         </p>
-                    </div>
-
-                    <div class="flex flex-col gap-1">
-                        <label for="ev-stock-min" class="text-sm font-semibold text-texto-header">
-                            Stock mínimo
-                        </label>
-                        <input id="ev-stock-min" type="number" min="0" step="1"
-                               x-model="edicionVariante.stock_minimo" class="campo-linea">
                     </div>
 
                     <div class="flex flex-col gap-1">

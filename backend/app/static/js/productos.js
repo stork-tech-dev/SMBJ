@@ -87,7 +87,7 @@ function abmProductos() {
         variante: {
             abierto: false, guardando: false, reemplazaBase: false,
             sufijo: '', descripcion_sufijo: '', sku_proveedor: '',
-            ubicacion_deposito: '', stock_minimo: 0,
+            ubicacion_deposito: '',
         },
 
         // Edición de una variante ya creada. El sufijo NO está: entra en el
@@ -95,7 +95,7 @@ function abmProductos() {
         edicionVariante: {
             abierto: false, guardando: false, id: null, codigo: '', proveedorId: null,
             descripcion_sufijo: '', sku_proveedor: '', ubicacion_deposito: '',
-            stock_minimo: 0, precio_usd: '',
+            precio_usd: '',
         },
 
         // Precio en pesos que resultaría del USD tipeado en el modal de
@@ -423,7 +423,6 @@ function abmProductos() {
                 descripcion_sufijo: '',
                 sku_proveedor: '',
                 ubicacion_deposito: '',
-                stock_minimo: 0,
             };
         },
 
@@ -474,7 +473,6 @@ function abmProductos() {
                 // ese caso usa el del producto.
                 sku_proveedor: v.sku_proveedor || '',
                 ubicacion_deposito: v.ubicacion_deposito || '',
-                stock_minimo: v.stock_minimo,
                 // Vacío cuando no tiene precio propio: el placeholder dice
                 // que en ese caso usa el del producto.
                 precio_usd: v.precio_usd ?? '',
@@ -524,7 +522,6 @@ function abmProductos() {
                         // El backend normaliza; '' sería guardar una ubicación
                         // vacía en vez de ninguna.
                         ubicacion_deposito: e.ubicacion_deposito || null,
-                        stock_minimo: Number(e.stock_minimo) || 0,
                     }),
                 });
                 if (!resp.ok) {
@@ -564,7 +561,6 @@ function abmProductos() {
                             // El backend normaliza el texto; mandar '' sería
                             // guardar una ubicación vacía en vez de ninguna.
                             ubicacion_deposito: this.variante.ubicacion_deposito || null,
-                            stock_minimo: Number(this.variante.stock_minimo) || 0,
                         }),
                     }
                 );

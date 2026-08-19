@@ -1,0 +1,476 @@
+{# Stock por ubicación. Los datos salen de /api/v1/stock: esta página no
+   consulta la base (Principio 1). #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/botones.html" import accion, acciones %}
+{% from "components/encabezado.html" import encabezado %}
+
+{% block contenido %}
+
+{% if sin_asignacion %}
+    {# Un vendedor cuyo equipo todavía no tiene local asignado no ve NADA.
+       Mostrarle el stock de todos los locales sería peor que no mostrarle
+       ninguno, y elegir uno por él sería adivinar. El mismo texto que
+       devuelve la API en el 403 (`MENSAJE_SIN_ASIGNACION`). #}
+    <div class="max-w-[34rem] mx-auto mt-24 text-center">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full
+                    bg-surface-alt text-texto-disabled">
+            {{ icono('almacen', clases='w-8 h-8') }}
+        </div>
+        <h1 class="mt-6 text-xl font-black text-welcome">Dispositivo pendiente de asignación</h1>
+        <p class="mt-3 text-base text-texto-muted">{{ mensaje_sin_asignacion }}</p>
+    </div>
+
+{% else %}
+<div x-data="abmStock({ puntoFijo: {{ punto_fijo or 'null' }} })"
+     x-init="cargarCatalogos(); cargar()">
+
+    {% call encabezado('Stock') %}
+        {% if puede_ingresar %}
+        <button type="button" @click="abrirIngreso()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Ingreso de mercadería
+        </button>
+        {% endif %}
+    {% endcall %}
+
+    {# ---------- Los tres números del encabezado ----------
+       Se leen antes que la tabla: dicen si hay que hacer algo (alertas) y
+       cuánto vale lo que hay. #}
+    <div class="grid gap-4 sm:grid-cols-3 mt-8">
+        <div class="p-5 bg-surface rounded-[20px] tarjeta">
+            <p class="text-sm text-texto-muted">Unidades en stock</p>
+            <p class="mt-1 text-2xl font-black text-texto" x-text="resumen.unidades"></p>
+        </div>
+
+        {# La tarjeta de alertas es además un filtro: tocarla deja la tabla
+           mostrando solo lo que hay que reponer, que es lo que uno quiere
+           hacer justo después de ver el número. #}
+        <button type="button" @click="filtros.solo_bajo_minimo = 'true'; cargar()"
+                class="p-5 bg-surface rounded-[20px] tarjeta text-left
+                       hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                :class="resumen.alertas && 'ring-1 ring-danger/40'">
+            <p class="text-sm text-texto-muted inline-flex items-center gap-2">
+                {{ icono('alerta', clases='w-4 h-4') }} Por reponer
+            </p>
+            <p class="mt-1 text-2xl font-black"
+               :class="resumen.alertas ? 'text-danger' : 'text-texto'"
+               x-text="resumen.alertas"></p>
+        </button>
+
+        <div class="p-5 bg-surface rounded-[20px] tarjeta">
+            <p class="text-sm text-texto-muted">Valorizado</p>
+            <p class="mt-1 text-2xl font-black text-texto"
+               x-text="pesos(resumen.valorizado)"></p>
+        </div>
+    </div>
+
+    {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
+        <input id="f-texto" type="text" x-model="filtros.busqueda"
+               @input.debounce.400ms="cargar()" placeholder="Código, SKU o descripción"
+               class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input text-texto
+                      placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        {# El selector de ubicación no aparece si la pantalla ya está acotada
+           a un local: ahí no hay nada que elegir. #}
+        {% if not punto_fijo %}
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto', 'puntos', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Ubicación', label_oculto=true,
+                        placeholder='Ubicación',
+                        vacio='Todas las ubicaciones',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+        {% endif %}
+
+        <div class="w-full sm:w-[16rem]">
+            {{ combobox('f-categoria', 'categorias', 'rutaCategoria(o)',
+                        'filtros.categoria_id',
+                        etiqueta='Categoría', label_oculto=true,
+                        placeholder='Categoría',
+                        vacio='Todas las categorías',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[12.5rem]">
+            {{ combobox('f-proveedor', 'proveedores', 'o.nombre',
+                        'filtros.proveedor_id',
+                        etiqueta='Proveedor', label_oculto=true,
+                        placeholder='Proveedor',
+                        vacio='Todos los proveedores',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'fila encontrada' : 'filas encontradas'"></span>
+        </p>
+
+        {# Mismo control que el "Solo activos" de los otros listados, con la
+           pregunta que corresponde acá. #}
+        <div class="ml-auto flex items-center gap-3">
+            <span id="bajo-minimo-label" class="text-sm font-semibold text-texto-muted">
+                Solo por reponer
+            </span>
+            <button type="button" role="switch" id="bajo-minimo"
+                    aria-labelledby="bajo-minimo-label"
+                    :aria-checked="filtros.solo_bajo_minimo === 'true' ? 'true' : 'false'"
+                    @click="filtros.solo_bajo_minimo =
+                            filtros.solo_bajo_minimo === 'true' ? '' : 'true'; cargar()"
+                    class="inline-flex items-center min-h-toque focus:outline-none
+                           focus-visible:ring-2 focus-visible:ring-primary rounded-input">
+                <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
+                      :class="filtros.solo_bajo_minimo === 'true' ? 'bg-primary' : 'bg-borde'">
+                    <span class="inline-block w-4 h-4 rounded-full bg-white shadow transition-transform"
+                          :class="filtros.solo_bajo_minimo === 'true' ? 'translate-x-6' : 'translate-x-1'"></span>
+                </span>
+            </button>
+            <span class="text-sm font-semibold text-texto w-6"
+                  x-text="filtros.solo_bajo_minimo === 'true' ? 'Sí' : 'No'"></span>
+        </div>
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                {# Cada fila es una VARIANTE EN UNA UBICACIÓN: es la unidad
+                   que tiene cantidad. El mismo código en dos locales son dos
+                   filas, porque son dos hechos distintos. #}
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Descripción</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Ubicación</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Cantidad</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Mínimo</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="f in filas" :key="f.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]">
+                            <td class="px-8 py-3 align-middle whitespace-nowrap">
+                                <span class="font-mono font-medium"
+                                      x-text="f.variante.codigo_completo + f.variante.verificador"></span>
+                            </td>
+
+                            <td class="px-4 py-3 align-middle font-medium">
+                                <span x-text="f.variante.producto.descripcion"></span>
+                                <span x-show="!f.variante.es_base" x-cloak
+                                      class="ml-2 text-xs text-texto-muted"
+                                      x-text="f.variante.descripcion_sufijo"></span>
+                            </td>
+
+                            <td class="px-4 py-3 align-middle whitespace-nowrap">
+                                <span class="font-mono text-sm text-texto-muted"
+                                      x-text="f.punto_de_venta.codigo"></span>
+                                <span class="ml-2" x-text="f.punto_de_venta.nombre"></span>
+                            </td>
+
+                            {# En rojo cuando está en el mínimo o por debajo:
+                               es la señal de reponer, y `<=` porque estar
+                               justo en el mínimo ya lo es. Lo decide el
+                               backend (`bajo_minimo`), que sabe cuál de los
+                               dos mínimos aplica según el tipo de ubicación. #}
+                            <td class="px-4 py-3 align-middle text-right whitespace-nowrap">
+                                <span class="text-lg font-medium"
+                                      :class="f.bajo_minimo && 'text-danger'"
+                                      x-text="f.cantidad"></span>
+                            </td>
+
+                            <td class="px-4 py-3 align-middle text-right whitespace-nowrap
+                                       text-sm text-texto-muted">
+                                <span x-text="f.stock_minimo"></span>
+                                <span x-show="f.bajo_minimo" x-cloak
+                                      class="ml-2 text-xs font-medium text-danger">Reponer</span>
+                            </td>
+
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
+                                {% call acciones() %}
+                                    {% if puede_minimos %}
+                                    {{ accion('editar', texto='Mínimos',
+                                              atributos='@click="abrirMinimos(f)"') }}
+                                    {% endif %}
+                                    {% if puede_baja %}
+                                    {{ accion('borrar', texto='Baja',
+                                              atributos='@click="abrirBaja(f)"
+                                                         title="Registrar una baja"') }}
+                                    {% endif %}
+                                {% endcall %}
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!filas.length && !cargando">
+                        <td colspan="6" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if puede_ingresar %}
+    {# ---------- Modal: ingreso de mercadería ---------- #}
+    <div x-show="ingreso.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @keydown.escape.window="ingreso.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-ingreso">
+        <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
+                <div>
+                    <h2 id="titulo-ingreso" class="text-lg font-black text-welcome">
+                        Ingreso de mercadería
+                    </h2>
+                    <p class="mt-1 text-sm text-texto-muted">
+                        Lo que entra del proveedor. Queda registrado como movimiento.
+                    </p>
+                </div>
+                <button type="button" @click="ingreso.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-2">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardarIngreso()" class="px-6 sm:px-10 pb-8 pt-4">
+                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="in-codigo" class="text-sm font-semibold text-texto-header">
+                            Código<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        {# Se escanea o se tipea: es el mismo campo. El lector
+                           entrega el código con su dígito verificador y el
+                           backend lo resuelve a una sola variante. #}
+                        <input id="in-codigo" x-model="ingreso.codigo"
+                               @input.debounce.300ms="buscarVariante('ingreso')"
+                               placeholder="Escaneá o tipeá el código"
+                               autocomplete="off" class="campo-linea font-mono">
+                        <span class="text-xs" :class="ingreso.variante ? 'text-primary' : 'text-texto-disabled'"
+                              x-text="ingreso.variante
+                                      ? ingreso.variante.producto.descripcion
+                                      : 'Todavía sin identificar'"></span>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        {{ combobox('in-punto', 'puntosDestino()', 'o.nombre',
+                                    'ingreso.punto_de_venta_id',
+                                    etiqueta='Ubicación', obligatorio=true,
+                                    clases='w-full h-control pl-3 pr-9 text-base font-light
+                                            bg-surface text-texto border-[0.5px]
+                                            border-texto-disabled rounded-input
+                                            focus:outline-none focus:border-primary') }}
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="in-cantidad" class="text-sm font-semibold text-texto-header">
+                            Cantidad<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="in-cantidad" type="number" min="1" step="1" required
+                               x-model="ingreso.cantidad" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="in-notas" class="text-sm font-semibold text-texto-header">
+                            Notas
+                        </label>
+                        <input id="in-notas" x-model="ingreso.notas" maxlength="200"
+                               placeholder="Remito del proveedor, factura…"
+                               class="campo-linea">
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-8">
+                    <button type="button" @click="ingreso.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit"
+                            :disabled="ingreso.guardando || !ingreso.variante
+                                       || !ingreso.punto_de_venta_id"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="ingreso.guardando ? 'Guardando…' : 'Registrar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if puede_minimos %}
+    {# ---------- Modal: mínimos de reposición ---------- #}
+    <div x-show="minimos.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @keydown.escape.window="minimos.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-minimos">
+        <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
+                <div>
+                    <h2 id="titulo-minimos" class="text-lg font-black text-welcome">
+                        Mínimos de reposición
+                    </h2>
+                    <p class="mt-1 text-sm text-texto-muted font-mono" x-text="minimos.codigo"></p>
+                </div>
+                <button type="button" @click="minimos.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-2">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardarMinimos()" class="px-6 sm:px-10 pb-8 pt-4">
+                {# Dos mínimos y no uno: el CD abastece a todos los locales,
+                   así que su colchón es de otro orden que el de una góndola.
+                   Cuál de los dos rige lo decide el TIPO de la ubicación, no
+                   quien carga el dato. #}
+                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div class="flex flex-col gap-1">
+                        <label for="mi-cd" class="text-sm font-semibold text-texto-header">
+                            Mínimo en el CD
+                        </label>
+                        <input id="mi-cd" type="number" min="0" step="1"
+                               x-model="minimos.stock_minimo_cd" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="mi-local" class="text-sm font-semibold text-texto-header">
+                            Mínimo en un local
+                        </label>
+                        <input id="mi-local" type="number" min="0" step="1"
+                               x-model="minimos.stock_minimo_local" class="campo-linea">
+                    </div>
+
+                    <p class="sm:col-span-2 -mt-2 text-xs text-texto-disabled">
+                        En esta ubicación (<span x-text="minimos.tipo"></span>) rige
+                        <span class="font-medium text-texto" x-text="minimos.aplicable()"></span>.
+                        En cero no genera alerta: es lo que corresponde a lo que
+                        nadie configuró todavía.
+                    </p>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-8">
+                    <button type="button" @click="minimos.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="minimos.guardando"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="minimos.guardando ? 'Guardando…' : 'Guardar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if puede_baja %}
+    {# ---------- Modal: baja de stock ---------- #}
+    <div x-show="baja.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @keydown.escape.window="baja.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-baja">
+        <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
+                <div>
+                    <h2 id="titulo-baja" class="text-lg font-black text-welcome">
+                        Registrar una baja
+                    </h2>
+                    <p class="mt-1 text-sm text-texto-muted">
+                        <span class="font-mono" x-text="baja.codigo"></span>
+                        · <span x-text="baja.ubicacion"></span>
+                        · hay <span class="font-medium" x-text="baja.disponible"></span>
+                    </p>
+                </div>
+                <button type="button" @click="baja.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-2">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardarBaja()" class="px-6 sm:px-10 pb-8 pt-4">
+                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div class="flex flex-col gap-1">
+                        <label for="ba-cantidad" class="text-sm font-semibold text-texto-header">
+                            Cantidad<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="ba-cantidad" type="number" min="1" step="1" required
+                               :max="baja.disponible"
+                               x-model="baja.cantidad" class="campo-linea">
+                    </div>
+
+                    <div>
+                        {# Solo los motivos activos: los inactivos siguen
+                           explicando bajas viejas pero no se ofrecen para
+                           nuevas. #}
+                        {{ combobox('ba-motivo', 'motivosActivos()', 'o.nombre',
+                                    'baja.motivo_baja_id',
+                                    etiqueta='Motivo', obligatorio=true,
+                                    buscable=false,
+                                    clases='w-full h-control pl-3 pr-9 text-base font-light
+                                            bg-surface text-texto border-[0.5px]
+                                            border-texto-disabled rounded-input
+                                            focus:outline-none focus:border-primary') }}
+                    </div>
+
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="ba-notas" class="text-sm font-semibold text-texto-header">
+                            Notas
+                        </label>
+                        <input id="ba-notas" x-model="baja.notas" maxlength="200"
+                               placeholder="Qué pasó" class="campo-linea">
+                    </div>
+                </div>
+
+                <p class="mt-5 text-xs text-texto-disabled">
+                    La baja no se deshace: queda como movimiento con su motivo. Si fue
+                    un error, se corrige con un ingreso o con una auditoría.
+                </p>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" @click="baja.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit"
+                            :disabled="baja.guardando || !baja.motivo_baja_id"
+                            class="h-boton px-8 rounded-input bg-danger text-white text-base
+                                   font-medium hover:opacity-90 disabled:opacity-60"
+                            x-text="baja.guardando ? 'Guardando…' : 'Dar de baja'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/stock.js') }}"></script>
+{% endblock %}

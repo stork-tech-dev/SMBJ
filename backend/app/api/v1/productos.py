@@ -325,7 +325,6 @@ def agregar_variante(
             descripcion_sufijo=datos.descripcion_sufijo,
             sku_proveedor=datos.sku_proveedor,
             ubicacion_deposito=datos.ubicacion_deposito,
-            stock_minimo=datos.stock_minimo,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:
@@ -362,7 +361,6 @@ def editar_variante(
             variante_id,
             descripcion_sufijo=datos.descripcion_sufijo,
             ubicacion_deposito=datos.ubicacion_deposito,
-            stock_minimo=datos.stock_minimo,
             precio_usd=datos.precio_usd,
             # Distingue "no mandes el precio" de "ponelo en NULL", que acá
             # significa volver al precio del producto. Mismo patrón que usan

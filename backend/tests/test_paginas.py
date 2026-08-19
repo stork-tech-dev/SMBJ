@@ -1044,9 +1044,13 @@ def test_agregar_variante_usa_un_formulario_y_no_un_prompt(client, crear_usuario
 
     assert "window.prompt" not in html and "prompt(" not in html
 
-    # Los tres campos del formulario, incluidos los dos que el prompt perdía.
-    for campo in ('id="va-sufijo"', 'id="va-ubicacion"', 'id="va-stock-min"'):
+    # Los campos del formulario, incluidos los que el prompt perdía. El
+    # stock mínimo ya no está: desde la 0022 es por ubicación y se carga en
+    # la pantalla de stock, porque el mismo artículo necesita un colchón
+    # distinto en el CD que en un local.
+    for campo in ('id="va-sufijo"', 'id="va-ubicacion"', 'id="va-skuprov"'):
         assert campo in html, f"falta {campo} en el modal de variante"
+    assert 'id="va-stock-min"' not in html
 
     # El aviso de que se pierde el código de la BASE.
     assert "deja de existir" in html
@@ -2139,6 +2143,9 @@ def _js_de(url: str) -> str:
         "/dispositivos": "dispositivos.js",
         "/roles": "roles.js",
         "/proveedores": "proveedores.js",
+        "/stock": "stock.js",
+        "/remitos": "remitos.js",
+        "/auditorias-inventario": "auditorias.js",
     }
     base = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
     return (base / archivos[url]).read_text()
@@ -2186,3 +2193,232 @@ def test_proveedores_arranca_en_activo_con_su_propio_select(client, crear_usuari
     assert "estado: 'activo'" in js
     limpiar = js[js.index("limpiar()"):]
     assert "estado: 'activo'" in limpiar[:limpiar.index("cargar()")]
+
+
+# ============================================================================
+# CONTROL DE STOCK: las tres pantallas
+# ============================================================================
+
+
+def _sesion_maestra(client, crear_usuario, nombre="cm_stock"):
+    crear_usuario(nombre, ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": nombre, "password": "Test1234!"})
+
+
+PANTALLAS_STOCK = ("/stock", "/remitos", "/auditorias-inventario")
+
+
+def test_las_tres_pantallas_de_stock_responden(client, crear_usuario):
+    """Un 500 acá sería una plantilla rota, que ningún otro test detecta."""
+    _sesion_maestra(client, crear_usuario)
+
+    for url in PANTALLAS_STOCK:
+        resp = client.get(url)
+        assert resp.status_code == 200, f"{url} devolvió {resp.status_code}"
+
+
+def test_las_tres_pantallas_estan_en_el_sidebar(client, crear_usuario):
+    """
+    Van juntas y después de Productos: siguen el orden real de uso —primero
+    el catálogo, después la mercadería, y recién ahí lo que se mueve—.
+    """
+    _sesion_maestra(client, crear_usuario)
+    html = client.get("/stock").text
+
+    posiciones = [html.index(f'href="{url}"') for url in PANTALLAS_STOCK]
+    assert posiciones == sorted(posiciones), "el sidebar no respeta el orden"
+    assert html.index('href="/productos"') < posiciones[0]
+
+
+def test_un_vendedor_sin_local_asignado_ve_las_pantallas_vacias(
+    client, db, crear_usuario, crear_punto_de_venta
+):
+    """
+    Criterio de aceptación del módulo: sin datos, sin filtros y sin acciones,
+    con el motivo escrito. Mostrarle el stock de todos los locales sería peor
+    que no mostrarle ninguno, y elegir uno por él sería adivinar.
+
+    El cartel se decide en el servidor: pedirlo por API obligaría a dibujar la
+    pantalla entera y vaciarla después.
+    """
+    from app.core.device_scope import MENSAJE_SIN_ASIGNACION
+    from app.models.dispositivo import Dispositivo
+
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Sin asignar", activo=True, punto_de_venta_id=None)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    for url in PANTALLAS_STOCK:
+        html = client.get(url).text
+        assert MENSAJE_SIN_ASIGNACION in html, f"{url} no explica por qué está vacía"
+        # Ni tabla, ni filtros, ni botón de alta.
+        assert "<table" not in html, f"{url} dibuja la tabla igual"
+        assert "Limpiar filtros" not in html, f"{url} deja los filtros"
+
+
+def test_un_vendedor_con_local_asignado_no_elige_ubicacion(
+    client, db, crear_usuario, crear_punto_de_venta
+):
+    """
+    Con una sola ubicación a la vista, un filtro por punto de venta no acota
+    nada: ofrecerlo sugiere que se puede mirar otro local, y no se puede.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/stock").text
+    assert 'id="f-punto"' not in html, "el filtro de ubicación no debería estar"
+    # Y la pantalla sí se dibuja: este equipo tiene local.
+    assert "<table" in html
+    assert f"puntoFijo: {local.id}" in html
+
+
+def test_la_pantalla_de_stock_no_deja_editar_la_cantidad(client, crear_usuario):
+    """
+    La cantidad se mueve con movimientos, que son los que dejan el rastro de
+    por qué cambió. Lo único editable a mano son los mínimos de reposición.
+    """
+    _sesion_maestra(client, crear_usuario)
+    html = client.get("/stock").text
+
+    assert 'x-model="minimos.stock_minimo_cd"' in html
+    assert 'x-model="minimos.stock_minimo_local"' in html
+    # No hay ningún campo atado a la cantidad de una fila de stock.
+    assert 'x-model="f.cantidad"' not in html
+    # Las tres puertas por las que sí se mueve.
+    for accion in ("abrirIngreso()", "abrirBaja(f)", "abrirMinimos(f)"):
+        assert accion in html, f"falta {accion}"
+
+
+def test_la_recepcion_pide_el_numero_del_remito(client, crear_usuario):
+    """
+    El número está impreso en el papel que viaja con la carga: tenerlo es la
+    prueba de que la mercadería llegó a destino. Si no coincide, la API
+    devuelve 403.
+    """
+    _sesion_maestra(client, crear_usuario)
+    html = client.get("/remitos").text
+
+    assert 'x-model="recepcion.numero_confirmacion"' in html
+    assert "impreso arriba a la derecha" in html
+    # Las cantidades vienen precargadas con lo enviado: lo normal es que
+    # llegue todo, y tipear cada línea para el caso habitual invita a errar.
+    js = _js_de("/remitos")
+    assert "recibida: i.cantidad_enviada" in js
+
+
+def test_el_remito_muestra_cada_accion_en_su_estado(client, crear_usuario):
+    """
+    Un remito ya confirmado no se despacha ni se vuelve a recibir: cada botón
+    aparece solo donde tiene sentido.
+    """
+    _sesion_maestra(client, crear_usuario)
+    html = client.get("/remitos").text
+
+    assert "r.estado === 'pendiente'" in html          # despachar
+    assert "['pendiente','en_camino'].includes(r.estado)" in html  # recibir
+    assert 'x-show="r.pdf_url"' in html                # reimprimir
+
+
+def test_la_auditoria_separa_contar_de_aprobar(client, crear_usuario):
+    """
+    El que cuenta no valida su propio conteo: aprobar y rechazar aparecen
+    recién con el conteo cerrado, y la API los pide con otro permiso.
+    """
+    _sesion_maestra(client, crear_usuario)
+    html = client.get("/auditorias-inventario").text
+
+    assert "a.estado === 'en_curso'" in html, "contar tiene que ser solo del conteo abierto"
+    assert "detalle.auditoria?.estado === 'pendiente_aprobacion'" in html
+    assert "confirmarAprobacion()" in html and "confirmarRechazo()" in html
+    # Las dos decisiones piden confirmación: mueven stock o lo dejan quieto,
+    # y las dos son difíciles de deshacer.
+    assert "modal_confirmacion" not in html, "el macro se renderiza, no se nombra"
+    assert 'x-show="confirmacion.abierta"' in html
+
+
+def test_el_conteo_se_carga_sin_soltar_el_teclado(client, crear_usuario):
+    """
+    Contar un estante es escanear, tipear la cantidad y seguir. Enter pasa del
+    código a la cantidad y de la cantidad al registro, y el foco vuelve al
+    código.
+    """
+    _sesion_maestra(client, crear_usuario)
+    html = client.get("/auditorias-inventario").text
+
+    assert "$refs.cantidad.focus()" in html
+    assert '@keydown.enter.prevent="registrar()"' in html
+
+    js = _js_de("/auditorias-inventario")
+    assert "document.getElementById('co-codigo')?.focus()" in js
+
+
+def test_las_pantallas_no_ofrecen_acciones_sin_permiso(
+    client, db, crear_usuario, crear_punto_de_venta, roles, dar_permiso
+):
+    """
+    Esconder un botón no es la barrera —el endpoint valida igual— pero
+    ofrecer una acción que siempre termina en 403 es peor que no ofrecerla:
+    quien la toca no tiene forma de saber que nunca le iba a funcionar.
+
+    Un vendedor cuenta y da de baja en su local, pero no ingresa mercadería
+    ni arma envíos ni aprueba conteos.
+    """
+    from app.core.permisos import Modulo, Recurso
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    crear_usuario("vende", ROL_VENDEDOR)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.STOCK, ver=True)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.STOCK,
+                recurso=Recurso.STOCK_BAJA, crear=True)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.STOCK,
+                recurso=Recurso.STOCK_AUDITORIA, crear=True)
+
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    stock = client.get("/stock").text
+    assert "Ingreso de mercadería" not in stock, "el vendedor no ingresa mercadería"
+    assert "abrirBaja(f)" in stock, "sí puede dar de baja en su local"
+    assert "abrirMinimos(f)" not in stock, "los mínimos los define quien administra"
+
+    remitos = client.get("/remitos").text
+    assert "Armar envío" not in remitos, "armar envíos es de Distribución"
+
+    auditorias = client.get("/auditorias-inventario").text
+    assert "Iniciar conteo" in auditorias, "sí puede contar su local"
+    assert "confirmarAprobacion()" not in auditorias, "aprobar es del Dueño"
+
+
+def test_las_pantallas_de_stock_no_dependen_del_permiso_de_configuracion(
+    client, crear_usuario
+):
+    """
+    El catálogo de ubicaciones sale de `/stock/ubicaciones` y no de
+    `/puntos-de-venta`, que pide permiso de CONFIGURACIÓN: un vendedor no lo
+    tiene, y sin esto no podría ni iniciar un conteo en su propio local.
+    """
+    _sesion_maestra(client, crear_usuario, "cm_ubic")
+
+    for url in PANTALLAS_STOCK:
+        js = _js_de(url)
+        assert "/api/v1/stock/ubicaciones" in js, f"{url} no usa el endpoint del módulo"
+        assert "/api/v1/puntos-de-venta" not in js, f"{url} sigue pidiendo Configuración"
