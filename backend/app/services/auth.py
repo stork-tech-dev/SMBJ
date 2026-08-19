@@ -104,7 +104,16 @@ def generar_tokens(
     )
 
     jti = secrets.token_urlsafe(32)
-    expira = ahora_db() + timedelta(days=settings.JWT_REFRESH_TOKEN_DAYS)
+
+    # `expira_en` es la VENTANA DE INACTIVIDAD, no el vencimiento del refresh
+    # token: arranca en media hora y cada actividad la corre
+    # (`registrar_actividad`). El límite de 7 días sigue existiendo por dos
+    # lados —el `exp` del propio JWT y el tope sobre `creada_en`—, así que una
+    # sesión con movimiento continuo tampoco vive para siempre.
+    #
+    # Ponerla en 7 días acá, como estaba, hacía que la ventana naciera abierta
+    # de par en par y nunca se cerrara.
+    expira = ahora_db() + timedelta(minutes=settings.SESION_INACTIVIDAD_MINUTOS)
     refresh = _crear_token(
         {"sub": str(usuario_id), "jti": jti},
         timedelta(days=settings.JWT_REFRESH_TOKEN_DAYS),
@@ -119,23 +128,88 @@ def generar_tokens(
     return access, refresh
 
 
-def refrescar_access_token(db: Session, refresh_token: str) -> str:
+# Cada cuánto, como mucho, se escribe la ventana en la base.
+#
+# Correrla en cada request sería un UPDATE por request, y el punto de venta
+# hace muchos seguidos. Con este freno, la ventana se mueve a lo sumo una vez
+# por minuto: lo que se pierde son segundos de precisión sobre una ventana de
+# media hora.
+_FRENO_ESCRITURA = timedelta(seconds=60)
+
+
+def registrar_actividad(db: Session, sesion: Sesion) -> None:
     """
-    Devuelve un access token nuevo a partir de un refresh token válido y
-    no revocado.
+    Corre la ventana de inactividad de la sesión.
+
+    `expira_en` es la ventana deslizante: cada actividad la empuja a
+    `ahora + SESION_INACTIVIDAD_MINUTOS`, con tope en el vencimiento absoluto
+    del refresh token —`creada_en + JWT_REFRESH_TOKEN_DAYS`—, que ninguna
+    actividad puede pasar. Sin ese tope, una sesión con movimiento cada 20
+    minutos viviría para siempre.
+
+    NO valida nada: se llama después de haber comprobado que la sesión sigue
+    viva. Al revés —correr primero y verificar después— el request que llega
+    tarde resetearía la ventana antes de que nadie la mire, y la sesión no
+    vencería nunca. Es justo el error que este cambio viene a arreglar.
+    """
+    nuevo = ahora_db() + timedelta(minutes=settings.SESION_INACTIVIDAD_MINUTOS)
+    tope = sesion.creada_en + timedelta(days=settings.JWT_REFRESH_TOKEN_DAYS)
+    nuevo = min(nuevo, tope)
+
+    if nuevo - sesion.expira_en >= _FRENO_ESCRITURA:
+        sesion.expira_en = nuevo
+        db.flush()
+
+
+def sesion_vigente(db: Session, refresh_token: str) -> Sesion:
+    """
+    La sesión del refresh token, si sigue viva.
+
+    Es el único lugar donde se decide que una sesión está viva, y lo usan los
+    dos caminos que renuevan: el middleware y el endpoint `/auth/refresh`
+    —que está excluido del middleware, así que si la regla viviera allá este
+    endpoint sería un desvío para saltearla—.
 
     Raises:
-        TokenInvalido: token vencido, revocado o de usuario inactivo.
+        TokenInvalido: token inválido, sesión revocada o vencida por
+            inactividad.
     """
     payload = verificar_token(refresh_token, tipo="refresh")
 
-    sesion = db.execute(select(Sesion).where(Sesion.jti == payload.get("jti"))).scalar_one_or_none()
+    sesion = db.execute(
+        select(Sesion).where(Sesion.jti == payload.get("jti"))
+    ).scalar_one_or_none()
     if sesion is None or sesion.revocada:
         raise TokenInvalido("Sesión revocada")
 
-    usuario = db.get(Usuario, int(payload["sub"]))
+    if sesion.expira_en < ahora_db():
+        # Se revoca y no solo se rechaza: así el refresh token queda muerto de
+        # verdad y un navegador que se lo haya guardado tampoco puede volver
+        # a entrar con él.
+        sesion.revocada = True
+        db.flush()
+        raise TokenInvalido("Sesión vencida por inactividad")
+
+    return sesion
+
+
+def refrescar_access_token(db: Session, refresh_token: str) -> str:
+    """
+    Devuelve un access token nuevo a partir de un refresh token válido, no
+    revocado y con actividad reciente.
+
+    Raises:
+        TokenInvalido: token vencido, revocado, vencido por inactividad o de
+            usuario inactivo.
+    """
+    sesion = sesion_vigente(db, refresh_token)
+
+    usuario = db.get(Usuario, sesion.usuario_id)
     if usuario is None or not usuario.activo:
         raise TokenInvalido("Usuario inactivo o inexistente")
+
+    # Renovar el access ES actividad: corre la ventana.
+    registrar_actividad(db, sesion)
 
     return _crear_token(
         {"sub": str(usuario.id)},

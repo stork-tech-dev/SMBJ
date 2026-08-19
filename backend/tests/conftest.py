@@ -68,12 +68,39 @@ def db(engine_test) -> Session:
     conexion.close()
 
 
+class _SesionDeTest:
+    """
+    La sesión del test, con `close()` desactivado.
+
+    Los middlewares no pueden usar `Depends`, así que abren y cierran la suya.
+    Acá se les pasa la del test —la de ellos no vería nada, porque los datos
+    viven en una transacción que nunca se commitea— y se le saca el `close()`,
+    que cerraría la sesión que el fixture todavía necesita.
+    """
+
+    def __init__(self, sesion):
+        self._sesion = sesion
+
+    def __getattr__(self, nombre):
+        return getattr(self._sesion, nombre)
+
+    def close(self):
+        pass
+
+
 @pytest.fixture
-def client(db) -> TestClient:
+def client(db, monkeypatch) -> TestClient:
     """Cliente HTTP con la sesión de test inyectada en lugar de la real."""
     from app.core.database import get_db
+    from app.middleware import auth_refresh_middleware
     from config import settings
     from main import app
+
+    # `AuthRefreshMiddleware` consulta la sesión en CADA request para correr la
+    # ventana de inactividad. Con su propia SessionLocal no vería el login del
+    # test y trataría toda sesión como inexistente: 401 y cookies borradas en
+    # cualquier test que navegue autenticado.
+    monkeypatch.setattr(auth_refresh_middleware, "SessionLocal", lambda: _SesionDeTest(db))
 
     # El middleware de dispositivos usa su propia SessionLocal (fuera de la
     # transacción del test): se apaga para no ensuciar la base. Los endpoints

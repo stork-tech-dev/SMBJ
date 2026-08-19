@@ -27,6 +27,7 @@ from app.services import configuracion as servicio_configuracion
 from app.services import roles as servicio_roles
 from app.services import usuarios as servicio_usuarios
 from app.services.auth import debe_cambiar_password
+from config import settings
 
 router = APIRouter(include_in_schema=False)
 
@@ -210,6 +211,11 @@ def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
         "es_maestra": _es_maestra(actual),
         # Define qué logotipo se muestra ('S' Soleil / 'M' Mallorca).
         "letra_empresa": servicio_configuracion.letra_empresa(db),
+        # Cuánto se tolera sin actividad. Lo necesita el JavaScript para
+        # avisar antes de que la sesión se caiga, y sale de la MISMA constante
+        # que aplica el backend: dos números que puedan separarse terminarían
+        # avisando a destiempo o no avisando nunca.
+        "inactividad_minutos": settings.SESION_INACTIVIDAD_MINUTOS,
         **extra,
     }
 

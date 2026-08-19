@@ -249,6 +249,41 @@
    con window.toast(mensaje, tipo) desde app.js. #}
 {{ contenedor_toasts() }}
 
+{# ---------- Aviso de sesión por vencer ----------
+
+   La sesión se cae sola después de unos minutos sin actividad. Avisar antes
+   de cortar no es un lujo: en el punto de venta, que te saquen con una venta
+   a medio cargar cuesta la venta.
+
+   Los minutos salen del backend (`SESION_INACTIVIDAD_MINUTOS`), no de una
+   constante en el JavaScript: dos números que puedan separarse terminarían
+   avisando a destiempo, o no avisando nunca.
+
+   El velo va en z-50 como todos los modales del sistema y se cierra con
+   Escape, que acá significa "seguir trabajando": quien aprieta una tecla
+   está justamente demostrando que sigue ahí. #}
+<div id="aviso-sesion" x-data="avisoSesion({{ inactividad_minutos|default(30) }})"
+     x-show="visible" x-cloak
+     @keydown.escape.window="seguir()"
+     class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+     role="dialog" aria-modal="true" aria-labelledby="titulo-aviso-sesion">
+    <div class="w-full max-w-[26rem] bg-surface rounded-[10px] p-8
+                shadow-[0_0_15px_0_rgba(0,0,0,0.25)] text-center">
+        <h2 id="titulo-aviso-sesion" class="text-lg font-black text-welcome">
+            Tu sesión está por vencer
+        </h2>
+        <p class="mt-3 text-base text-texto-muted">
+            Por seguridad se cierra sola cuando no hay actividad. Vence en
+            <span class="font-medium text-texto" x-text="restante"></span>.
+        </p>
+        <button type="button" @click="seguir()"
+                class="h-boton px-8 mt-6 rounded-input bg-primary text-white text-base
+                       font-medium hover:bg-primary-hover">
+            Seguir trabajando
+        </button>
+    </div>
+</div>
+
 {% block scripts %}{% endblock %}
 </body>
 </html>

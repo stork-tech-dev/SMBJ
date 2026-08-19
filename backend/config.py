@@ -51,6 +51,19 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_MINUTES: int = 30
     JWT_REFRESH_TOKEN_DAYS: int = 7
+
+    # Cuánto se tolera sin actividad antes de cerrar la sesión.
+    #
+    # Es una constante APARTE de `JWT_ACCESS_TOKEN_MINUTES` aunque hoy valgan
+    # lo mismo: una dice cuánto vale un token y la otra cuánta inactividad se
+    # acepta. Confundirlas fue exactamente lo que dejó la sesión sin vencer —
+    # los 30 minutos eran la vida del access token, que el middleware renovaba
+    # en silencio con el refresh de 7 días.
+    #
+    # Tiene que ser >= al access token: si fuera menor, un token todavía
+    # vigente dejaría entrar después de vencida la ventana. Lo cuida
+    # `test_el_access_no_puede_durar_mas_que_la_ventana`.
+    SESION_INACTIVIDAD_MINUTOS: int = 30
     JWT_COOKIE_NAME: str = "soleil_access_token"
     JWT_REFRESH_COOKIE_NAME: str = "soleil_refresh_token"
     # Secure=True exige HTTPS: se activa solo en producción.

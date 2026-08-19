@@ -45,7 +45,11 @@ class AuthRefreshMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request.state.access_renovado = None
 
-        token_nuevo = _renovar_si_hace_falta(request)
+        # `caida` es True cuando la sesión existía pero ya no sirve: se venció
+        # por inactividad o la revocaron. Se distingue de "no había nada que
+        # renovar" para poder limpiar las cookies, que si no siguen viajando
+        # muertas en cada request.
+        token_nuevo, caida = _revisar_sesion(request)
         if token_nuevo is not None:
             request.state.access_renovado = token_nuevo
 
@@ -58,12 +62,23 @@ class AuthRefreshMiddleware(BaseHTTPMiddleware):
         if token_nuevo is not None and not _response_toca_la_cookie(response):
             _setear_cookie(response, token_nuevo)
 
+        if caida:
+            _borrar_cookies(response)
+
         return response
 
 
-def _renovar_si_hace_falta(request: Request) -> str | None:
+def _revisar_sesion(request: Request) -> tuple[str | None, bool]:
     """
-    Devuelve un access token nuevo, o None si no corresponde renovar.
+    Mira la sesión del request y devuelve `(access_nuevo, caida)`.
+
+    Hace dos cosas que van juntas:
+
+    1. REGISTRA LA ACTIVIDAD. Corre la ventana de inactividad en cada request,
+       no solo cuando toca renovar: si solo se contara al renovar, alguien
+       trabajando sin parar durante media hora vería vencer su sesión igual,
+       porque su access token todavía vigente nunca habría pasado por acá.
+    2. RENUEVA el access token si venció y la sesión sigue viva.
 
     Nunca levanta: un fallo acá dejaría sin servicio a toda la aplicación por
     algo que, en el peor caso, se resuelve volviendo a entrar.
@@ -71,33 +86,47 @@ def _renovar_si_hace_falta(request: Request) -> str | None:
     from app.services import auth as servicio_auth
 
     if _excluida(request.url.path):
-        return None
+        return None, False
 
     # Una credencial explícita manda sobre la cookie, igual que en
     # `get_current_user`: si alguien manda un Bearer, esa es la que quiere
     # usar, y taparla con una sesión del navegador sería una sorpresa.
     if request.headers.get("authorization", "").lower().startswith("bearer "):
-        return None
-
-    if _access_vigente(request.cookies.get(settings.JWT_COOKIE_NAME)):
-        return None
+        return None, False
 
     refresh = request.cookies.get(settings.JWT_REFRESH_COOKIE_NAME)
     if not refresh:
-        return None
+        return None, False
+
+    hay_que_renovar = not _access_vigente(request.cookies.get(settings.JWT_COOKIE_NAME))
 
     db = SessionLocal()
     try:
-        # La misma función que usa el endpoint `/auth/refresh`: valida la
-        # firma, que la sesión no esté revocada y que el usuario siga activo.
-        # Si algo de eso falla levanta TokenInvalido y no se renueva nada —es
-        # lo que hace que cerrar sesión signifique algo.
-        return servicio_auth.refrescar_access_token(db, refresh)
+        if hay_que_renovar:
+            # La misma función que usa el endpoint `/auth/refresh`: valida la
+            # firma, que la sesión no esté revocada, que no se haya vencido
+            # por inactividad y que el usuario siga activo. Si algo de eso
+            # falla levanta TokenInvalido y no se renueva nada —es lo que hace
+            # que cerrar sesión signifique algo—.
+            token = servicio_auth.refrescar_access_token(db, refresh)
+            db.commit()
+            return token, False
+
+        # El access sigue vigente: no hay nada que renovar, pero esto ES
+        # actividad y la ventana tiene que correrse igual.
+        sesion = servicio_auth.sesion_vigente(db, refresh)
+        servicio_auth.registrar_actividad(db, sesion)
+        db.commit()
+        return None, False
     except servicio_auth.TokenInvalido:
-        return None
+        # La sesión existía y ya no sirve. El commit deja escrita la
+        # revocación que hizo `sesion_vigente` al encontrarla vencida.
+        db.commit()
+        return None, True
     except Exception:  # noqa: BLE001 - renovar nunca debe romper la request
-        logger.exception("Fallo renovando el access token")
-        return None
+        logger.exception("Fallo revisando la sesión")
+        db.rollback()
+        return None, False
     finally:
         db.close()
 
@@ -125,6 +154,21 @@ def _response_toca_la_cookie(response) -> bool:
         nombre.lower() == b"set-cookie" and valor.startswith(prefijo)
         for nombre, valor in response.raw_headers
     )
+
+
+def _borrar_cookies(response) -> None:
+    """
+    Saca las dos cookies de sesión cuando la sesión ya no sirve.
+
+    Sin esto el navegador sigue mandando un refresh muerto en cada request y
+    el servidor sigue contestando 401, sin que nada explique por qué: la
+    pantalla queda pidiendo login con las credenciales viejas todavía puestas.
+
+    La del dispositivo no se toca: el equipo sigue siendo el mismo después de
+    que se le venza la sesión a quien lo estaba usando.
+    """
+    response.delete_cookie(settings.JWT_COOKIE_NAME, path="/")
+    response.delete_cookie(settings.JWT_REFRESH_COOKIE_NAME, path="/")
 
 
 def _setear_cookie(response, token: str) -> None:

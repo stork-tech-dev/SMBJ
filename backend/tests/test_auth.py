@@ -9,6 +9,7 @@ from app.core.permisos import ROL_VENDEDOR
 from app.models.auditoria import Auditoria
 from app.models.usuario import HistorialAcceso, ResultadoAcceso
 from app.services import auth as servicio_auth
+from config import settings
 
 
 def test_login_exitoso(client, crear_usuario):
@@ -144,33 +145,6 @@ def test_refresh_emite_access_nuevo(client, crear_usuario):
 # ============================================================================
 
 
-class _SesionDeTest:
-    """
-    La sesión del test, con `close()` desactivado.
-
-    El middleware no puede usar `Depends`, así que abre y cierra la suya. Acá
-    se le pasa la del test —la de él no vería nada, porque los datos del login
-    viven en una transacción que nunca se commitea— y se le saca el `close()`,
-    que cerraría la sesión que el fixture todavía necesita.
-    """
-
-    def __init__(self, sesion):
-        self._sesion = sesion
-
-    def __getattr__(self, nombre):
-        return getattr(self._sesion, nombre)
-
-    def close(self):
-        pass
-
-
-@pytest.fixture
-def middleware_ve_la_base(monkeypatch, db):
-    from app.middleware import auth_refresh_middleware as mw
-
-    monkeypatch.setattr(mw, "SessionLocal", lambda: _SesionDeTest(db))
-
-
 def _vencer_el_access(client):
     """Deja la cookie de acceso vencida, con el refresh intacto."""
     client.cookies.set(
@@ -180,7 +154,7 @@ def _vencer_el_access(client):
 
 
 def test_la_sesion_se_renueva_sola_cuando_vence_el_access(
-    client, crear_usuario, middleware_ve_la_base
+    client, crear_usuario
 ):
     """
     El corazón del cambio: con el access vencido y el refresh vivo, se sigue
@@ -202,7 +176,7 @@ def test_la_sesion_se_renueva_sola_cuando_vence_el_access(
 
 
 def test_la_renovacion_tambien_vale_para_las_paginas(
-    client, crear_usuario, middleware_ve_la_base
+    client, crear_usuario
 ):
     """
     Las páginas HTML no pasan por el mismo camino que la API —usan
@@ -218,7 +192,7 @@ def test_la_renovacion_tambien_vale_para_las_paginas(
     assert resp.status_code == 200, "la página redirigió al login en vez de renovar"
 
 
-def test_no_renueva_si_se_cerro_la_sesion(client, crear_usuario, middleware_ve_la_base):
+def test_no_renueva_si_se_cerro_la_sesion(client, crear_usuario):
     """
     El test que protege el logout. Si el middleware renovara sin mirar
     `sesiones.revocada`, cerrar sesión no serviría de nada: alcanzaría con
@@ -249,7 +223,7 @@ def test_no_renueva_si_se_cerro_la_sesion(client, crear_usuario, middleware_ve_l
 
 
 def test_no_renueva_con_el_refresh_tambien_vencido(
-    client, crear_usuario, middleware_ve_la_base
+    client, crear_usuario
 ):
     """Los 7 días son el techo: pasados, se vuelve a entrar."""
     crear_usuario("juan", ROL_VENDEDOR)
@@ -267,7 +241,7 @@ def test_no_renueva_con_el_refresh_tambien_vencido(
 
 
 def test_no_renueva_a_un_usuario_desactivado(
-    client, db, crear_usuario, middleware_ve_la_base
+    client, db, crear_usuario
 ):
     """
     Dar de baja a alguien tiene que sacarlo, no esperar 7 días. Lo controla
@@ -287,7 +261,7 @@ def test_no_renueva_a_un_usuario_desactivado(
     assert client.get("/api/v1/auth/me").status_code == 401
 
 
-def test_renovar_no_abre_una_sesion_nueva(client, db, crear_usuario, middleware_ve_la_base):
+def test_renovar_no_abre_una_sesion_nueva(client, db, crear_usuario):
     """
     Sigue siendo la MISMA sesión: si cada renovación insertara una fila,
     `sesiones` crecería una por usuario cada 30 minutos y el logout dejaría
@@ -307,7 +281,7 @@ def test_renovar_no_abre_una_sesion_nueva(client, db, crear_usuario, middleware_
 
 
 def test_el_bearer_vencido_no_lo_tapa_la_cookie(
-    client, crear_usuario, middleware_ve_la_base
+    client, crear_usuario
 ):
     """
     Una credencial explícita manda: si alguien manda un Bearer vencido, la
@@ -323,7 +297,7 @@ def test_el_bearer_vencido_no_lo_tapa_la_cookie(
     assert resp.status_code == 401
 
 
-def test_el_logout_no_recibe_una_cookie_nueva(client, crear_usuario, middleware_ve_la_base):
+def test_el_logout_no_recibe_una_cookie_nueva(client, crear_usuario):
     """
     El middleware corre DESPUÉS del handler para agregar la cookie, así que
     sin la comprobación de "el handler ya la tocó" le devolvería al usuario un
@@ -439,3 +413,230 @@ def test_hash_password_no_es_reversible():
 @pytest.mark.parametrize("hash_roto", ["", "no-es-un-hash", "$2b$12$corto"])
 def test_verificar_password_con_hash_invalido_no_explota(hash_roto):
     assert servicio_auth.verificar_password("cualquiera", hash_roto) is False
+
+
+# ============================================================================
+# LA SESIÓN VENCE POR INACTIVIDAD
+# ============================================================================
+#
+# Hasta este cambio no vencía nunca: los 30 minutos eran la vida del access
+# token, que el middleware renovaba en silencio mientras el refresh de 7 días
+# siguiera vivo. La ventana ahora vive en `sesiones.expira_en`, que se corre
+# con cada request.
+
+
+def _sesion_de(db, usuario_nombre="juan"):
+    """La fila de `sesiones` del usuario, que es donde vive la ventana."""
+    from app.models.sesion import Sesion
+    from app.models.usuario import Usuario
+
+    usuario = db.execute(
+        select(Usuario).where(Usuario.username == usuario_nombre)
+    ).scalar_one()
+    return db.execute(
+        select(Sesion).where(Sesion.usuario_id == usuario.id)
+    ).scalars().first()
+
+
+def _pasar_inactivo(db, minutos, usuario_nombre="juan"):
+    """
+    Simula `minutos` sin actividad corriendo la ventana hacia atrás.
+
+    Mover la ventana es exactamente lo que significa "pasó el tiempo": es el
+    dato que el servidor mira, y evita tener que congelar el reloj.
+    """
+    from app.core.utils import ahora_db
+
+    sesion = _sesion_de(db, usuario_nombre)
+    sesion.expira_en = ahora_db() + timedelta(
+        minutes=settings.SESION_INACTIVIDAD_MINUTOS - minutos
+    )
+    db.flush()
+    return sesion
+
+
+def _entrar(client, crear_usuario, nombre="juan"):
+    crear_usuario(nombre, ROL_VENDEDOR)
+    resp = client.post(
+        "/api/v1/auth/login", json={"username": nombre, "password": "Test1234!"}
+    )
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def test_la_sesion_arranca_con_la_ventana_de_inactividad(client, db, crear_usuario):
+    """
+    `expira_en` es la ventana, no el vencimiento del refresh: si naciera en 7
+    días nacería abierta de par en par y no se cerraría nunca — que es
+    exactamente como estaba.
+    """
+    from app.core.utils import ahora_db
+
+    _entrar(client, crear_usuario)
+    sesion = _sesion_de(db)
+
+    faltan = (sesion.expira_en - ahora_db()).total_seconds() / 60
+    assert settings.SESION_INACTIVIDAD_MINUTOS - 1 < faltan <= settings.SESION_INACTIVIDAD_MINUTOS
+
+
+def test_pasada_la_ventana_la_sesion_no_se_renueva(
+    client, db, crear_usuario
+):
+    """
+    El agujero que este cambio cierra: antes, el primer click después de una
+    hora sin hacer nada renovaba el access en silencio y se seguía trabajando.
+    """
+    _entrar(client, crear_usuario)
+    _pasar_inactivo(db, minutos=31)
+    _vencer_el_access(client)
+
+    resp = client.get("/api/v1/auth/me")
+
+    assert resp.status_code == 401
+    # Y la sesión queda revocada: un refresh copiado tampoco sirve después.
+    assert _sesion_de(db).revocada is True
+
+
+def test_al_vencer_por_inactividad_se_borran_las_cookies(
+    client, db, crear_usuario
+):
+    """
+    Sin esto el navegador sigue mandando un refresh muerto en cada request y
+    el servidor sigue contestando 401, sin que nada explique por qué.
+    """
+    _entrar(client, crear_usuario)
+    _pasar_inactivo(db, minutos=31)
+    _vencer_el_access(client)
+
+    resp = client.get("/api/v1/auth/me")
+
+    borradas = [
+        c for c in resp.headers.get_list("set-cookie")
+        if c.startswith(("soleil_access_token=", "soleil_refresh_token="))
+    ]
+    assert len(borradas) == 2, resp.headers.get_list("set-cookie")
+    assert all('Max-Age=0' in c or 'expires=Thu, 01 Jan 1970' in c.lower() for c in borradas)
+
+
+def test_dentro_de_la_ventana_se_sigue_renovando(
+    client, db, crear_usuario
+):
+    """Lo de siempre tiene que seguir andando: 25 minutos no cierran nada."""
+    _entrar(client, crear_usuario)
+    _pasar_inactivo(db, minutos=25)
+    _vencer_el_access(client)
+
+    resp = client.get("/api/v1/auth/me")
+
+    assert resp.status_code == 200
+    assert _sesion_de(db).revocada is False
+
+
+def test_la_ventana_se_corre_con_la_actividad(
+    client, db, crear_usuario
+):
+    """
+    Es lo que la hace DESLIZANTE: trabajar a los 25 minutos compra media hora
+    más, así que a los 35 desde el login la sesión sigue viva.
+    """
+    from app.core.utils import ahora_db
+
+    _entrar(client, crear_usuario)
+    _pasar_inactivo(db, minutos=25)
+
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+    faltan = (_sesion_de(db).expira_en - ahora_db()).total_seconds() / 60
+    assert faltan > settings.SESION_INACTIVIDAD_MINUTOS - 1, "la ventana no se corrió"
+
+
+def test_la_actividad_cuenta_aunque_el_access_siga_vigente(
+    client, db, crear_usuario
+):
+    """
+    Si la ventana se corriera solo al renovar, alguien trabajando sin parar
+    media hora vería vencer su sesión igual: su access token vigente nunca
+    habría pasado por la renovación.
+    """
+    _entrar(client, crear_usuario)
+    antes = _pasar_inactivo(db, minutos=25).expira_en
+
+    # Sin vencer el access a propósito: es el caso de alguien trabajando.
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+    assert _sesion_de(db).expira_en > antes
+
+
+def test_el_endpoint_de_refresh_tambien_corta(client, db, crear_usuario):
+    """
+    `/auth/refresh` está excluido del middleware, así que si la regla viviera
+    ahí este endpoint seria un desvío para saltearla. Por eso vive en el
+    service, que es por donde pasan los dos caminos.
+    """
+    login = _entrar(client, crear_usuario)
+    _pasar_inactivo(db, minutos=31)
+
+    resp = client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": login["refresh_token"]}
+    )
+
+    assert resp.status_code == 401
+    assert "inactividad" in resp.json()["detail"].lower()
+
+
+def test_la_ventana_no_pasa_el_tope_absoluto(db, crear_usuario):
+    """
+    Una sesión con movimiento cada 20 minutos viviría para siempre si la
+    ventana pudiera correrse sin límite. El tope son los 7 días desde que se
+    creó, que es lo que dura el refresh token.
+    """
+    from app.core.utils import ahora_db
+    from app.models.sesion import Sesion
+
+    usuario = crear_usuario("ana", ROL_VENDEDOR)
+    sesion = Sesion(
+        usuario_id=usuario.id,
+        jti="jti-de-prueba",
+        # Creada hace casi 7 días: le quedan 10 minutos de vida absoluta.
+        creada_en=ahora_db() - timedelta(days=settings.JWT_REFRESH_TOKEN_DAYS) + timedelta(minutes=10),
+        expira_en=ahora_db() + timedelta(minutes=1),
+    )
+    db.add(sesion)
+    db.flush()
+
+    servicio_auth.registrar_actividad(db, sesion)
+
+    faltan = (sesion.expira_en - ahora_db()).total_seconds() / 60
+    assert faltan <= 10.1, "la actividad empujó la sesión más allá del tope"
+
+
+def test_la_ventana_no_se_escribe_en_cada_request(db, crear_usuario):
+    """
+    El punto de venta hace muchos requests seguidos y no hace falta un UPDATE
+    por cada uno: la ventana se mueve a lo sumo una vez por minuto.
+    """
+    from app.core.utils import ahora_db
+    from app.models.sesion import Sesion
+
+    usuario = crear_usuario("ana", ROL_VENDEDOR)
+    sesion = Sesion(
+        usuario_id=usuario.id, jti="jti-freno",
+        creada_en=ahora_db(),
+        expira_en=ahora_db() + timedelta(minutes=settings.SESION_INACTIVIDAD_MINUTOS),
+    )
+    db.add(sesion)
+    db.flush()
+    primera = sesion.expira_en
+
+    servicio_auth.registrar_actividad(db, sesion)
+
+    assert sesion.expira_en == primera, "escribió con menos de un minuto de diferencia"
+
+
+def test_el_access_no_puede_durar_mas_que_la_ventana():
+    """
+    Si el access durara más que la ventana, un token todavía vigente dejaría
+    entrar después de vencida: `get_current_user` lo acepta sin mirar la
+    sesión. Los dos valores viven en `config.py` y nada más los ata.
+    """
+    assert settings.JWT_ACCESS_TOKEN_MINUTES <= settings.SESION_INACTIVIDAD_MINUTOS

@@ -256,10 +256,10 @@ document.addEventListener('DOMContentLoaded', function () {
 /**
  * Sesión terminada: avisa y manda al login.
  *
- * Con `AuthRefreshMiddleware` en el backend, un 401 ya no significa "venció
- * el token de 30 minutos" —eso se renueva solo— sino que tampoco hay refresh:
- * pasaron los 7 días o alguien cerró sesión. Es el final del camino, así que
- * no se reintenta nada.
+ * Con `AuthRefreshMiddleware` en el backend, un 401 significa que la sesión
+ * ya no sirve: pasaron los minutos de inactividad, se cumplieron los 7 días
+ * o alguien cerró sesión. Es el final del camino, así que no se reintenta
+ * nada.
  *
  * `yendoAlLogin` evita que varios requests en paralelo disparen tres toasts y
  * tres redirecciones a la vez.
@@ -278,6 +278,11 @@ function sesionTerminada() {
 // eso se ocupa el middleware, mucho antes de que la respuesta llegue.
 const fetchOriginal = window.fetch.bind(window);
 window.fetch = async function (...args) {
+    // Cada request que sale es actividad, y es exactamente lo que el servidor
+    // cuenta para correr la ventana: el reloj de esta pantalla y el de la
+    // base miran el mismo hecho.
+    document.dispatchEvent(new CustomEvent('sesion:actividad'));
+
     const respuesta = await fetchOriginal(...args);
     if (respuesta.status === 401) {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
@@ -286,6 +291,99 @@ window.fetch = async function (...args) {
         if (!url.includes('/api/v1/auth/')) sesionTerminada();
     }
     return respuesta;
+};
+
+// HTMX no pasa por `fetch` —usa XMLHttpRequest—, así que sus requests se
+// cuentan por su propio evento. Sin esto, una pantalla que trabaje solo con
+// HTMX vería el cartel mientras la sesión se está renovando sola.
+document.addEventListener('htmx:afterRequest', function () {
+    document.dispatchEvent(new CustomEvent('sesion:actividad'));
+});
+
+/**
+ * Aviso de "tu sesión está por vencer", con el botón para seguir.
+ *
+ * El servidor cierra la sesión después de N minutos sin actividad. Este
+ * componente lleva el mismo reloj del lado del navegador para avisar DOS
+ * minutos antes: en el punto de venta, que te saquen con una venta a medio
+ * cargar cuesta la venta.
+ *
+ * `minutos` lo inyecta el backend desde la misma constante que aplica la
+ * regla (`SESION_INACTIVIDAD_MINUTOS`): dos números que puedan separarse
+ * terminarían avisando a destiempo, o no avisando nunca.
+ *
+ * No cuenta clicks ni teclas a propósito: cuenta REQUESTS, que es lo único
+ * que el servidor ve. Mover el mouse no mantiene viva una sesión.
+ */
+const AVISO_ANTES_MS = 2 * 60 * 1000;
+
+window.avisoSesion = function (minutos) {
+    return {
+        visible: false,
+        restante: '2 minutos',
+        vence: 0,
+        reloj: null,
+
+        init() {
+            document.addEventListener('sesion:actividad', () => this.reiniciar());
+            this.reiniciar();
+        },
+
+        /** Vuelve a arrancar la cuenta: hubo actividad. */
+        reiniciar() {
+            this.visible = false;
+            this.vence = Date.now() + minutos * 60 * 1000;
+
+            clearInterval(this.reloj);
+            this.reloj = setInterval(() => this.mirar(), 1000);
+        },
+
+        mirar() {
+            const falta = this.vence - Date.now();
+
+            if (falta <= 0) {
+                // Se acabó: el próximo request va a volver 401 igual, pero no
+                // se espera a que el usuario haga uno para decírselo.
+                clearInterval(this.reloj);
+                this.visible = false;
+                sesionTerminada();
+                return;
+            }
+
+            this.visible = falta <= AVISO_ANTES_MS;
+            if (this.visible) {
+                const segundos = Math.ceil(falta / 1000);
+                this.restante = segundos > 60
+                    ? `${Math.ceil(segundos / 60)} minutos`
+                    : `${segundos} segundos`;
+            }
+        },
+
+        /**
+         * "Seguir trabajando": renueva la sesión contra el servidor.
+         *
+         * Va por `/auth/refresh` —que ya existe y ya corre la ventana— y no
+         * por un request cualquiera: así el reloj del navegador y el de la
+         * base se reinician por el mismo hecho. Si el servidor dice que no,
+         * la sesión ya estaba caída y el 401 hace el resto.
+         */
+        async seguir() {
+            if (!this.visible) return;
+            this.visible = false;
+            try {
+                const resp = await fetch('/api/v1/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({}),
+                });
+                if (!resp.ok) throw new Error();
+                this.reiniciar();
+            } catch {
+                sesionTerminada();
+            }
+        },
+    };
 };
 
 // Cualquier respuesta de error de la API muestra un toast, sin que cada
