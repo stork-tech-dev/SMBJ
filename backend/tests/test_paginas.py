@@ -1566,6 +1566,7 @@ def test_toda_pantalla_es_alcanzable_desde_la_navegacion(client, crear_usuario):
     # Páginas que no cuelgan del sidebar y necesitan un enlace de entrada.
     entradas = {
         "/categorias": "/productos",
+        "/motivos-baja": "/stock",
         "/puntos-de-venta": "/configuracion",
         "/dispositivos": "/configuracion",
         "/usuarios": "/configuracion",
@@ -2125,7 +2126,8 @@ def test_los_listados_arrancan_mostrando_solo_los_activos(client, crear_usuario)
     crear_usuario("cm", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
 
-    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos",
+                "/roles", "/motivos-baja"):
         html = client.get(url).text
         assert "activo: 'true'" in html or "activo: 'true'" in _js_de(url), (
             f"{url} no arranca filtrado por activos"
@@ -2142,6 +2144,7 @@ def _js_de(url: str) -> str:
         "/puntos-de-venta": "puntos_de_venta.js",
         "/dispositivos": "dispositivos.js",
         "/roles": "roles.js",
+        "/motivos-baja": "motivos_baja.js",
         "/proveedores": "proveedores.js",
         "/stock": "stock.js",
         "/remitos": "remitos.js",
@@ -2151,7 +2154,7 @@ def _js_de(url: str) -> str:
     return (base / archivos[url]).read_text()
 
 
-def test_el_switch_solo_activos_esta_en_los_cinco_listados(client, crear_usuario):
+def test_el_switch_solo_activos_esta_en_los_seis_listados(client, crear_usuario):
     """
     Mismo control en todos: un `role="switch"` del macro `switch_activos`.
     Antes eran tres selects distintos —y dos pantallas sin nada—, y ninguno
@@ -2160,7 +2163,8 @@ def test_el_switch_solo_activos_esta_en_los_cinco_listados(client, crear_usuario
     crear_usuario("cm", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
 
-    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos",
+                "/roles", "/motivos-baja"):
         html = client.get(url).text
         assert 'role="switch"' in html, f"{url} no tiene el switch"
         assert "Solo activos" in html, f"{url} no tiene el label"
@@ -2176,7 +2180,8 @@ def test_limpiar_filtros_no_muestra_los_inactivos(client, crear_usuario):
     reseteara `activo` a vacío, limpiar traería los dados de baja, que es lo
     contrario de lo que espera quien limpia para volver a empezar.
     """
-    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos", "/roles"):
+    for url in ("/productos", "/usuarios", "/puntos-de-venta", "/dispositivos",
+                "/roles", "/motivos-baja"):
         js = _js_de(url)
         limpiar = js[js.index("limpiar()"):]
         limpiar = limpiar[:limpiar.index("cargar()")]

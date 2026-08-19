@@ -499,6 +499,42 @@ def test_no_hay_dos_motivos_de_baja_con_el_mismo_nombre(db, autor):
         servicio_bajas.crear_motivo(db, autor, "robo en local")
 
 
+def test_el_catalogo_de_motivos_se_filtra_por_nombre(db, autor):
+    """
+    Principio 5: la pantalla del catálogo busca por texto, y el filtro se
+    resuelve en el backend.
+    """
+    servicio_bajas.crear_motivo(db, autor, "Rotura en depósito")
+    servicio_bajas.crear_motivo(db, autor, "Robo")
+
+    encontrados = servicio_bajas.listar_motivos(db, nombre="rotura")
+
+    assert [m.nombre for m in encontrados] == ["Rotura en depósito"]
+
+
+def test_el_filtro_de_motivos_ignora_las_tildes(db, autor):
+    """"deposito" tiene que encontrar "depósito", y al revés también."""
+    servicio_bajas.crear_motivo(db, autor, "Rotura en depósito")
+
+    assert len(servicio_bajas.listar_motivos(db, nombre="deposito")) == 1
+    assert len(servicio_bajas.listar_motivos(db, nombre="DEPÓSITO")) == 1
+
+
+def test_los_dos_filtros_de_motivos_se_combinan(db, autor):
+    """
+    Buscar por nombre no puede llevarse puesto el filtro de activos: la
+    pantalla arranca mostrando solo los activos y escribir en el buscador no
+    tiene que hacer aparecer los dados de baja.
+    """
+    rotura = servicio_bajas.crear_motivo(db, autor, "Rotura en depósito")
+    servicio_bajas.crear_motivo(db, autor, "Rotura en viaje")
+    servicio_bajas.editar_motivo(db, autor, rotura.id, activo=False)
+
+    activos = servicio_bajas.listar_motivos(db, activo=True, nombre="rotura")
+
+    assert [m.nombre for m in activos] == ["Rotura en viaje"]
+
+
 # ============================================================================
 # AUDITORÍA DE INVENTARIO
 # ============================================================================

@@ -18,6 +18,7 @@ from app.core.database import get_db
 from app.core.permisos import (
     ROL_CUENTA_MAESTRA,
     Modulo,
+    Recurso,
     get_current_user,
     resolver_permiso,
 )
@@ -571,8 +572,6 @@ def _contexto_stock(request, db, usuario, titulo, ruta):
     # Esconder un botón NO es la barrera —el endpoint valida igual— pero
     # ofrecer una acción que siempre termina en 403 es peor que no ofrecerla:
     # el usuario no tiene forma de saber que nunca le iba a funcionar.
-    from app.core.permisos import Recurso
-
     puede = lambda accion, recurso=None: resolver_permiso(  # noqa: E731
         db, usuario.id, Modulo.STOCK, accion, recurso
     )
@@ -591,6 +590,10 @@ def _contexto_stock(request, db, usuario, titulo, ruta):
         puede_ingresar=puede("crear"),
         puede_minimos=puede("editar"),
         puede_baja=puede("crear", Recurso.STOCK_BAJA),
+        # Abre la puerta al catálogo de motivos. Es el mismo permiso que exige
+        # el endpoint que los da de alta, así que el botón aparece exactamente
+        # para quien puede usarlo.
+        puede_motivos=puede("editar", Recurso.STOCK_MOTIVOS_BAJA),
         puede_remitir=puede("crear"),
         puede_recibir=puede("editar", Recurso.STOCK_REMITO_RECEPCION),
         puede_auditar=puede("crear", Recurso.STOCK_AUDITORIA),
@@ -617,6 +620,39 @@ async def remitos(
         request,
         "pages/remitos/listado.html",
         _contexto_stock(request, db, usuario, "Remitos", "/remitos"),
+    )
+
+
+@router.get("/motivos-baja", response_class=HTMLResponse)
+async def motivos_baja(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Catálogo de motivos de baja. Cuelga de /stock, igual que Categorías
+    cuelga de Productos: es un catálogo de apoyo de esa pantalla, no un
+    módulo propio, y ahí es donde se lo va a buscar.
+
+    `ruta_activa` apunta a /stock para que el sidebar mantenga marcado Stock
+    mientras se está acá adentro.
+
+    No usa `_contexto_stock`: esta pantalla no muestra mercadería, así que el
+    aislamiento por dispositivo no le aplica —los motivos son los mismos para
+    todos los locales—.
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/motivos_baja/listado.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Motivos de baja",
+            ruta_activa="/stock",
+            # Esconder los botones no es la barrera —la API valida igual—, pero
+            # ofrecer acciones que siempre terminan en 403 es peor que no
+            # ofrecerlas.
+            puede_editar=resolver_permiso(
+                db, usuario.id, Modulo.STOCK, "editar", Recurso.STOCK_MOTIVOS_BAJA
+            ),
+        ),
     )
 
 

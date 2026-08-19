@@ -1,0 +1,151 @@
+{# ABM de motivos de baja de stock. Datos desde /api/v1/stock/motivos-baja
+   (Principio 1: esta página no consulta la base).
+
+   Cuelga de /stock, igual que Categorías cuelga de Productos: es el catálogo
+   que llena el combo del modal de baja, y ahí es donde se lo va a buscar. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones %}
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/switch_activos.html" import switch_activos %}
+
+{% block contenido %}
+<div x-data="abmMotivosBaja()" x-init="cargar()">
+
+    {% call encabezado('Motivos de baja', volver_url='/stock', volver_texto='Stock') %}
+        {% if puede_editar %}
+        <button type="button" @click="abrirAlta()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+        {% endif %}
+    {% endcall %}
+
+    {# ---------- Filtros (Principio 5, resueltos en el backend) ----------
+       En tiempo real y sin botón "Buscar": la tabla es chica. #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <input type="text" x-model="filtros.nombre" @input.debounce.300ms="cargar()"
+               placeholder="Nombre" aria-label="Nombre"
+               class="h-control w-full sm:w-[15rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input text-texto
+                      placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="motivos.length"></span>
+            <span x-text="motivos.length === 1 ? 'motivo' : 'motivos'"></span>
+        </p>
+
+        {{ switch_activos('filtros.activo') }}
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="m in motivos" :key="m.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                            :class="!m.activo && 'opacity-60'">
+                            <td class="px-8 py-3 align-middle font-medium" x-text="m.nombre"></td>
+                            <td class="px-4 py-3 align-middle">
+                                <span class="text-xs font-medium"
+                                      :class="m.activo ? 'text-success' : 'text-danger'"
+                                      x-text="m.activo ? 'Activo' : 'Inactivo'"></span>
+                            </td>
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
+                                {% call acciones() %}
+                                    {% if puede_editar %}
+                                    {{ accion('editar', atributos='@click="abrirEdicion(m)"') }}
+                                    {# No hay borrado: un motivo se desactiva,
+                                       porque las bajas viejas lo apuntan. #}
+                                    {{ accion('borrar',
+                                              atributos='x-show="m.activo"
+                                                         @click="pedirCambioDeEstado(m, false)"
+                                                         title="Desactivar"') }}
+                                    {{ accion('activar',
+                                              atributos='x-show="!m.activo" x-cloak
+                                                         @click="pedirCambioDeEstado(m, true)"
+                                                         title="Activar"') }}
+                                    {% endif %}
+                                {% endcall %}
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!motivos.length && !cargando">
+                        <td colspan="3" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if puede_editar %}
+    {# ---------- Modal alta / edición ---------- #}
+    <div x-show="form.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @keydown.escape.window="form.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-motivo">
+        <div class="w-full max-w-md bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-center justify-between px-8 pt-7 pb-2">
+                <h2 id="titulo-motivo" class="text-lg font-black text-welcome"
+                    x-text="form.id ? 'Editar motivo' : 'Nuevo motivo'"></h2>
+                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardar()" class="px-8 pb-8 pt-4 grid gap-5">
+                <div class="flex flex-col gap-1">
+                    <label for="mb-nombre" class="text-sm font-semibold text-texto-header">
+                        Nombre<span class="text-danger ml-0.5">*</span>
+                    </label>
+                    <input id="mb-nombre" x-model="form.nombre" required maxlength="100"
+                           placeholder="Rotura" class="campo-linea">
+                    <span class="text-xs text-texto-disabled">
+                        No puede repetirse: dos motivos con el mismo nombre partirían en dos
+                        los reportes de bajas.
+                    </span>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-2">
+                    <button type="button" @click="form.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="form.guardando"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ---------- Confirmación de baja y de reactivación ---------- #}
+    {{ modal_confirmacion() }}
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/motivos_baja.js') }}"></script>
+{% endblock %}

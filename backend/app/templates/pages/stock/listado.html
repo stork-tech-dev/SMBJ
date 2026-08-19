@@ -28,6 +28,18 @@
      x-init="cargarCatalogos(); cargar()">
 
     {% call encabezado('Stock') %}
+        {# Puerta al catálogo que llena el combo del modal de baja. Va acá y
+           no en Configuraciones porque es de esta pantalla, igual que
+           Categorías cuelga de Productos. #}
+        {% if puede_motivos %}
+        <a href="/motivos-baja"
+           class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                  border border-borde text-sm font-semibold text-texto-muted
+                  hover:border-primary hover:text-primary">
+            {{ icono('list', clases='w-4 h-4') }} Motivos de baja
+        </a>
+        {% endif %}
+
         {% if puede_ingresar %}
         <button type="button" @click="abrirIngreso()"
                 class="h-control px-6 inline-flex items-center gap-2 rounded-input

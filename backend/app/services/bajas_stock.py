@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.device_scope import DeviceScope
-from app.core.utils import normalizar_texto
+from app.core.utils import normalizar_texto, sin_tildes, sin_tildes_sql
 from app.models.motivo_baja import MotivoBaja
 from app.models.stock import MovimientoStock, TipoMovimiento
 from app.models.usuario import Usuario
@@ -24,10 +24,25 @@ from app.services import stock as servicio_stock
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
 
-def listar_motivos(db: Session, activo: bool | None = None) -> list[MotivoBaja]:
+def listar_motivos(
+    db: Session, activo: bool | None = None, nombre: str | None = None
+) -> list[MotivoBaja]:
+    """
+    El catálogo, con los filtros por defecto del Principio 5. Tabla chica:
+    sin paginación, se devuelve todo lo filtrado.
+    """
     consulta = select(MotivoBaja)
+
     if activo is not None:
         consulta = consulta.where(MotivoBaja.activo.is_(activo))
+    if nombre:
+        # Las dos caras de la comparación se limpian igual —la columna con
+        # `translate()` en SQL y el texto tipeado en Python— para que "merma"
+        # encuentre "Mermá" y al revés, como pide el Principio 5.
+        consulta = consulta.where(
+            sin_tildes_sql(MotivoBaja.nombre).ilike(f"%{sin_tildes(nombre)}%")
+        )
+
     return list(db.execute(consulta.order_by(MotivoBaja.nombre)).scalars().all())
 
 

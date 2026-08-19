@@ -206,10 +206,11 @@ def movimientos(
 )
 def listar_motivos(
     activo: bool | None = Query(default=None),
+    nombre: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _=Depends(requiere_permiso(Modulo.STOCK, "ver")),
 ):
-    return servicio_bajas.listar_motivos(db, activo=activo)
+    return servicio_bajas.listar_motivos(db, activo=activo, nombre=nombre)
 
 
 @router.post(
