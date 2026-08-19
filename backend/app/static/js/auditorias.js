@@ -67,6 +67,18 @@ function abmAuditorias({ puntoFijo = null } = {}) {
             }[estado] || 'text-texto-muted';
         },
 
+        /**
+         * Baja la planilla en PDF.
+         *
+         * Va por el endpoint y no por una ruta de archivo: así respeta el
+         * permiso y el aislamiento por dispositivo, igual que el PDF del
+         * remito. El documento se arma en el momento, no hay archivo que
+         * adivinar.
+         */
+        descargarPdf(auditoria) {
+            window.open(`/api/v1/auditorias-inventario/${auditoria.id}/pdf`, '_blank');
+        },
+
         /** Cuántos códigos no coinciden: es lo único que va a generar ajuste. */
         conDiferencia(auditoria) {
             return (auditoria?.items || []).filter((i) => i.diferencia !== 0).length;

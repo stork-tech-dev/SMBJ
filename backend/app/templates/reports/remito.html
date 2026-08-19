@@ -1,106 +1,24 @@
 {# ===========================================================================
-   Remito para imprimir. Lo convierte a PDF WeasyPrint (`reports/remito_pdf.py`).
+   Remito para imprimir. Lo convierte a PDF WeasyPrint (`reports/pdf.py`),
+   desde `reports/remito_pdf.py`.
 
    No extiende `base.html` a propósito: esa plantilla trae el sidebar y los CDN
    de Tailwind, HTMX y Alpine. En un PDF no hay JavaScript que corra ni red que
    consultar, y una hoja que dependiera de un CDN saldría sin estilos.
 
-   El LAYOUT va acá, embebido, y en puntos —no en píxeles— porque el destino es
-   papel. Los COLORES no: salen de las variables de `custom.css`, que WeasyPrint
-   recibe como hoja de estilos (ver `reports/remito_pdf.py`), y el
-   `data-empresa` de abajo elige la marca igual que en las pantallas.
-   Escribirlos a mano haría que el remito saliera con el azul de una empresa
-   aunque estuviera instalada la otra — es lo que cuida `test_paleta.py`.
+   El grueso del estilo sale de `reports/estilos.html`, compartido con los
+   demás documentos; acá abajo queda solo lo propio del remito. El
+   `data-empresa` elige la marca igual que en las pantallas.
 
    Los datos vienen ya resueltos del service: esta plantilla no consulta nada.
    =========================================================================== #}
+{% from "reports/estilos.html" import estilos_documento %}
 <!DOCTYPE html>
 <html lang="es" data-empresa="{{ letra_empresa }}">
 <head>
     <meta charset="utf-8">
     <title>Remito {{ remito.numero }}</title>
-    <style>
-        /* A4 con margen suficiente para que entre en cualquier impresora. */
-        @page {
-            size: A4;
-            margin: 18mm 15mm;
-            /* El número repetido en cada hoja: si un remito de tres páginas
-               se desarma en el mostrador, cada hoja dice a qué envío es. */
-            @bottom-right {
-                content: "Remito {{ remito.numero }} · página " counter(page)
-                         " de " counter(pages);
-                font-family: sans-serif;
-                font-size: 8pt;
-                color: var(--color-text-header);
-            }
-        }
-
-        body {
-            font-family: sans-serif;
-            font-size: 10pt;
-            color: var(--color-text);
-            margin: 0;
-        }
-
-        .encabezado {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            border-bottom: 2pt solid var(--color-primary);
-            padding-bottom: 6pt;
-            margin-bottom: 12pt;
-        }
-
-        .empresa { font-size: 18pt; font-weight: bold; color: var(--color-primary); }
-        .numero  { font-size: 16pt; font-weight: bold; text-align: right; }
-        .estado  { font-size: 9pt; color: var(--color-text-header); text-align: right; }
-
-        /* Origen y destino, uno al lado del otro: es el dato que se lee
-           primero al recibir la carga. */
-        .ruta { display: flex; gap: 10mm; margin-bottom: 12pt; }
-        .ruta div { flex: 1; }
-        .rotulo {
-            font-size: 8pt;
-            text-transform: uppercase;
-            letter-spacing: 0.5pt;
-            color: var(--color-text-header);
-        }
-        .valor { font-size: 12pt; font-weight: bold; }
-
-        table { width: 100%; border-collapse: collapse; margin-top: 6pt; }
-        th {
-            background: var(--color-surface-alt);
-            text-align: left;
-            font-size: 8pt;
-            text-transform: uppercase;
-            padding: 4pt 5pt;
-            border-bottom: 1pt solid var(--color-text-disabled);
-        }
-        td { padding: 4pt 5pt; border-bottom: 0.5pt solid var(--color-surface-alt); }
-        .num { text-align: right; }
-        .codigo { font-family: monospace; }
-
-        /* Los encabezados se repiten en cada hoja y ninguna fila se corta al
-           medio: en papel, media fila es una fila ilegible. */
-        thead { display: table-header-group; }
-        tr { page-break-inside: avoid; }
-
-        .totales { margin-top: 10pt; font-weight: bold; }
-        .notas {
-            margin-top: 12pt;
-            padding: 6pt;
-            background: var(--color-surface-alt);
-            font-size: 9pt;
-            white-space: pre-line;
-        }
-        .firmas {
-            margin-top: 24pt;
-            display: flex;
-            gap: 20mm;
-            page-break-inside: avoid;
-        }
-        .firma { flex: 1; border-top: 0.5pt solid var(--color-text); padding-top: 4pt; font-size: 8pt; }
-    </style>
+    {{ estilos_documento('Remito ' ~ remito.numero) }}
 </head>
 <body>
 
@@ -117,7 +35,9 @@
         </div>
     </div>
 
-    <div class="ruta">
+    {# Origen y destino, uno al lado del otro: es el dato que se lee primero
+       al recibir la carga. #}
+    <div class="datos">
         <div>
             <div class="rotulo">Origen</div>
             <div class="valor">{{ remito.origen.nombre }}</div>

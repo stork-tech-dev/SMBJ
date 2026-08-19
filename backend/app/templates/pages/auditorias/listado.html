@@ -370,6 +370,18 @@
                    class="mt-4 p-3 rounded-input bg-surface-alt text-sm text-texto-muted
                           whitespace-pre-line" x-text="detalle.auditoria?.notas"></p>
 
+                {# La planilla en papel: para firmarla o archivarla. Disponible
+                   en cualquier estado —un conteo en curso también se imprime
+                   para seguir contando sobre el papel—. #}
+                <div class="flex justify-end mt-6">
+                    <button type="button" @click="descargarPdf(detalle.auditoria)"
+                            class="h-boton px-4 inline-flex items-center gap-2 rounded-input
+                                   border border-borde text-base text-texto-muted
+                                   hover:border-primary hover:text-primary">
+                        {{ icono('remito', clases='w-4 h-4') }} Descargar PDF
+                    </button>
+                </div>
+
                 {# Aprobar y rechazar solo aparecen en el estado en el que
                    tienen sentido. Quien no tenga el permiso recibe 403 de la
                    API: esconder el botón es comodidad, no la barrera. #}

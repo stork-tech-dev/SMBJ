@@ -8,6 +8,7 @@ puede ver ni tocar mercadería de otro local.
 """
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -666,6 +667,106 @@ def test_no_se_aprueba_una_auditoria_que_no_esta_cerrada(db, autor, con_stock, c
 
     with pytest.raises(ReglaDeNegocio, match="solo se aprueba"):
         servicio_auditoria.aprobar(db, autor, auditoria.id)
+
+
+# ============================================================================
+# LA PLANILLA EN PDF
+# ============================================================================
+
+
+def _auditoria_contada(db, autor, variante_id, punto):
+    """Una auditoría con un código contado de menos, lista para imprimir."""
+    auditoria = servicio_auditoria.iniciar(db, autor, LIBRE, punto_de_venta_id=punto.id)
+    servicio_auditoria.registrar_items(
+        db, autor, LIBRE, auditoria.id,
+        [{"variante_id": variante_id, "cantidad_contada": 95}],
+    )
+    db.flush()
+    return auditoria
+
+
+def test_la_planilla_sale_en_pdf(db, autor, con_stock, cd):
+    """
+    Que el documento se ARME es la mitad del test; la otra es que sea un PDF
+    de verdad. WeasyPrint falla tarde —al escribir— si la plantilla tiene CSS
+    que no entiende, y un archivo vacío se vería igual de bien desde afuera.
+    """
+    from app.reports.auditoria_pdf import generar_pdf_auditoria
+
+    auditoria = _auditoria_contada(db, autor, con_stock.id, cd)
+
+    pdf = generar_pdf_auditoria(db, auditoria)
+
+    assert pdf.startswith(b"%PDF")
+    assert len(pdf) > 1000
+
+
+def test_la_planilla_no_se_guarda_en_disco(db, autor, con_stock, cd):
+    """
+    Al revés que el remito, se arma en cada descarga: lo que muestra ya está
+    congelado en `auditoria_items`, así que guardar una copia sería el mismo
+    dato en dos lados y podría quedar vieja.
+    """
+    from app.reports import auditoria_pdf
+
+    auditoria = _auditoria_contada(db, autor, con_stock.id, cd)
+    auditoria_pdf.generar_pdf_auditoria(db, auditoria)
+
+    estaticos = Path(auditoria_pdf.__file__).resolve().parents[1] / "static"
+    assert not list(estaticos.rglob(f"*auditoria*{auditoria.id}*"))
+
+
+def test_dos_impresiones_de_la_misma_auditoria_dicen_lo_mismo(
+    db, autor, con_stock, cd
+):
+    """El documento se rearma, pero los números que muestra están congelados."""
+    from app.reports.auditoria_pdf import generar_pdf_auditoria
+
+    auditoria = _auditoria_contada(db, autor, con_stock.id, cd)
+
+    primera = generar_pdf_auditoria(db, auditoria)
+    segunda = generar_pdf_auditoria(db, auditoria)
+
+    # No se comparan los bytes: el PDF lleva la fecha de emisión y el
+    # identificador que le pone WeasyPrint, que cambian entre corridas.
+    assert abs(len(primera) - len(segunda)) < 200
+
+
+def test_el_pdf_se_descarga_desde_la_pantalla(client, crear_usuario, db, con_stock, cd):
+    """
+    El recorrido completo, que es el que va a hacer el botón: HTTP, permiso,
+    y el archivo bajando con nombre propio.
+    """
+    autor = crear_usuario("maestra", ROL_CUENTA_MAESTRA)
+    auditoria = _auditoria_contada(db, autor, con_stock.id, cd)
+    client.post(
+        "/api/v1/auth/login", json={"username": "maestra", "password": "Test1234!"}
+    )
+
+    resp = client.get(f"/api/v1/auditorias-inventario/{auditoria.id}/pdf")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert f"auditoria-{auditoria.id}.pdf" in resp.headers["content-disposition"]
+    assert resp.content.startswith(b"%PDF")
+
+
+def test_un_vendedor_no_se_baja_la_planilla_de_otro_local(
+    db, autor, con_stock, cd, local
+):
+    """
+    Mismo aislamiento que el detalle en pantalla: el listado ya filtra, pero
+    la planilla se pide por número y cambiar el id de la URL no puede alcanzar.
+    """
+    from fastapi import HTTPException
+
+    auditoria = _auditoria_contada(db, autor, con_stock.id, cd)
+    scope = DeviceScope(restringido=True, punto_de_venta_id=local.id)
+
+    with pytest.raises(HTTPException) as error:
+        scope.exigir(auditoria.punto_de_venta_id)
+
+    assert error.value.status_code == 403
 
 
 # ============================================================================

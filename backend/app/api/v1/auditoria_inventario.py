@@ -8,6 +8,7 @@ tiene el Dueño.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -112,6 +113,45 @@ def detalle(
     # la URL: el listado ya filtra, pero el detalle se pide por número.
     scope.exigir(auditoria.punto_de_venta_id)
     return auditoria
+
+
+@router.get(
+    "/{auditoria_id}/pdf",
+    response_class=Response,
+    summary="Descargar la planilla en PDF",
+)
+def pdf(
+    auditoria_id: int,
+    db: Session = Depends(get_db),
+    scope: DeviceScope = Depends(get_device_scope),
+    _=Depends(requiere_permiso(Modulo.STOCK, "ver")),
+):
+    """
+    La planilla de lo contado, para archivar o firmar en papel.
+
+    Mismo permiso y mismo aislamiento que el detalle: quien puede ver la
+    auditoría en pantalla puede imprimirla, y nadie puede bajarse la de otro
+    local cambiando el id de la URL.
+
+    Se arma en el momento y no se guarda: lo que muestra ya está congelado en
+    `auditoria_items` (ver `reports/auditoria_pdf.py`).
+    """
+    from app.reports.auditoria_pdf import generar_pdf_auditoria
+
+    try:
+        auditoria = servicio.obtener(db, auditoria_id)
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+
+    scope.exigir(auditoria.punto_de_venta_id)
+
+    return Response(
+        content=generar_pdf_auditoria(db, auditoria),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="auditoria-{auditoria.id}.pdf"'
+        },
+    )
 
 
 @router.post(
