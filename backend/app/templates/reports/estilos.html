@@ -1,0 +1,103 @@
+{# ===========================================================================
+   Estilos compartidos por los documentos imprimibles.
+
+   El remito y la auditoría son la misma hoja A4 con la misma tipografía, la
+   misma tabla y el mismo pie: repetirlos en cada plantilla garantizaría que
+   se separen a la primera corrección (Principio 2). Lo propio de cada
+   documento va en su `<style>`, después de este.
+
+   Todo en PUNTOS y milímetros, no en píxeles: el destino es papel. Los
+   COLORES salen de las variables de `custom.css`, que WeasyPrint recibe como
+   hoja de estilos (`reports/pdf.py`); escribirlos a mano haría que el
+   documento saliera con la paleta de una empresa aunque estuviera instalada
+   la otra — es lo que cuida `test_paleta.py`.
+   =========================================================================== #}
+
+{% macro estilos_documento(pie) %}
+<style>
+    /* A4 con margen suficiente para que entre en cualquier impresora. */
+    @page {
+        size: A4;
+        margin: 18mm 15mm;
+        /* La identificación repetida en cada hoja: si un documento de tres
+           páginas se desarma en el mostrador, cada hoja dice de qué es. */
+        @bottom-right {
+            content: "{{ pie }} · página " counter(page) " de " counter(pages);
+            font-family: sans-serif;
+            font-size: 8pt;
+            color: var(--color-text-header);
+        }
+    }
+
+    body {
+        font-family: sans-serif;
+        font-size: 10pt;
+        color: var(--color-text);
+        margin: 0;
+    }
+
+    .encabezado {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        border-bottom: 2pt solid var(--color-primary);
+        padding-bottom: 6pt;
+        margin-bottom: 12pt;
+    }
+
+    .empresa { font-size: 18pt; font-weight: bold; color: var(--color-primary); }
+    .numero  { font-size: 16pt; font-weight: bold; text-align: right; }
+    .estado  { font-size: 9pt; color: var(--color-text-header); text-align: right; }
+
+    .rotulo {
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+        color: var(--color-text-header);
+    }
+    .valor { font-size: 12pt; font-weight: bold; }
+
+    /* Los datos de cabecera, uno al lado del otro. */
+    .datos { display: flex; gap: 10mm; margin-bottom: 12pt; }
+    .datos div { flex: 1; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 6pt; }
+    th {
+        background: var(--color-surface-alt);
+        text-align: left;
+        font-size: 8pt;
+        text-transform: uppercase;
+        padding: 4pt 5pt;
+        border-bottom: 1pt solid var(--color-text-disabled);
+    }
+    td { padding: 4pt 5pt; border-bottom: 0.5pt solid var(--color-surface-alt); }
+    .num { text-align: right; }
+    .codigo { font-family: monospace; }
+
+    /* Los encabezados se repiten en cada hoja y ninguna fila se corta al
+       medio: en papel, media fila es una fila ilegible. */
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+
+    .totales { margin-top: 10pt; font-weight: bold; }
+    .notas {
+        margin-top: 12pt;
+        padding: 6pt;
+        background: var(--color-surface-alt);
+        font-size: 9pt;
+        white-space: pre-line;
+    }
+    .firmas {
+        margin-top: 24pt;
+        display: flex;
+        gap: 20mm;
+        page-break-inside: avoid;
+    }
+    .firma {
+        flex: 1;
+        border-top: 0.5pt solid var(--color-text);
+        padding-top: 4pt;
+        font-size: 8pt;
+    }
+</style>
+{% endmacro %}

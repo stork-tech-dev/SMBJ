@@ -39,6 +39,7 @@ from app.models.categoria import Categoria
 from app.models.configuracion import ConfiguracionSistema
 from app.models.producto import Producto, Temporada, Variante
 from app.models.proveedor import EstadoProveedor, Proveedor
+from app.models.stock import Stock
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -367,7 +368,6 @@ def agregar_variante(
     descripcion_sufijo: str,
     sku_proveedor: str | None = None,
     ubicacion_deposito: str | None = None,
-    stock_minimo: int = 0,
     ip_origen: str | None = None,
 ) -> Variante:
     """
@@ -392,7 +392,17 @@ def agregar_variante(
         .first()
     )
     if base is not None:
-        if base.stock_actual:
+        # El stock de la BASE ya no es una columna suya: está repartido en
+        # `stock`, una fila por ubicación. Se suman todas porque el problema
+        # es el mismo en cualquiera —dividir en variantes dejaría unidades
+        # colgadas de un código que va a dejar de existir— y con una sola
+        # que tenga mercadería alcanza para frenar.
+        cargado = db.execute(
+            select(func.coalesce(func.sum(Stock.cantidad), 0)).where(
+                Stock.variante_id == base.id
+            )
+        ).scalar_one()
+        if cargado:
             raise ReglaDeNegocio(
                 "El producto tiene stock cargado sin variantes: hay que "
                 "descargarlo antes de dividirlo en variantes"
@@ -408,7 +418,6 @@ def agregar_variante(
     variante.ubicacion_deposito = normalizar_texto(ubicacion_deposito)
     # Vacío queda en NULL, que es "usa el del producto" y no "sin código".
     variante.sku_proveedor = normalizar_texto(sku_proveedor)
-    variante.stock_minimo = stock_minimo
 
     producto.tiene_variantes = True
     producto.updated_at = ahora_db()
@@ -432,7 +441,6 @@ def editar_variante(
     variante_id: int,
     descripcion_sufijo: str | None = None,
     ubicacion_deposito: str | None = None,
-    stock_minimo: int | None = None,
     precio_usd: Decimal | None = None,
     editar_precio: bool = False,
     sku_proveedor: str | None = None,
@@ -457,10 +465,6 @@ def editar_variante(
         variante.descripcion_sufijo = _validar_nombre_variante(descripcion_sufijo)
     if ubicacion_deposito is not None:
         variante.ubicacion_deposito = normalizar_texto(ubicacion_deposito)
-    if stock_minimo is not None:
-        if stock_minimo < 0:
-            raise ReglaDeNegocio("El stock mínimo no puede ser negativo")
-        variante.stock_minimo = stock_minimo
 
     # `editar_precio` distingue "no lo mandes" de "ponelo en NULL": None es
     # ambiguo y NULL acá significa algo concreto —volver al precio del

@@ -147,6 +147,7 @@ BEGIN
         ('cuenta_maestra', 'auditoria',       TRUE,  FALSE, FALSE, FALSE),
         ('cuenta_maestra', 'usuarios',        TRUE,  TRUE,  TRUE,  TRUE),
         ('cuenta_maestra', 'dispositivos',    TRUE,  TRUE,  TRUE,  TRUE),
+        ('cuenta_maestra', 'stock',           TRUE,  TRUE,  TRUE,  TRUE),
 
         ('dueno',          'clientes',        TRUE,  TRUE,  TRUE,  TRUE),
         ('dueno',          'proveedores',     TRUE,  TRUE,  TRUE,  TRUE),
@@ -161,6 +162,9 @@ BEGIN
         ('dueno',          'auditoria',       FALSE, FALSE, FALSE, FALSE),
         ('dueno',          'usuarios',        TRUE,  TRUE,  TRUE,  FALSE),
         ('dueno',          'dispositivos',    TRUE,  TRUE,  TRUE,  TRUE),
+        -- El Dueño administra el stock: define mínimos, aprueba auditorías y
+        -- mantiene los motivos de baja. Los tres cuelgan de 'editar'.
+        ('dueno',          'stock',           TRUE,  TRUE,  TRUE,  TRUE),
 
         ('supervisor',     'clientes',        TRUE,  TRUE,  TRUE,  FALSE),
         ('supervisor',     'proveedores',     TRUE,  FALSE, FALSE, FALSE),
@@ -171,22 +175,31 @@ BEGIN
         ('supervisor',     'reportes',        FALSE, FALSE, FALSE, FALSE),
         ('supervisor',     'usuarios',        TRUE,  TRUE,  TRUE,  FALSE),
         ('supervisor',     'dispositivos',    TRUE,  FALSE, FALSE, FALSE),
+        -- Consulta todo el stock; lo que puede hacer va por recursos.
+        ('supervisor',     'stock',           TRUE,  FALSE, FALSE, FALSE),
 
         ('vendedor',       'clientes',        TRUE,  TRUE,  FALSE, FALSE),
         ('vendedor',       'productos',       TRUE,  FALSE, FALSE, FALSE),
         ('vendedor',       'ventas',          TRUE,  TRUE,  FALSE, FALSE),
         ('vendedor',       'facturacion',     TRUE,  TRUE,  FALSE, FALSE),
         ('vendedor',       'reportes',        FALSE, FALSE, FALSE, FALSE),
+        -- Solo el stock del local de su dispositivo: el filtro no lo pone el
+        -- permiso sino `get_device_scope()`.
+        ('vendedor',       'stock',           TRUE,  FALSE, FALSE, FALSE),
 
         ('distribucion',   'productos',       TRUE,  FALSE, TRUE,  FALSE),
         -- Distribución hace el ABM de proveedores y cambia su dólar (sesión 03).
         ('distribucion',   'proveedores',     TRUE,  TRUE,  TRUE,  FALSE),
         ('distribucion',   'compras',         TRUE,  TRUE,  FALSE, FALSE),
         ('distribucion',   'dispositivos',    TRUE,  FALSE, FALSE, FALSE),
+        -- 'crear' es el lado saliente del CD: ingresos de proveedor, armado
+        -- y despacho de remitos.
+        ('distribucion',   'stock',           TRUE,  TRUE,  FALSE, FALSE),
 
         ('auditor',        'auditoria',       TRUE,  FALSE, FALSE, FALSE),
         ('auditor',        'reportes',        TRUE,  FALSE, FALSE, FALSE),
-        ('auditor',        'usuarios',        TRUE,  FALSE, FALSE, FALSE)
+        ('auditor',        'usuarios',        TRUE,  FALSE, FALSE, FALSE),
+        ('auditor',        'stock',           TRUE,  FALSE, FALSE, FALSE)
     ) AS p(rol, modulo, ver, crear, editar, eliminar)
     JOIN roles r ON r.nombre = p.rol
     ON CONFLICT (rol_id, modulo, recurso) DO NOTHING;
@@ -201,8 +214,20 @@ BEGIN
         ('supervisor',   'ventas',    'venta.anular',           FALSE, FALSE, FALSE, TRUE),
         ('supervisor',   'tesoreria', 'caja.arqueo',            FALSE, TRUE,  FALSE, FALSE),
         ('vendedor',     'ventas',    'venta.descuento',        FALSE, TRUE,  FALSE, FALSE),
-        ('distribucion', 'productos', 'stock.baja',             FALSE, TRUE,  FALSE, FALSE),
-        ('distribucion', 'productos', 'stock.auditoria',        FALSE, TRUE,  FALSE, FALSE)
+        -- Bajas de stock: Distribución en el CD, Supervisor y Vendedor en su
+        -- local. Cuelgan del módulo 'stock' desde la migración 0022.
+        ('distribucion', 'stock',     'stock.baja',             FALSE, TRUE,  FALSE, FALSE),
+        ('supervisor',   'stock',     'stock.baja',             FALSE, TRUE,  FALSE, FALSE),
+        ('vendedor',     'stock',     'stock.baja',             FALSE, TRUE,  FALSE, FALSE),
+        -- Iniciar y registrar un conteo. Aprobarlo es otro recurso: el que
+        -- cuenta no valida su propio conteo.
+        ('auditor',      'stock',     'stock.auditoria',        FALSE, TRUE,  FALSE, FALSE),
+        ('distribucion', 'stock',     'stock.auditoria',        FALSE, TRUE,  FALSE, FALSE),
+        ('supervisor',   'stock',     'stock.auditoria',        FALSE, TRUE,  FALSE, FALSE),
+        ('vendedor',     'stock',     'stock.auditoria',        FALSE, TRUE,  FALSE, FALSE),
+        -- Confirmar la recepción de un remito: lo hace el local que la recibe.
+        ('supervisor',   'stock',     'stock.remito_recepcion', FALSE, FALSE, TRUE,  FALSE),
+        ('vendedor',     'stock',     'stock.remito_recepcion', FALSE, FALSE, TRUE,  FALSE)
     ) AS p(rol, modulo, recurso, ver, crear, editar, eliminar)
     JOIN roles r ON r.nombre = p.rol
     ON CONFLICT (rol_id, modulo, recurso) DO NOTHING;

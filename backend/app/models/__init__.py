@@ -7,6 +7,11 @@ las tablas al autogenerar migraciones.
 
 from app.core.database import Base
 from app.models.auditoria import Auditoria
+from app.models.auditoria_inventario import (
+    AuditoriaInventario,
+    AuditoriaItem,
+    EstadoAuditoria,
+)
 from app.models.categoria import NIVEL_MAXIMO, Categoria
 from app.models.configuracion import ConfiguracionSistema
 from app.models.dispositivo import Dispositivo
@@ -21,8 +26,10 @@ from app.models.proveedor import (
     Proveedor,
     ProveedorDolarHistorial,
 )
+from app.models.remito import EstadoRemito, Remito, RemitoItem
 from app.models.rol import Rol
 from app.models.sesion import Sesion
+from app.models.stock import MovimientoStock, Stock, TipoMovimiento
 from app.models.usuario import HistorialAcceso, ResultadoAcceso, Usuario
 
 __all__ = [
@@ -51,4 +58,13 @@ __all__ = [
     "PuntoDeVenta",
     "TipoPuntoVenta",
     "Dispositivo",
+    "Stock",
+    "MovimientoStock",
+    "TipoMovimiento",
+    "Remito",
+    "RemitoItem",
+    "EstadoRemito",
+    "AuditoriaInventario",
+    "AuditoriaItem",
+    "EstadoAuditoria",
 ]

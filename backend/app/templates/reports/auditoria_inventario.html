@@ -1,0 +1,147 @@
+{# ===========================================================================
+   Planilla de una auditoría de inventario. La convierte a PDF WeasyPrint
+   (`reports/pdf.py`), desde `reports/auditoria_pdf.py`.
+
+   A diferencia del remito, este documento se arma en cada descarga y no se
+   guarda: lo que muestra —lo contado y lo que decía el sistema en ese
+   momento— ya está congelado en `auditoria_items`, así que rearmarlo mañana
+   devuelve exactamente lo mismo. Guardar una copia sería tener el mismo dato
+   en dos lados (Principio 4).
+
+   El estilo sale de `reports/estilos.html`, compartido con los demás
+   documentos; acá abajo queda solo lo propio de la planilla.
+
+   Los datos vienen ya resueltos del service: esta plantilla no consulta nada.
+   =========================================================================== #}
+{% from "reports/estilos.html" import estilos_documento %}
+
+{# Las mismas etiquetas que muestra la pantalla (`auditorias.js`). La API
+   devuelve el estado crudo —Principio 1—, así que el texto se arma en cada
+   vista, y el PDF es una vista más. #}
+{% set ETIQUETAS = {
+    'en_curso': 'En curso',
+    'pendiente_aprobacion': 'Pendiente de aprobación',
+    'aprobada': 'Aprobada',
+    'rechazada': 'Rechazada',
+} %}
+{% set items = auditoria.items | sort(attribute='variante.codigo_completo') %}
+{% set con_diferencia = items | rejectattr('diferencia', 'equalto', 0) | list %}
+
+<!DOCTYPE html>
+<html lang="es" data-empresa="{{ letra_empresa }}">
+<head>
+    <meta charset="utf-8">
+    <title>Auditoría de inventario #{{ auditoria.id }}</title>
+    {{ estilos_documento('Auditoría #' ~ auditoria.id) }}
+    <style>
+        /* Las filas con diferencia se destacan, igual que en pantalla: son
+           las únicas que van a generar un ajuste, y en una planilla de
+           cincuenta renglones es lo único que se busca. */
+        tr.difiere td { background: var(--color-surface-alt); }
+        td.difiere { color: var(--color-danger); font-weight: bold; }
+        .resumen { margin-top: 10pt; font-size: 9pt; color: var(--color-text-header); }
+    </style>
+</head>
+<body>
+
+    <div class="encabezado">
+        <div>
+            <div class="empresa">{{ 'Soleil' if letra_empresa == 'S' else 'Mallorca' }}</div>
+            <div class="rotulo">Auditoría de inventario</div>
+        </div>
+        <div>
+            <div class="numero">#{{ auditoria.id }}</div>
+            <div class="estado">
+                {{ ETIQUETAS.get(auditoria.estado.value, auditoria.estado.value) }}
+            </div>
+        </div>
+    </div>
+
+    <div class="datos">
+        <div>
+            <div class="rotulo">Ubicación</div>
+            <div class="valor">{{ auditoria.punto_de_venta.nombre }}</div>
+            <div class="codigo">{{ auditoria.punto_de_venta.codigo }}</div>
+        </div>
+        <div>
+            <div class="rotulo">Contó</div>
+            <div class="valor">{{ auditoria.usuario.nombre }}</div>
+            <div class="codigo">{{ auditoria.fecha_inicio.strftime('%d/%m/%Y %H:%M') }}</div>
+        </div>
+        <div>
+            {# Quién aprobó es el dato que convierte el conteo en un ajuste
+               de stock: sin firma, la planilla es solo una observación. #}
+            <div class="rotulo">Aprobó</div>
+            <div class="valor">{{ auditoria.aprobador.nombre if auditoria.aprobador else '—' }}</div>
+            <div class="codigo">
+                {{ auditoria.fecha_aprobacion.strftime('%d/%m/%Y %H:%M')
+                   if auditoria.fecha_aprobacion else '' }}
+            </div>
+        </div>
+    </div>
+
+    {% if auditoria.categoria %}
+    <div class="rotulo">Conteo parcial · categoría {{ auditoria.categoria.nombre }}</div>
+    {% endif %}
+
+    <table>
+        <thead>
+            <tr>
+                <th>Código</th>
+                <th>Descripción</th>
+                <th class="num">Sistema</th>
+                <th class="num">Contado</th>
+                <th class="num">Dif.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr {% if item.diferencia %}class="difiere"{% endif %}>
+                <td class="codigo">
+                    {{ item.variante.codigo_completo }}{{ item.variante.verificador }}
+                </td>
+                <td>
+                    {{ item.variante.producto.descripcion }}
+                    {%- if not item.variante.es_base %}
+                        · {{ item.variante.descripcion_sufijo }}
+                    {%- endif %}
+                </td>
+                <td class="num">{{ item.cantidad_sistema }}</td>
+                <td class="num">{{ item.cantidad_contada }}</td>
+                <td class="num {% if item.diferencia %}difiere{% endif %}">
+                    {{ '+' ~ item.diferencia if item.diferencia > 0 else item.diferencia }}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">Sin códigos contados.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totales">
+        {{ items | length }} código{{ 's' if items | length != 1 }} contado{{ 's' if items | length != 1 }} ·
+        {{ con_diferencia | length }} con diferencia
+    </div>
+
+    {% if con_diferencia %}
+    <div class="resumen">
+        Faltantes: {{ con_diferencia | selectattr('diferencia', 'lt', 0)
+                      | sum(attribute='diferencia') | abs }} unidades ·
+        Sobrantes: {{ con_diferencia | selectattr('diferencia', 'gt', 0)
+                      | sum(attribute='diferencia') }} unidades
+    </div>
+    {% endif %}
+
+    {% if auditoria.notas %}
+    <div class="notas">{{ auditoria.notas }}</div>
+    {% endif %}
+
+    <div class="firmas">
+        <div class="firma">Firma de quien contó</div>
+        <div class="firma">Firma de quien aprobó</div>
+    </div>
+
+    <div class="resumen">Emitido el {{ emitido.strftime('%d/%m/%Y %H:%M') }}</div>
+
+</body>
+</html>

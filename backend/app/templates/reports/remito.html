@@ -1,0 +1,101 @@
+{# ===========================================================================
+   Remito para imprimir. Lo convierte a PDF WeasyPrint (`reports/pdf.py`),
+   desde `reports/remito_pdf.py`.
+
+   No extiende `base.html` a propósito: esa plantilla trae el sidebar y los CDN
+   de Tailwind, HTMX y Alpine. En un PDF no hay JavaScript que corra ni red que
+   consultar, y una hoja que dependiera de un CDN saldría sin estilos.
+
+   El grueso del estilo sale de `reports/estilos.html`, compartido con los
+   demás documentos; acá abajo queda solo lo propio del remito. El
+   `data-empresa` elige la marca igual que en las pantallas.
+
+   Los datos vienen ya resueltos del service: esta plantilla no consulta nada.
+   =========================================================================== #}
+{% from "reports/estilos.html" import estilos_documento %}
+<!DOCTYPE html>
+<html lang="es" data-empresa="{{ letra_empresa }}">
+<head>
+    <meta charset="utf-8">
+    <title>Remito {{ remito.numero }}</title>
+    {{ estilos_documento('Remito ' ~ remito.numero) }}
+</head>
+<body>
+
+    <div class="encabezado">
+        <div>
+            <div class="empresa">{{ 'Soleil' if letra_empresa == 'S' else 'Mallorca' }}</div>
+            <div class="rotulo">Remito de traslado interno</div>
+        </div>
+        <div>
+            <div class="numero">{{ remito.numero }}</div>
+            <div class="estado">
+                {{ remito.fecha_envio.strftime('%d/%m/%Y %H:%M') }}
+            </div>
+        </div>
+    </div>
+
+    {# Origen y destino, uno al lado del otro: es el dato que se lee primero
+       al recibir la carga. #}
+    <div class="datos">
+        <div>
+            <div class="rotulo">Origen</div>
+            <div class="valor">{{ remito.origen.nombre }}</div>
+            <div class="codigo">{{ remito.origen.codigo }}</div>
+        </div>
+        <div>
+            <div class="rotulo">Destino</div>
+            <div class="valor">{{ remito.destino.nombre }}</div>
+            <div class="codigo">{{ remito.destino.codigo }}</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Código</th>
+                <th>Descripción</th>
+                <th class="num">Enviado</th>
+                {# La columna de recibido va VACÍA a propósito: se completa a
+                   mano al contar la mercadería, y después se carga en el
+                   sistema. El papel es la planilla de conteo. #}
+                <th class="num">Recibido</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in remito.items %}
+            <tr>
+                <td class="codigo">
+                    {{ item.variante.codigo_completo }}{{ item.variante.verificador }}
+                </td>
+                <td>
+                    {{ item.variante.producto.descripcion }}
+                    {%- if not item.variante.es_base %}
+                        · {{ item.variante.descripcion_sufijo }}
+                    {%- endif %}
+                </td>
+                <td class="num">{{ item.cantidad_enviada }}</td>
+                <td class="num">
+                    {{ item.cantidad_recibida if item.cantidad_recibida is not none else '' }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totales">
+        {{ remito.items | length }} código{{ 's' if remito.items | length != 1 }} ·
+        {{ remito.items | sum(attribute='cantidad_enviada') }} unidades enviadas
+    </div>
+
+    {% if remito.notas %}
+    <div class="notas">{{ remito.notas }}</div>
+    {% endif %}
+
+    <div class="firmas">
+        <div class="firma">Entregué conforme (origen)</div>
+        <div class="firma">Recibí conforme (destino)</div>
+    </div>
+
+</body>
+</html>

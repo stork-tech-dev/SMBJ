@@ -26,6 +26,7 @@ class Modulo(str, Enum):
     CLIENTES = "clientes"
     PROVEEDORES = "proveedores"
     PRODUCTOS = "productos"
+    STOCK = "stock"
     COMPRAS = "compras"
     VENTAS = "ventas"
     FACTURACION = "facturacion"
@@ -57,6 +58,15 @@ class Recurso(str, Enum):
     VENTA_ANULAR = "venta.anular"
     STOCK_BAJA = "stock.baja"
     STOCK_AUDITORIA = "stock.auditoria"
+    # Aprobar o rechazar un conteo es de otro orden que hacerlo: el que
+    # cuenta no puede validar su propio conteo. Por eso es un recurso
+    # aparte y no la acción "editar" del anterior.
+    STOCK_AUDITORIA_APROBAR = "stock.auditoria_aprobar"
+    # Confirmar la recepción de un remito. Suelto porque lo hace el local
+    # —Vendedor— y no puede venir con el permiso general de editar stock,
+    # que habilitaría también a aprobar auditorías.
+    STOCK_REMITO_RECEPCION = "stock.remito_recepcion"
+    STOCK_MOTIVOS_BAJA = "stock.motivos_baja"
     # Autorizar un cambio por falla, que se hace sin código de cambio. Se
     # asigna a roles o a usuarios sueltos desde la pantalla de permisos.
     CAMBIO_FALLA_AUTORIZAR = "cambio.falla_autorizar"
@@ -91,6 +101,7 @@ LABEL_MODULO: dict[Modulo, str] = {
     Modulo.CLIENTES: "Clientes",
     Modulo.PROVEEDORES: "Proveedores",
     Modulo.PRODUCTOS: "Productos",
+    Modulo.STOCK: "Stock",
     Modulo.COMPRAS: "Compras",
     Modulo.VENTAS: "Ventas",
     Modulo.FACTURACION: "Facturación",
@@ -118,6 +129,9 @@ LABEL_RECURSO: dict[Recurso, str] = {
     Recurso.VENTA_DESCUENTO: "Aplicar descuento",
     Recurso.VENTA_ANULAR: "Anular venta",
     Recurso.STOCK_BAJA: "Baja de stock",
+    Recurso.STOCK_AUDITORIA_APROBAR: "Aprobación de auditoría de inventario",
+    Recurso.STOCK_REMITO_RECEPCION: "Recepción de remitos",
+    Recurso.STOCK_MOTIVOS_BAJA: "Motivos de baja",
     Recurso.STOCK_AUDITORIA: "Auditoría de inventario",
     Recurso.CAMBIO_FALLA_AUTORIZAR: "Autorización de cambio por falla",
 }
@@ -139,8 +153,11 @@ MODULO_DE_RECURSO: dict[Recurso, Modulo] = {
     Recurso.CAJA_RETIRO: Modulo.TESORERIA,
     Recurso.VENTA_DESCUENTO: Modulo.VENTAS,
     Recurso.VENTA_ANULAR: Modulo.VENTAS,
-    Recurso.STOCK_BAJA: Modulo.PRODUCTOS,
-    Recurso.STOCK_AUDITORIA: Modulo.PRODUCTOS,
+    Recurso.STOCK_BAJA: Modulo.STOCK,
+    Recurso.STOCK_AUDITORIA: Modulo.STOCK,
+    Recurso.STOCK_AUDITORIA_APROBAR: Modulo.STOCK,
+    Recurso.STOCK_REMITO_RECEPCION: Modulo.STOCK,
+    Recurso.STOCK_MOTIVOS_BAJA: Modulo.STOCK,
     # Los cambios cuelgan del flujo de ventas: los endpoints van junto a
     # ventas y el recurso convive con VENTA_ANULAR y VENTA_DESCUENTO.
     Recurso.CAMBIO_FALLA_AUTORIZAR: Modulo.VENTAS,
@@ -169,6 +186,9 @@ ACCIONES_DE_RECURSO: dict[Recurso, tuple[str, ...]] = {
     Recurso.VENTA_ANULAR: ("eliminar",),
     Recurso.STOCK_BAJA: ("crear",),
     Recurso.STOCK_AUDITORIA: ("crear",),
+    Recurso.STOCK_AUDITORIA_APROBAR: ("editar",),
+    Recurso.STOCK_REMITO_RECEPCION: ("editar",),
+    Recurso.STOCK_MOTIVOS_BAJA: ("editar",),
     # "crear": autorizar habilita a registrar el cambio, igual que
     # VENTA_DESCUENTO habilita a aplicar el descuento.
     Recurso.CAMBIO_FALLA_AUTORIZAR: ("crear",),

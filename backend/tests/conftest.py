@@ -189,6 +189,40 @@ def dar_permiso(db):
 
 
 @pytest.fixture
+def crear_punto_de_venta(db):
+    """
+    Fábrica de puntos de venta.
+
+    Vive acá y no en un módulo de tests porque desde el control de stock la
+    necesitan varios: el stock, los remitos y las auditorías son siempre
+    de una ubicación, así que casi ningún test del módulo se arma sin esto.
+    """
+    from app.core.utils import ahora_db
+    from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
+
+    def _crear(codigo: str, nombre: str | None = None, tipo=TipoPuntoVenta.LOCAL):
+        punto = PuntoDeVenta(
+            codigo=codigo.upper(),
+            nombre=nombre or f"Punto {codigo.upper()}",
+            tipo=tipo,
+            activo=True,
+            created_at=ahora_db(),
+            updated_at=ahora_db(),
+        )
+        db.add(punto)
+        db.flush()
+        return punto
+
+    return _crear
+
+
+@pytest.fixture
+def punto_de_venta(crear_punto_de_venta):
+    """Un local cualquiera, para los tests que solo necesitan una ubicación."""
+    return crear_punto_de_venta("LOC", "Local de prueba")
+
+
+@pytest.fixture
 def login(client):
     """Hace login y devuelve los headers con el Bearer token."""
 

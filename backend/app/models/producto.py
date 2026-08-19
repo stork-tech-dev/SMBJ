@@ -210,8 +210,14 @@ class Variante(Base):
     # anotarlos.
     sku_proveedor: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
 
-    stock_actual: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    stock_minimo: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # El stock NO vive acá: vive en la tabla `stock`, una fila por variante
+    # y punto de venta. Un número suelto en la variante sería un "stock
+    # global" que no existe: 12 unidades en Patio Olmos y 0 en el resto son
+    # dos hechos distintos, no un total de 12.
+    #
+    # `stock_actual` y `stock_minimo` estaban acá hasta la migración 0022,
+    # que las movió. El total del listado se calcula sumando (Principio 4:
+    # los campos calculables no se persisten).
 
     ubicacion_deposito: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
@@ -240,9 +246,8 @@ class Variante(Base):
             " OR (NOT es_base AND descripcion_sufijo IS NOT NULL)",
             name="ck_producto_variantes_base_sin_descripcion_sufijo",
         ),
-        CheckConstraint(
-            "stock_minimo >= 0", name="ck_producto_variantes_stock_minimo_no_negativo"
-        ),
+        # El CHECK del stock mínimo se fue con su columna en la 0022: ahora
+        # el mínimo es por ubicación y lo cuida `ck_stock_minimos_no_negativos`.
         CheckConstraint(
             "precio_usd IS NULL OR precio_usd > 0",
             name="ck_producto_variantes_precio_usd_positivo",
@@ -302,3 +307,61 @@ class Variante(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
         return f"<Variante {self.id} {self.codigo_completo}>"
+
+
+# ---------------------------------------------------------------------------
+# Stock total de la variante, sumando todas las ubicaciones.
+#
+# Es un dato DERIVADO y no se persiste (Principio 4): la verdad son las filas
+# de `stock`, y un total guardado acá sería un segundo número que puede
+# quedar viejo — exactamente el problema que la migración 0022 vino a sacar.
+#
+# Va como `column_property` y no como una property de Python para que la suma
+# viaje DENTRO de la consulta: el listado de productos trae cincuenta filas
+# por página, y resolverlo en Python sería una consulta por fila.
+#
+# Se declara acá abajo, después de las dos clases, porque necesita `Stock`
+# y la clase se define en otro módulo. Va en este archivo —y no en el de
+# stock— para que exista con solo importar `Variante`, sin depender de qué
+# módulo se cargó primero.
+from sqlalchemy import case, literal as _literal, select as _select  # noqa: E402
+from sqlalchemy.orm import column_property  # noqa: E402
+
+from app.models.stock import Stock  # noqa: E402
+
+Variante.stock_total = column_property(
+    _select(func.coalesce(func.sum(Stock.cantidad), 0))
+    .where(Stock.variante_id == Variante.id)
+    .correlate_except(Stock)
+    .scalar_subquery(),
+    deferred=False,
+)
+
+# Y si alguna ubicación está en su mínimo o por debajo.
+#
+# El listado de productos marcaba la fila en rojo comparando dos columnas de
+# la variante; ahora el mínimo es por ubicación y depende del TIPO de cada
+# una, así que la pregunta cambió: "¿hay algún lugar donde esto esté por
+# reponerse?". Con un EXISTS alcanza —no importa cuántos sean, sino si hay
+# alguno— y evita traer las filas de stock para decidir un color.
+#
+# El detalle de qué ubicación y cuánto falta es de la pantalla de stock y de
+# `GET /stock/alertas`; acá solo se enciende la luz.
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta  # noqa: E402
+
+Variante.bajo_minimo = column_property(
+    _select(_literal(1))
+    .select_from(Stock)
+    .join(PuntoDeVenta, PuntoDeVenta.id == Stock.punto_de_venta_id)
+    .where(
+        Stock.variante_id == Variante.id,
+        Stock.cantidad
+        <= case(
+            (PuntoDeVenta.tipo == TipoPuntoVenta.CD, Stock.stock_minimo_cd),
+            else_=Stock.stock_minimo_local,
+        ),
+    )
+    .correlate_except(Stock, PuntoDeVenta)
+    .exists(),
+    deferred=False,
+)

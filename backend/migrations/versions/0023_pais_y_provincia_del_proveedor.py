@@ -1,13 +1,13 @@
 """Contacto y dirección del proveedor pasan a ser país y provincia
 
 Revision ID: 0023
-Revises: 0021
+Revises: 0022
 Create Date: 2026-08-19
 
-NÚMERO SALTEADO A PROPÓSITO: la 0022 existe en la rama `05_stock` y todavía
-no está acá. Esta cuelga de la 0021, así que las dos ramas corren solas; al
-mergear van a quedar DOS cabezas colgando de la 0021 y hay que unirlas —lo
-más simple es cambiar el `down_revision` de esta a "0022"—.
+Nació colgando de la 0021 porque la 0022 vivía en la rama `05_stock` y no
+estaba acá: con ese número habría habido dos revisiones con el mismo id.
+Al mergear esa rama se la volvió a encadenar donde corresponde, así que la
+línea de migraciones vuelve a ser una sola.
 """
 
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ from typing import Sequence, Union
 from alembic import op
 
 revision: str = "0023"
-down_revision: Union[str, None] = "0021"
+down_revision: Union[str, None] = "0022"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
