@@ -128,8 +128,8 @@ def crear_proveedor(
     autor: Usuario,
     nombre: str,
     dolar_actual: Decimal,
-    contacto: str | None = None,
-    direccion: str | None = None,
+    pais: str | None = None,
+    provincia: str | None = None,
     telefono: str | None = None,
     email: str | None = None,
     notas: str | None = None,
@@ -144,8 +144,8 @@ def crear_proveedor(
 
     proveedor = Proveedor(
         nombre=nombre_limpio,
-        contacto=normalizar_texto(contacto),
-        direccion=normalizar_texto(direccion),
+        pais=normalizar_texto(pais),
+        provincia=normalizar_texto(provincia),
         telefono=normalizar_texto(telefono),
         email=normalizar_texto(email),
         notas=normalizar_texto(notas),
@@ -187,8 +187,8 @@ def editar_proveedor(
     autor: Usuario,
     proveedor_id: int,
     nombre: str | None = None,
-    contacto: str | None = None,
-    direccion: str | None = None,
+    pais: str | None = None,
+    provincia: str | None = None,
     telefono: str | None = None,
     email: str | None = None,
     notas: str | None = None,
@@ -206,10 +206,10 @@ def editar_proveedor(
         if not nombre_limpio:
             raise ReglaDeNegocio("El nombre es obligatorio")
         proveedor.nombre = nombre_limpio
-    if contacto is not None:
-        proveedor.contacto = normalizar_texto(contacto)
-    if direccion is not None:
-        proveedor.direccion = normalizar_texto(direccion)
+    if pais is not None:
+        proveedor.pais = normalizar_texto(pais)
+    if provincia is not None:
+        proveedor.provincia = normalizar_texto(provincia)
     if telefono is not None:
         proveedor.telefono = normalizar_texto(telefono)
     if email is not None:

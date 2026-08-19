@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class ProveedorCrear(BaseModel):
     nombre: str = Field(min_length=1, max_length=200)
     dolar_actual: Decimal = Field(gt=0, description="Valor del dólar, mayor a cero")
-    contacto: str | None = Field(default=None, max_length=200)
-    direccion: str | None = Field(default=None, max_length=255)
+    pais: str | None = Field(default=None, max_length=200)
+    provincia: str | None = Field(default=None, max_length=255)
     telefono: str | None = Field(default=None, max_length=50)
     email: str | None = Field(default=None, max_length=255)
     notas: str | None = None
@@ -20,8 +20,8 @@ class ProveedorEditar(BaseModel):
     """Todo opcional. El dólar NO se toca acá: tiene su propio endpoint."""
 
     nombre: str | None = Field(default=None, min_length=1, max_length=200)
-    contacto: str | None = Field(default=None, max_length=200)
-    direccion: str | None = Field(default=None, max_length=255)
+    pais: str | None = Field(default=None, max_length=200)
+    provincia: str | None = Field(default=None, max_length=255)
     telefono: str | None = Field(default=None, max_length=50)
     email: str | None = Field(default=None, max_length=255)
     notas: str | None = None
@@ -38,8 +38,8 @@ class ProveedorResponse(BaseModel):
 
     id: int
     nombre: str
-    contacto: str | None
-    direccion: str | None
+    pais: str | None
+    provincia: str | None
     telefono: str | None
     email: str | None
     notas: str | None

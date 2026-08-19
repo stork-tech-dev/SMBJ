@@ -19,7 +19,7 @@ function abmProveedores() {
         // ficha: la ficha es de consulta y muestra el valor actual sin más.
         form: {
             abierto: false, guardando: false, id: null,
-            nombre: '', contacto: '', telefono: '', email: '', direccion: '', notas: '',
+            nombre: '', pais: '', telefono: '', email: '', provincia: '', notas: '',
             dolar_actual: '',
             historial: [], nuevoDolar: '', guardandoDolar: false,
         },
@@ -86,7 +86,7 @@ function abmProveedores() {
         abrirAlta() {
             this.form = {
                 abierto: true, guardando: false, id: null,
-                nombre: '', contacto: '', telefono: '', email: '', direccion: '', notas: '',
+                nombre: '', pais: '', telefono: '', email: '', provincia: '', notas: '',
                 dolar_actual: '',
                 historial: [], nuevoDolar: '', guardandoDolar: false,
             };
@@ -95,8 +95,8 @@ function abmProveedores() {
         async abrirEdicion(p) {
             this.form = {
                 abierto: true, guardando: false, id: p.id,
-                nombre: p.nombre, contacto: p.contacto || '', telefono: p.telefono || '',
-                email: p.email || '', direccion: p.direccion || '', notas: p.notas || '',
+                nombre: p.nombre, pais: p.pais || '', telefono: p.telefono || '',
+                email: p.email || '', provincia: p.provincia || '', notas: p.notas || '',
                 dolar_actual: p.dolar_actual,
                 historial: [], nuevoDolar: '', guardandoDolar: false,
             };
@@ -109,10 +109,10 @@ function abmProveedores() {
                 const alta = !this.form.id;
                 const cuerpo = {
                     nombre: this.form.nombre,
-                    contacto: this.form.contacto || null,
+                    pais: this.form.pais || null,
                     telefono: this.form.telefono || null,
                     email: this.form.email || null,
-                    direccion: this.form.direccion || null,
+                    provincia: this.form.provincia || null,
                     notas: this.form.notas || null,
                 };
                 if (alta) cuerpo.dolar_actual = this.form.dolar_actual;

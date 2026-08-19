@@ -22,16 +22,17 @@
         </div>
 
         <div class="px-10 pb-8 pt-4">
-            {# Datos de contacto #}
+            {# Dónde está y cómo se lo ubica, en el mismo orden que el
+               formulario de alta. #}
             <dl class="grid grid-cols-2 gap-x-8 gap-y-3 text-base">
-                <div class="col-span-2"><dt class="text-sm text-texto-disabled">Contacto</dt>
-                     <dd class="font-medium" x-text="ficha.proveedor?.contacto || '—'"></dd></div>
+                <div class="col-span-2"><dt class="text-sm text-texto-disabled">País</dt>
+                     <dd class="font-medium" x-text="ficha.proveedor?.pais || '—'"></dd></div>
+                <div class="col-span-2"><dt class="text-sm text-texto-disabled">Provincia</dt>
+                     <dd class="font-medium" x-text="ficha.proveedor?.provincia || '—'"></dd></div>
                 <div><dt class="text-sm text-texto-disabled">Teléfono</dt>
                      <dd class="font-medium" x-text="ficha.proveedor?.telefono || '—'"></dd></div>
                 <div><dt class="text-sm text-texto-disabled">Email</dt>
                      <dd class="font-medium" x-text="ficha.proveedor?.email || '—'"></dd></div>
-                <div class="col-span-2"><dt class="text-sm text-texto-disabled">Dirección</dt>
-                     <dd class="font-medium" x-text="ficha.proveedor?.direccion || '—'"></dd></div>
                 <div class="col-span-2" x-show="ficha.proveedor?.notas">
                      <dt class="text-sm text-texto-disabled">Notas</dt>
                      <dd class="font-medium" x-text="ficha.proveedor?.notas"></dd></div>

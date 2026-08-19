@@ -290,33 +290,35 @@ def test_masivo_con_el_recurso_puntual(client, crear_usuario, roles, dar_permiso
 
 
 # ============================================================================
-# NOMBRE (ex razon_social) Y CONTACTO
+# NOMBRE (ex razon_social), PAÍS Y PROVINCIA (ex contacto y dirección)
 # ============================================================================
 
 
-def test_el_contacto_es_opcional(db, autor):
-    """Un proveedor se puede dar de alta sin persona de contacto."""
+def test_el_pais_y_la_provincia_son_opcionales(db, autor):
+    """Un proveedor se puede dar de alta sin saber todavía de dónde es."""
     p = servicio.crear_proveedor(
-        db, autor, nombre="Sin Contacto SA", dolar_actual=Decimal("1000")
+        db, autor, nombre="Sin Datos SA", dolar_actual=Decimal("1000")
     )
-    assert p.contacto is None
+    assert (p.pais, p.provincia) == (None, None)
 
 
-def test_el_contacto_se_guarda_y_se_edita(db, autor):
+def test_el_pais_y_la_provincia_se_guardan_y_se_editan(db, autor):
     p = servicio.crear_proveedor(
         db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
-        contacto="Leandra Carvallo",
+        pais="Argentina", provincia="Córdoba",
     )
-    assert p.contacto == "Leandra Carvallo"
+    assert (p.pais, p.provincia) == ("Argentina", "Córdoba")
 
-    servicio.editar_proveedor(db, autor, p.id, contacto="Ana Gómez")
-    assert p.contacto == "Ana Gómez"
+    servicio.editar_proveedor(db, autor, p.id, pais="Brasil", provincia="São Paulo")
+    assert (p.pais, p.provincia) == ("Brasil", "São Paulo")
 
 
-def test_el_contacto_viaja_en_la_api(client, db, autor, login, dar_permiso, roles):
+def test_el_pais_y_la_provincia_viajan_en_la_api(
+    client, db, autor, login, dar_permiso, roles
+):
     servicio.crear_proveedor(
         db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
-        contacto="Leandra Carvallo",
+        pais="Argentina", provincia="Córdoba",
     )
     db.commit()
 
@@ -325,9 +327,10 @@ def test_el_contacto_viaja_en_la_api(client, db, autor, login, dar_permiso, role
 
     fila = resp.json()[0]
     assert fila["nombre"] == "Distribuidora Norte"
-    assert fila["contacto"] == "Leandra Carvallo"
-    # El nombre viejo no debe seguir apareciendo en el contrato.
-    assert "razon_social" not in fila
+    assert fila["pais"] == "Argentina"
+    assert fila["provincia"] == "Córdoba"
+    # Los nombres viejos no deben seguir apareciendo en el contrato.
+    assert not {"razon_social", "contacto", "direccion"} & set(fila)
 
 
 def test_el_filtro_de_nombre_sigue_funcionando(db, autor):

@@ -66,11 +66,12 @@ class Proveedor(Base):
 
     nombre: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
 
-    # Persona de contacto dentro del proveedor. Opcional: al dar de alta
-    # suele conocerse la empresa antes que a quién dirigirse.
-    contacto: Mapped[str | None] = mapped_column(String(200), nullable=True)
-
-    direccion: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Dónde está el proveedor. Opcional: al dar de alta suele conocerse la
+    # empresa antes que su domicilio. Los largos vienen de cuando estos dos
+    # campos eran `contacto` y `direccion` (migración 0023): sobran para un
+    # país y una provincia, y achicarlos obligaría a truncar lo ya cargado.
+    pais: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    provincia: Mapped[str | None] = mapped_column(String(255), nullable=True)
     telefono: Mapped[str | None] = mapped_column(String(50), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)

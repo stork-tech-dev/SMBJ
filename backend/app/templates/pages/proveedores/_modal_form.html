@@ -32,11 +32,16 @@
                 <input id="pv-nombre" x-model="form.nombre" required class="campo-linea">
             </div>
 
-            {# Persona de contacto. Va antes de teléfono y email porque son
-               sus datos: quién es, y después cómo ubicarlo. #}
+            {# Dónde está el proveedor. Va antes de teléfono y email porque
+               primero se ubica de dónde es y después cómo llamarlo. #}
             <div class="sm:col-span-2 flex flex-col gap-1">
-                <label for="pv-contacto" class="text-sm font-semibold text-texto-header">Contacto</label>
-                <input id="pv-contacto" x-model="form.contacto" maxlength="200" class="campo-linea">
+                <label for="pv-pais" class="text-sm font-semibold text-texto-header">País</label>
+                <input id="pv-pais" x-model="form.pais" maxlength="200" class="campo-linea">
+            </div>
+
+            <div class="sm:col-span-2 flex flex-col gap-1">
+                <label for="pv-provincia" class="text-sm font-semibold text-texto-header">Provincia</label>
+                <input id="pv-provincia" x-model="form.provincia" class="campo-linea">
             </div>
 
             <div class="flex flex-col gap-1">
@@ -47,11 +52,6 @@
             <div class="flex flex-col gap-1">
                 <label for="pv-email" class="text-sm font-semibold text-texto-header">Email</label>
                 <input id="pv-email" type="email" x-model="form.email" class="campo-linea">
-            </div>
-
-            <div class="sm:col-span-2 flex flex-col gap-1">
-                <label for="pv-dir" class="text-sm font-semibold text-texto-header">Dirección</label>
-                <input id="pv-dir" x-model="form.direccion" class="campo-linea">
             </div>
 
             {# El dólar inicial solo en el alta. #}
