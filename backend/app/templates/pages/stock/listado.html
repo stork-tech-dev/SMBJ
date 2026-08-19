@@ -37,37 +37,6 @@
         {% endif %}
     {% endcall %}
 
-    {# ---------- Los tres números del encabezado ----------
-       Se leen antes que la tabla: dicen si hay que hacer algo (alertas) y
-       cuánto vale lo que hay. #}
-    <div class="grid gap-4 sm:grid-cols-3 mt-8">
-        <div class="p-5 bg-surface rounded-[20px] tarjeta">
-            <p class="text-sm text-texto-muted">Unidades en stock</p>
-            <p class="mt-1 text-2xl font-black text-texto" x-text="resumen.unidades"></p>
-        </div>
-
-        {# La tarjeta de alertas es además un filtro: tocarla deja la tabla
-           mostrando solo lo que hay que reponer, que es lo que uno quiere
-           hacer justo después de ver el número. #}
-        <button type="button" @click="filtros.solo_bajo_minimo = 'true'; cargar()"
-                class="p-5 bg-surface rounded-[20px] tarjeta text-left
-                       hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
-                :class="resumen.alertas && 'ring-1 ring-danger/40'">
-            <p class="text-sm text-texto-muted inline-flex items-center gap-2">
-                {{ icono('alerta', clases='w-4 h-4') }} Por reponer
-            </p>
-            <p class="mt-1 text-2xl font-black"
-               :class="resumen.alertas ? 'text-danger' : 'text-texto'"
-               x-text="resumen.alertas"></p>
-        </button>
-
-        <div class="p-5 bg-surface rounded-[20px] tarjeta">
-            <p class="text-sm text-texto-muted">Valorizado</p>
-            <p class="mt-1 text-2xl font-black text-texto"
-               x-text="pesos(resumen.valorizado)"></p>
-        </div>
-    </div>
-
     {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
         <label class="sr-only" for="f-texto">Código, SKU o descripción</label>

@@ -26,11 +26,6 @@ function abmStock({ puntoFijo = null } = {}) {
         proveedores: [],
         motivos: [],
 
-        // Los tres números del encabezado. Se piden aparte del listado
-        // porque son de TODO lo que el usuario puede ver, no de la página
-        // que está mirando.
-        resumen: { filas: 0, unidades: 0, alertas: 0, valorizado: 0 },
-
         // La ubicación a la que está limitado este equipo, o null si ve
         // todas. La resuelve el servidor al renderizar la página: pedirla por
         // API obligaría a dibujar la pantalla entera y vaciarla después.
@@ -62,18 +57,6 @@ function abmStock({ puntoFijo = null } = {}) {
             abierto: false, guardando: false, variante_id: null,
             punto_de_venta_id: null, codigo: '', ubicacion: '', disponible: 0,
             cantidad: 1, motivo_baja_id: '', notas: '',
-        },
-
-        /* --- Formato: la API manda números, no strings con símbolo --- */
-
-        pesos(valor) {
-            if (valor === null || valor === undefined) return '—';
-            const n = Number(valor);
-            const decimales = Number.isInteger(n) ? 0 : 2;
-            return n.toLocaleString('es-AR', {
-                style: 'currency', currency: 'ARS',
-                minimumFractionDigits: decimales, maximumFractionDigits: decimales,
-            });
         },
 
         /**
@@ -127,12 +110,6 @@ function abmStock({ puntoFijo = null } = {}) {
             } finally {
                 this.cargando = false;
             }
-            this.cargarResumen();
-        },
-
-        async cargarResumen() {
-            const resp = await fetch('/api/v1/stock/resumen', { credentials: 'same-origin' });
-            if (resp.ok) this.resumen = await resp.json();
         },
 
         async cargarCatalogos() {
