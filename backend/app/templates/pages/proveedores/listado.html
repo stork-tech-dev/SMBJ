@@ -31,6 +31,16 @@
                class="h-control w-full sm:w-[15rem] px-4 text-sm font-semibold bg-surface border-2 border-borde
                       rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
 
+        <input type="text" x-model="filtros.provincia" @input.debounce.300ms="cargar()"
+               placeholder="Provincia" aria-label="Provincia"
+               class="h-control w-full sm:w-[11rem] px-4 text-sm font-semibold bg-surface border-2 border-borde
+                      rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <input type="text" x-model="filtros.pais" @input.debounce.300ms="cargar()"
+               placeholder="País" aria-label="País"
+               class="h-control w-full sm:w-[11rem] px-4 text-sm font-semibold bg-surface border-2 border-borde
+                      rounded-input placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
         <div class="relative w-full sm:w-auto">
             <select x-model="filtros.estado" @change="cargar()" aria-label="Estado"
                     class="h-control w-full sm:w-[12.5rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2
@@ -77,6 +87,8 @@
                     <tr>
                         <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Contacto</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Provincia</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">País</th>
                         <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Dólar</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
@@ -93,6 +105,8 @@
                                 <p class="text-xs font-light leading-5 text-texto-muted"
                                    x-text="p.telefono || ''"></p>
                             </td>
+                            <td class="px-4 py-3 align-middle" x-text="p.provincia || '—'"></td>
+                            <td class="px-4 py-3 align-middle" x-text="p.pais || '—'"></td>
                             <td class="px-4 py-3 align-middle text-right font-medium"
                                 x-text="'$ ' + formatearDolar(p.dolar_actual)"></td>
                             <td class="px-4 py-3 align-middle">
@@ -116,7 +130,7 @@
                         </tr>
                     </template>
                     <tr x-show="!proveedores.length && !cargando">
-                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
                     </tr>
                 </tbody>
             </table>

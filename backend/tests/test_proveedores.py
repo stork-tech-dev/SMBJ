@@ -343,6 +343,78 @@ def test_el_filtro_de_nombre_sigue_funcionando(db, autor):
     assert [p.nombre for p in encontrados] == ["Distribuidora Norte"]
 
 
+def test_se_filtra_por_provincia_y_por_pais(db, autor):
+    """
+    Principio 5: las dos columnas nuevas del listado tienen su filtro, y se
+    resuelve en el backend.
+    """
+    servicio.crear_proveedor(
+        db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
+        pais="Argentina", provincia="Córdoba",
+    )
+    servicio.crear_proveedor(
+        db, autor, nombre="Mayorista Sur", dolar_actual=Decimal("1000"),
+        pais="Brasil", provincia="São Paulo",
+    )
+
+    por_provincia = servicio.listar_proveedores(db, provincia="córdoba")
+    por_pais = servicio.listar_proveedores(db, pais="brasil")
+
+    assert [p.nombre for p in por_provincia] == ["Distribuidora Norte"]
+    assert [p.nombre for p in por_pais] == ["Mayorista Sur"]
+
+
+def test_los_filtros_de_lugar_ignoran_las_tildes(db, autor):
+    """"cordoba" tiene que encontrar "Córdoba": es como se tipea de apuro."""
+    servicio.crear_proveedor(
+        db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
+        pais="Perú", provincia="Córdoba",
+    )
+
+    assert len(servicio.listar_proveedores(db, provincia="cordoba")) == 1
+    assert len(servicio.listar_proveedores(db, pais="peru")) == 1
+
+
+def test_los_filtros_de_lugar_se_combinan_con_los_demas(db, autor):
+    """
+    Filtrar por provincia no puede llevarse puesto el filtro de estado: la
+    pantalla arranca mostrando solo los activos.
+    """
+    uno = servicio.crear_proveedor(
+        db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
+        pais="Argentina", provincia="Córdoba",
+    )
+    servicio.crear_proveedor(
+        db, autor, nombre="Mayorista Centro", dolar_actual=Decimal("1000"),
+        pais="Argentina", provincia="Córdoba",
+    )
+    servicio.cambiar_estado(db, autor, uno.id, EstadoProveedor.DESACTIVADO)
+
+    encontrados = servicio.listar_proveedores(db, provincia="cordoba", estado="activo")
+
+    assert [p.nombre for p in encontrados] == ["Mayorista Centro"]
+
+
+def test_los_filtros_de_lugar_viajan_por_la_api(client, db, autor, login, roles):
+    """El listado de la pantalla pasa por acá: si el Query no existe, se ignora."""
+    servicio.crear_proveedor(
+        db, autor, nombre="Distribuidora Norte", dolar_actual=Decimal("1000"),
+        pais="Argentina", provincia="Córdoba",
+    )
+    servicio.crear_proveedor(
+        db, autor, nombre="Mayorista Sur", dolar_actual=Decimal("1000"),
+        pais="Brasil", provincia="São Paulo",
+    )
+    db.commit()
+
+    resp = client.get(
+        "/api/v1/proveedores?provincia=cordoba&pais=argentina", headers=login("admin")
+    )
+
+    assert resp.status_code == 200
+    assert [p["nombre"] for p in resp.json()] == ["Distribuidora Norte"]
+
+
 def test_no_quedan_referencias_a_razon_social():
     """
     El rename tiene que ser total: una referencia suelta en un template o

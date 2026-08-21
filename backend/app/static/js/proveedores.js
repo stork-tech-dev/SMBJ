@@ -13,7 +13,10 @@ function abmProveedores() {
         // los proveedores operativos. Acá el filtro es un select y no el switch
         // "Solo activos" de los otros listados, porque hay TRES estados
         // (activo, desactivado, inhabilitado) y un sí/no no los distingue.
-        filtros: { nombre: '', estado: 'activo', dolar_desde: '', dolar_hasta: '' },
+        filtros: {
+            nombre: '', provincia: '', pais: '', estado: 'activo',
+            dolar_desde: '', dolar_hasta: '',
+        },
 
         // El cambio de dólar y su historial viven en el FORMULARIO, no en la
         // ficha: la ficha es de consulta y muestra el valor actual sin más.
@@ -77,7 +80,10 @@ function abmProveedores() {
         },
 
         limpiar() {
-            this.filtros = { nombre: '', estado: 'activo', dolar_desde: '', dolar_hasta: '' };
+            this.filtros = {
+                nombre: '', provincia: '', pais: '', estado: 'activo',
+                dolar_desde: '', dolar_hasta: '',
+            };
             this.cargar();
         },
 

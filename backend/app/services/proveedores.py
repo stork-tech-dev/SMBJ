@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO
-from app.core.utils import ahora_db, normalizar_texto, redondear
+from app.core.utils import (
+    ahora_db,
+    normalizar_texto,
+    redondear,
+    sin_tildes,
+    sin_tildes_sql,
+)
 from app.models.proveedor import (
     EstadoProveedor,
     OrigenCambioDolar,
@@ -46,6 +52,8 @@ def listar_proveedores(
     nombre: str | None = None,
     email: str | None = None,
     telefono: str | None = None,
+    provincia: str | None = None,
+    pais: str | None = None,
     estado: str | None = None,
     dolar_desde: Decimal | None = None,
     dolar_hasta: Decimal | None = None,
@@ -62,6 +70,17 @@ def listar_proveedores(
         consulta = consulta.where(Proveedor.email.ilike(f"%{email}%"))
     if telefono:
         consulta = consulta.where(Proveedor.telefono.ilike(f"%{telefono}%"))
+    # Las dos caras de la comparación se limpian igual —la columna con
+    # `translate()` en SQL y el texto tipeado en Python— para que "cordoba"
+    # encuentre "Córdoba", que es como se escribe de apuro en un buscador.
+    if provincia:
+        consulta = consulta.where(
+            sin_tildes_sql(Proveedor.provincia).ilike(f"%{sin_tildes(provincia)}%")
+        )
+    if pais:
+        consulta = consulta.where(
+            sin_tildes_sql(Proveedor.pais).ilike(f"%{sin_tildes(pais)}%")
+        )
     if estado:
         consulta = consulta.where(Proveedor.estado == estado)
     if dolar_desde is not None:
