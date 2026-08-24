@@ -47,7 +47,6 @@ RUTA_HUB_STOCK = "/gestion-de-stock"
 
 MENU_SIDEBAR = [
     {"nombre": "Home", "url": "/", "icono": "home", "modulo": None},
-    {"nombre": "Proveedores", "url": "/proveedores", "icono": "truck", "modulo": Modulo.PROVEEDORES},
     {"nombre": "Productos", "url": "/productos", "icono": "box", "modulo": Modulo.PRODUCTOS},
     # El control de stock entra por su propia página de menú, no por una de
     # sus pantallas: con las tres sueltas en el sidebar el módulo se leía como
@@ -94,6 +93,12 @@ MENU_SIDEBAR_PIE = [
 # Configuraciones (diseño "Configuraciones CM"). Agregar una sección nueva
 # es una línea acá; cada una se muestra solo si el usuario tiene su permiso.
 CONFIGURACION_SECCIONES = [
+    {
+        "nombre": "Proveedores",
+        "descripcion": "Datos de proveedores nacionales e internacionales",
+        "url": "/proveedores",
+        "modulo": Modulo.PROVEEDORES,
+    },
     {
         "nombre": "Usuarios",
         "descripcion": "Altas, permisos e historial de accesos",
@@ -353,7 +358,10 @@ async def cambiar_password(
 async def index(
     request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
 ):
-    """Dashboard."""
+    """Dashboard. Dispositivos de local redirigen a /ventas."""
+
+    if _es_dispositivo_de_local(_dispositivo_de_request(request, db)):
+        return RedirectResponse("/ventas", status_code=303)
 
     return templates.TemplateResponse(
         request,
@@ -463,7 +471,7 @@ async def proveedores(
     return templates.TemplateResponse(
         request,
         "pages/proveedores/listado.html",
-        contexto_base(request, db, usuario, titulo="Proveedores", ruta_activa="/proveedores"),
+        contexto_base(request, db, usuario, titulo="Proveedores", ruta_activa="/configuracion"),
     )
 
 
@@ -475,7 +483,7 @@ async def proveedores_dolar_masivo(
         request,
         "pages/proveedores/dolar_masivo.html",
         contexto_base(
-            request, db, usuario, titulo="Cambio masivo del dólar", ruta_activa="/proveedores"
+            request, db, usuario, titulo="Cambio masivo del dólar", ruta_activa="/configuracion"
         ),
     )
 
