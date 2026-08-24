@@ -1,0 +1,216 @@
+{# Catálogo de motivos de descuento. Datos desde
+   /api/v1/configuracion/motivos-descuento (Principio 1).
+
+   Un catálogo para TODOS los tipos de descuento del negocio —producto,
+   venta, cliente, empleada— y no una tabla por tipo: cada tipo sería la
+   misma estructura con otro nombre, y el reporte de "cuánto se descontó y
+   por qué" tendría que unirlas todas. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones %}
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/switch_activos.html" import switch_activos %}
+
+{% block contenido %}
+<div x-data="abmMotivosDescuento()" x-init="cargar()">
+
+    {% call encabezado('Motivos de descuento', volver_url='/configuracion',
+                       volver_texto='Configuraciones') %}
+        {% if puede_editar %}
+        <button type="button" @click="abrirAlta()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+        {% endif %}
+    {% endcall %}
+
+    {# ---------- Filtros (Principio 5). Tabla chica: en tiempo real ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <input type="text" x-model="filtros.nombre" @input.debounce.300ms="cargar()"
+               placeholder="Nombre" aria-label="Nombre"
+               class="h-control w-full sm:w-[15rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input placeholder:text-texto-disabled
+                      focus:outline-none focus:border-primary">
+
+        <div class="relative w-full sm:w-auto">
+            <select x-model="filtros.habilita_cuotas_sin_interes" @change="cargar()"
+                    aria-label="Cuotas sin interés"
+                    class="h-control w-full sm:w-[15rem] pl-4 pr-10 text-sm font-semibold bg-surface
+                           border-2 border-borde rounded-input appearance-none
+                           focus:outline-none focus:border-primary"
+                    :class="filtros.habilita_cuotas_sin_interes ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Cuotas sin interés (todos)</option>
+                <option value="true">Las habilita</option>
+                <option value="false">No las habilita</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="motivos.length"></span>
+            <span x-text="motivos.length === 1 ? 'motivo' : 'motivos'"></span>
+        </p>
+
+        {{ switch_activos('filtros.activo') }}
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">
+                            % sugerido
+                        </th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">
+                            Cuotas sin interés
+                        </th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="m in motivos" :key="m.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                            :class="!m.activo && 'opacity-60'">
+                            <td class="px-8 py-3 align-middle font-medium" x-text="m.nombre"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums"
+                                x-text="m.porcentaje_sugerido === null
+                                        ? 'La elige la vendedora'
+                                        : porcentaje(m.porcentaje_sugerido)"></td>
+                            <td class="px-4 py-3 align-middle">
+                                <span class="text-xs font-medium"
+                                      :class="m.habilita_cuotas_sin_interes
+                                              ? 'text-success' : 'text-texto-muted'"
+                                      x-text="m.habilita_cuotas_sin_interes ? 'Sí' : 'No'"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <span class="text-xs font-medium"
+                                      :class="m.activo ? 'text-success' : 'text-danger'"
+                                      x-text="m.activo ? 'Activo' : 'Inactivo'"></span>
+                            </td>
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
+                                {% if puede_editar %}
+                                {% call acciones() %}
+                                    {{ accion('editar', atributos='@click="abrirEdicion(m)"') }}
+                                    {# No hay borrado: los ítems con descuento
+                                       apuntan al motivo. #}
+                                    {{ accion('borrar',
+                                              atributos='x-show="m.activo"
+                                                         @click="cambiarEstado(m, false)"
+                                                         title="Desactivar"') }}
+                                    {{ accion('activar',
+                                              atributos='x-show="!m.activo" x-cloak
+                                                         @click="cambiarEstado(m, true)"
+                                                         title="Activar"') }}
+                                {% endcall %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!motivos.length && !cargando">
+                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if puede_editar %}
+    {# ---------- Modal alta / edición ---------- #}
+    <div x-show="form.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @keydown.escape.window="form.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-motivo-desc">
+        <div class="w-full max-w-lg bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-center justify-between px-8 pt-7 pb-2">
+                <h2 id="titulo-motivo-desc" class="text-lg font-black text-welcome"
+                    x-text="form.id ? 'Editar motivo' : 'Nuevo motivo'"></h2>
+                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardar()" class="px-8 pb-8 pt-4 grid gap-5">
+                <div class="flex flex-col gap-1">
+                    <label for="md-nombre" class="text-sm font-semibold text-texto-header">
+                        Nombre<span class="text-danger ml-0.5">*</span>
+                    </label>
+                    <input id="md-nombre" x-model="form.nombre" required maxlength="100"
+                           placeholder="Cumpleaños" class="campo-linea">
+                </div>
+
+                {# El sugerido sale de la MISMA lista que ve la vendedora: un
+                   motivo cargado con 12% sería un porcentaje libre entrando
+                   por la puerta de atrás, preseleccionado y sin que nadie lo
+                   hubiera elegido. Por eso es un select, no un input. #}
+                <div class="flex flex-col gap-1">
+                    <label for="md-sugerido" class="text-sm font-semibold text-texto-header">
+                        Porcentaje sugerido
+                    </label>
+                    <div class="relative">
+                        <select id="md-sugerido" x-model="form.porcentaje_sugerido"
+                                class="campo-linea w-full appearance-none pr-10">
+                            <option value="">Que la elija la vendedora</option>
+                            <template x-for="p in porcentajes" :key="p">
+                                <option :value="p" x-text="p + '%'"></option>
+                            </template>
+                        </select>
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            {{ icono('chevron') }}
+                        </span>
+                    </div>
+                    <span class="text-xs text-texto-disabled">
+                        Se preselecciona al elegir el motivo. La vendedora puede cambiarlo,
+                        y si lo cambia queda registrado en la venta.
+                    </span>
+                </div>
+
+                <label class="flex items-start gap-3 min-h-toque">
+                    <input type="checkbox" x-model="form.habilita_cuotas_sin_interes"
+                           class="mt-1 w-5 h-5 accent-[color:var(--color-primary)]">
+                    <span>
+                        <span class="text-base text-texto">Habilita cuotas sin interés</span>
+                        <span class="block text-xs text-texto-disabled">
+                            Ofrece los planes sin interés aunque la venta no llegue al monto
+                            mínimo del plan. Solo los sin interés: un motivo de descuento no
+                            puede habilitar un plan que le sale más caro al cliente.
+                        </span>
+                    </span>
+                </label>
+
+                <div class="flex justify-end gap-3 mt-2">
+                    <button type="button" @click="form.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="form.guardando"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/motivos_descuento.js') }}"></script>
+{% endblock %}

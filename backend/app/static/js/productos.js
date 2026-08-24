@@ -149,32 +149,11 @@ function abmProductos() {
 
         /* --- Formato: la API manda números, no strings con símbolo --- */
 
-        /**
-         * Importe en pesos, mostrando EXACTAMENTE lo que guarda el backend.
-         *
-         * Los decimales aparecen solo si existen. La versión anterior usaba
-         * `maximumFractionDigits: 0` y aplicaba su propio redondeo
-         * half-expand: con el `redondeo` del sistema en 0,50 un precio
-         * guardado como 2000,50 se mostraba "$2.001", y uno de 1234,49 se
-         * mostraba "$1.234" — menos de lo que se cobra. El redondeo del
-         * precio es CEIL y lo hace el backend; la pantalla no puede volver
-         * a redondear por su cuenta.
-         *
-         * Hoy el redondeo configurado es 1000, así que los precios no
-         * tienen decimales y el defecto no se veía. Depende de un valor de
-         * configuración, no de una garantía.
-         */
-        pesos(valor) {
-            if (valor === null || valor === undefined) return '—';
-            const n = Number(valor);
-            const decimales = Number.isInteger(n) ? 0 : 2;
-            return n.toLocaleString('es-AR', {
-                style: 'currency',
-                currency: 'ARS',
-                minimumFractionDigits: decimales,
-                maximumFractionDigits: decimales,
-            });
-        },
+        // Delega en `window.pesos` (app.js), donde vive el porqué del
+        // formato. La misma función la usan el carrito, el cobro y el
+        // listado de ventas: dos copias que puedan divergir mostrarían el
+        // mismo precio de dos formas distintas (Principio 2).
+        pesos: (valor) => window.pesos(valor),
 
         usd(valor) {
             if (valor === null || valor === undefined) return '—';

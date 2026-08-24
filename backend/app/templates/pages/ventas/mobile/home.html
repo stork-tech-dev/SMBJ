@@ -1,0 +1,129 @@
+{# Home mobile de la vendedora (Figma `269:2014`).
+
+   Es lo primero que ve al entrar desde el celular del local. Tres cosas, en
+   este orden de importancia:
+
+     1. Si tiene una venta sin concluir. Va arriba de todo y en color de
+        alerta porque es lo único que puede estar mal: una venta abierta
+        tiene productos que nadie va a cobrar.
+     2. El estado del turno.
+     3. Los accesos a lo que hace el resto del día.
+
+   La zona de turno se dibuja pero todavía no opera: `turnos` es del módulo
+   de Caja (prompt 07). Se deja el lugar armado —y dicho— en vez de un botón
+   que no hace nada. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block encabezado_mobile %}
+    {# En el home no hay retorno: es la raíz del flujo. En su lugar va el
+       saludo, que es lo que el Figma pone en esta franja. #}
+    <div class="min-w-0">
+        <p class="text-[1.75rem] leading-tight font-black text-welcome truncate">
+            Hola {{ usuario_actual.nombre.split()[0] }}
+        </p>
+        <p class="text-sm font-medium text-texto-muted truncate">
+            {{ usuario_actual.rol.nombre|replace('_', ' ')|capitalize }}
+            {%- if local_nombre %} · {{ local_nombre }}{% endif %}
+        </p>
+    </div>
+{% endblock %}
+
+{% block contenido_mobile %}
+<div x-data="homeVentas()" x-init="cargar()">
+
+    {% if sin_asignacion %}
+    <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+        {{ mensaje_sin_asignacion }}
+    </p>
+    {% else %}
+
+    {# ---------- Venta sin concluir ----------
+       Sale de GET /ventas/en-curso. Si no hay ninguna, la respuesta trae
+       `venta: null` y este bloque simplemente no se dibuja: "no hay venta
+       abierta" es una respuesta válida, no un error. #}
+    <a x-show="enCurso" x-cloak :href="'/ventas/carrito'"
+       class="mt-4 flex items-center gap-3 p-4 rounded-input bg-danger/15 text-danger
+              hover:opacity-90">
+        {{ icono('alerta', clases='w-6 h-6 shrink-0') }}
+        <span class="flex-1 min-w-0">
+            <span class="block text-base font-semibold">Tenés una venta sin concluir</span>
+            <span class="block text-sm truncate"
+                  x-text="enCurso ? enCurso.numero + ' · ' + pesos(enCurso.total) : ''"></span>
+        </span>
+        {{ icono('chevron-derecha', clases='w-5 h-5 shrink-0') }}
+    </a>
+
+    {# ---------- Turno ----------
+       El estado real llega con el módulo de Caja. Hasta entonces la tarjeta
+       dice lo que hay: que la apertura y el cierre todavía no se manejan
+       desde acá. Un botón "Iniciar turno" que no inicia nada sería peor. #}
+    <section class="mt-4 p-4 rounded-input bg-surface-alt" aria-labelledby="turno-titulo">
+        <div class="flex items-center gap-3">
+            {{ icono('reloj', clases='w-6 h-6 text-texto-muted shrink-0') }}
+            <div class="min-w-0">
+                <h2 id="turno-titulo" class="text-base font-semibold text-texto">Turno</h2>
+                <p class="text-sm text-texto-muted">
+                    La apertura y el cierre de caja llegan con el módulo de Caja.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    {# ---------- Acción principal ---------- #}
+    <a href="/ventas/nueva"
+       class="mt-5 flex items-center justify-center gap-2 h-[3.25rem] rounded-input
+              bg-primary text-white text-base font-medium hover:bg-primary-hover">
+        {{ icono('cart', clases='w-5 h-5') }}
+        <span x-text="enCurso ? 'Seguir la venta' : 'Nueva venta'">Nueva venta</span>
+    </a>
+
+    {# ---------- Accesos rápidos ----------
+       Grilla de 2 columnas con `auto-fit`: en un teléfono muy angosto las
+       tarjetas se apilan solas en vez de aplastarse (Principio 6). #}
+    <div class="mt-5 grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr))">
+        <a href="/ventas/consulta-stock"
+           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
+            {{ icono('almacen', clases='w-8 h-8 text-primary') }}
+            <span class="text-sm font-semibold text-texto">Consultar stock</span>
+        </a>
+
+        <a href="/remitos"
+           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
+            {{ icono('remito', clases='w-8 h-8 text-primary') }}
+            <span class="text-sm font-semibold text-texto">Recepción de mercadería</span>
+        </a>
+
+        {# Anulaciones y Cambios son el módulo 08: la tarjeta se muestra
+           apagada en vez de esconderse, para que la vendedora sepa que van
+           a estar ahí y no las busque en otro lado. #}
+        <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                    rounded-[10px] bg-surface tarjeta text-center opacity-50">
+            {{ icono('papelera', clases='w-8 h-8 text-texto-muted') }}
+            <span class="text-sm font-semibold text-texto-muted">Anulaciones</span>
+            <span class="text-[0.625rem] text-texto-disabled">Próximamente</span>
+        </div>
+
+        <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                    rounded-[10px] bg-surface tarjeta text-center opacity-50">
+            {{ icono('portapapeles', clases='w-8 h-8 text-texto-muted') }}
+            <span class="text-sm font-semibold text-texto-muted">Cambios</span>
+            <span class="text-[0.625rem] text-texto-disabled">Próximamente</span>
+        </div>
+    </div>
+
+    <button type="button" @click="cerrarSesion()"
+            class="mt-6 w-full h-boton rounded-input border border-borde text-sm
+                   text-texto-muted hover:border-danger hover:text-danger">
+        Cerrar sesión
+    </button>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/ventas_mobile.js') }}"></script>
+{% endblock %}

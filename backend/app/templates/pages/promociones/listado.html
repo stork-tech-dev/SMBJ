@@ -1,0 +1,294 @@
+{# Catálogo de promociones 2x1 y 3x2. Datos desde
+   /api/v1/configuracion/promociones (Principio 1).
+
+   "Activa" y "vigente" son dos cosas distintas y por eso son dos columnas:
+   una promo activa con fecha de fin pasada NO rige hoy, y esa es justamente
+   la que uno viene a buscar cuando se pregunta por qué no se está
+   aplicando. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones %}
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/switch_activos.html" import switch_activos %}
+
+{% block contenido %}
+<div x-data="abmPromociones()" x-init="cargar()">
+
+    {% call encabezado('Promociones', volver_url='/configuracion',
+                       volver_texto='Configuraciones') %}
+        {% if puede_editar %}
+        <button type="button" @click="abrirAlta()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nueva
+        </button>
+        {% endif %}
+    {% endcall %}
+
+    {# ---------- Filtros (Principio 5). Tabla chica: en tiempo real ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <input type="text" x-model="filtros.nombre" @input.debounce.300ms="cargar()"
+               placeholder="Nombre" aria-label="Nombre"
+               class="h-control w-full sm:w-[15rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input placeholder:text-texto-disabled
+                      focus:outline-none focus:border-primary">
+
+        <div class="relative w-full sm:w-auto">
+            <select x-model="filtros.tipo" @change="cargar()" aria-label="Tipo"
+                    class="h-control w-full sm:w-[12rem] pl-4 pr-10 text-sm font-semibold bg-surface
+                           border-2 border-borde rounded-input appearance-none
+                           focus:outline-none focus:border-primary"
+                    :class="filtros.tipo ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Tipo (todos)</option>
+                <option value="dos_x_uno">2x1</option>
+                <option value="tres_x_dos">3x2</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+
+        <div class="relative w-full sm:w-auto">
+            <select x-model="filtros.vigente" @change="cargar()" aria-label="Vigencia"
+                    class="h-control w-full sm:w-[13rem] pl-4 pr-10 text-sm font-semibold bg-surface
+                           border-2 border-borde rounded-input appearance-none
+                           focus:outline-none focus:border-primary"
+                    :class="filtros.vigente ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Vigencia (todas)</option>
+                <option value="true">Rige hoy</option>
+                <option value="false">No rige hoy</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="promociones.length"></span>
+            <span x-text="promociones.length === 1 ? 'promoción' : 'promociones'"></span>
+        </p>
+
+        {{ switch_activos('filtros.activo') }}
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Tipo</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Alcance</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Vigencia</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="p in promociones" :key="p.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                            :class="!p.activo && 'opacity-60'">
+                            <td class="px-8 py-3 align-middle">
+                                <span class="font-medium" x-text="p.nombre"></span>
+                                <span x-show="p.exclusiva_de_clientes"
+                                      class="ml-2 inline-flex items-center px-3 py-0.5 rounded-pill
+                                             text-xs font-medium bg-primary/15 text-primary"
+                                      title="Solo se ofrece a los clientes que la tienen asignada">
+                                    Por cliente
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 align-middle" x-text="etiquetaTipo(p.tipo)"></td>
+                            <td class="px-4 py-3 align-middle text-sm text-texto-muted"
+                                x-text="resumenAlcance(p)"></td>
+                            <td class="px-4 py-3 align-middle text-sm" x-text="resumenVigencia(p)"></td>
+                            <td class="px-4 py-3 align-middle">
+                                {# Dos hechos distintos: si está prendida y si
+                                   rige HOY. Una activa fuera de fecha no
+                                   aplica, y hay que poder verlo. #}
+                                <span class="text-xs font-medium"
+                                      :class="p.activo ? 'text-success' : 'text-danger'"
+                                      x-text="p.activo ? 'Activa' : 'Inactiva'"></span>
+                                <span class="block text-xs"
+                                      :class="p.vigente ? 'text-success' : 'text-texto-disabled'"
+                                      x-text="p.vigente ? 'Rige hoy' : 'No rige hoy'"></span>
+                            </td>
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
+                                {% if puede_editar %}
+                                {% call acciones() %}
+                                    {{ accion('editar', atributos='@click="abrirEdicion(p)"') }}
+                                    {# No hay borrado: las ventas confirmadas
+                                       apuntan a la promoción. #}
+                                    {{ accion('borrar',
+                                              atributos='x-show="p.activo"
+                                                         @click="cambiarEstado(p, false)"
+                                                         title="Desactivar"') }}
+                                    {{ accion('activar',
+                                              atributos='x-show="!p.activo" x-cloak
+                                                         @click="cambiarEstado(p, true)"
+                                                         title="Activar"') }}
+                                {% endcall %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!promociones.length && !cargando">
+                        <td colspan="6" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if puede_editar %}
+    {# ---------- Modal alta / edición ---------- #}
+    <div x-show="form.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @keydown.escape.window="form.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-promo">
+        <div class="w-full max-w-2xl bg-surface rounded-[10px] my-8
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-center justify-between px-8 pt-7 pb-2">
+                <h2 id="titulo-promo" class="text-lg font-black text-welcome"
+                    x-text="form.id ? 'Editar promoción' : 'Nueva promoción'"></h2>
+                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardar()" class="px-8 pb-8 pt-4 grid gap-6">
+                <div class="grid gap-5" style="grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr))">
+                    <div class="flex flex-col gap-1">
+                        <label for="pr-nombre" class="text-sm font-semibold text-texto-header">
+                            Nombre<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="pr-nombre" x-model="form.nombre" required maxlength="100"
+                               placeholder="2x1 Plata" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="pr-tipo" class="text-sm font-semibold text-texto-header">
+                            Tipo<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <div class="relative">
+                            <select id="pr-tipo" x-model="form.tipo" required
+                                    class="campo-linea w-full appearance-none pr-10">
+                                <option value="dos_x_uno">2x1 — por cada 2, la más barata es $0</option>
+                                <option value="tres_x_dos">3x2 — por cada 3, la más barata es $0</option>
+                            </select>
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                {{ icono('chevron') }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="pr-desde" class="text-sm font-semibold text-texto-header">Desde</label>
+                        <input id="pr-desde" x-model="form.fecha_inicio" type="date" class="campo-linea">
+                        <span class="text-xs text-texto-disabled">Vacío = sin límite.</span>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="pr-hasta" class="text-sm font-semibold text-texto-header">Hasta</label>
+                        <input id="pr-hasta" x-model="form.fecha_fin" type="date" class="campo-linea">
+                        <span class="text-xs text-texto-disabled">Vacío = sin límite.</span>
+                    </div>
+                </div>
+
+                {# ---------- Alcance ---------- #}
+                <div class="border-t border-borde pt-5">
+                    <h3 class="text-base font-semibold text-texto">
+                        Alcance<span class="text-danger ml-0.5">*</span>
+                    </h3>
+                    <p class="text-xs text-texto-disabled mt-1">
+                        Una categoría alcanza también a sus subcategorías: poniendo "Plata"
+                        entran "Plata &gt; Anillos" y "Plata &gt; Cadenas".
+                    </p>
+
+                    <div class="flex flex-wrap items-end gap-3 mt-4">
+                        <div class="relative">
+                            <select x-model="busqueda.tipo" @change="busqueda.texto=''; busqueda.opciones=[]"
+                                    aria-label="Tipo de alcance"
+                                    class="campo-linea appearance-none pr-10 w-full sm:w-[10rem]">
+                                <option value="categoria">Categoría</option>
+                                <option value="producto">Producto</option>
+                            </select>
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                {{ icono('chevron') }}
+                            </span>
+                        </div>
+
+                        <div class="relative flex-1 min-w-0 sm:min-w-[14rem]">
+                            <input type="search" x-model="busqueda.texto"
+                                   @input.debounce.300ms="buscarAlcance()"
+                                   :placeholder="busqueda.tipo === 'categoria'
+                                                 ? 'Buscar categoría…' : 'Buscar producto…'"
+                                   aria-label="Buscar para agregar al alcance"
+                                   class="campo-linea w-full">
+
+                            <ul x-show="busqueda.opciones.length" x-cloak
+                                @click.outside="busqueda.opciones = []"
+                                class="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-surface
+                                       border border-borde rounded-input shadow-lg">
+                                <template x-for="o in busqueda.opciones" :key="o.id">
+                                    <li>
+                                        <button type="button" @click="agregarAlcance(o)"
+                                                class="w-full text-left px-4 py-2 text-sm min-h-toque
+                                                       hover:bg-surface-alt"
+                                                x-text="o.nombre"></button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <ul class="mt-4 flex flex-wrap gap-2">
+                        <template x-for="(a, i) in form.alcances" :key="a.tipo_alcance + '-' + a.referencia_id">
+                            <li class="inline-flex items-center gap-2 pl-3 pr-2 py-1 rounded-pill
+                                       bg-surface-alt text-sm">
+                                <span class="text-texto-muted"
+                                      x-text="a.tipo_alcance === 'categoria' ? 'Cat.' : 'Prod.'"></span>
+                                <span x-text="a.nombre"></span>
+                                <button type="button" @click="form.alcances.splice(i, 1)"
+                                        :aria-label="'Quitar ' + a.nombre"
+                                        class="grid place-items-center min-h-toque min-w-toque
+                                               text-texto-muted hover:text-danger">
+                                    {{ icono('cerrar', clases='w-4 h-4') }}
+                                </button>
+                            </li>
+                        </template>
+                    </ul>
+                    <p class="mt-2 text-sm text-texto-muted" x-show="!form.alcances.length">
+                        Todavía no agregaste nada. Una promoción sin alcance no aplica a nada.
+                    </p>
+                </div>
+
+                <div class="flex justify-end gap-3">
+                    <button type="button" @click="form.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="form.guardando || !form.alcances.length"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/promociones.js') }}"></script>
+{% endblock %}

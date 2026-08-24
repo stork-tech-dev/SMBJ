@@ -1,0 +1,160 @@
+{# ===========================================================================
+   Layout de las pantallas mobile de ventas (capa MobileVentas del Figma).
+
+   Sin sidebar y sin el header de escritorio: en el local no hay PC ni
+   impresora, todo pasa en el celular de la vendedora con una mano. Lo que
+   reemplaza al sidebar es la barra inferior fija, que deja los tres destinos
+   —inicio, venta nueva, configuración— al alcance del pulgar.
+
+   El canvas del diseño es de 390px, pero el layout NO está clavado a esa
+   medida: la columna ocupa el ancho disponible y se limita a 26rem centrada.
+   Así entra en un teléfono de 320px sin scroll horizontal y no se estira
+   grotescamente en una tablet, que es donde puede terminar si alguien
+   registra un iPad en un local (Principio 6).
+
+   Comparte los tokens del design system con base.html a través de
+   custom.css, así que el modo oscuro funciona igual acá.
+   =========================================================================== #}
+<!DOCTYPE html>
+<html lang="es"
+      data-empresa="{{ letra_empresa|default('S') }}"
+      x-data="temaApp()"
+      x-init="aplicar()"
+      :class="{ 'dark': dark }">
+<head>
+    <meta charset="UTF-8">
+    {# `viewport-fit=cover` + los `env(safe-area-inset-*)` de más abajo: sin
+       esto la barra inferior queda debajo del indicador de gestos del
+       iPhone y el botón central se vuelve intocable. #}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{{ titulo|default('Ventas') }} · {{ APP_NAME }}</title>
+
+    {% include "components/_favicon.html" %}
+
+    {# Evita el flash de tema claro antes de que Alpine monte. #}
+    <script>
+        if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600;900&display=swap"
+          rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% include "components/_tailwind_config.html" %}
+
+    <link rel="stylesheet" href="{{ estatico('/css/custom.css') }}">
+    <script src="{{ estatico('/js/app.js') }}" defer></script>
+    <script src="https://unpkg.com/alpinejs@3.x/dist/cdn.min.js" defer></script>
+
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body class="min-h-screen bg-bg text-texto font-light antialiased">
+
+{% from "components/toast.html" import contenedor_toasts %}
+{% from "components/marca.html" import marca %}
+{% from "components/icons.html" import icono %}
+
+<div class="mx-auto w-full max-w-[26rem] min-h-screen flex flex-col">
+
+    {# ---------------- HEADER ----------------
+       Logo a la izquierda y notificaciones a la derecha, como en todas las
+       pantallas de la capa. En las que cuelgan de otra, el logo se
+       reemplaza por la flecha de retorno: es el mismo lugar y el mismo
+       gesto, así que no compiten. #}
+    <header class="shrink-0 flex items-center justify-between gap-3 px-5 pt-5 pb-3">
+        {% block encabezado_mobile %}
+            {% if volver_url %}
+                <a href="{{ volver_url }}"
+                   class="inline-flex items-center gap-2 min-h-toque -ml-2 pl-2 pr-3
+                          text-base font-semibold text-texto hover:text-primary">
+                    {{ icono('flecha-izquierda', clases='w-5 h-5') }}
+                    <span>{{ titulo }}</span>
+                </a>
+            {% else %}
+                <a href="/ventas" class="block w-full max-w-[7.5rem] text-primary" aria-label="Inicio">
+                    {{ marca(letra_empresa|default('S'), clases='w-full', ajuste='ancho') }}
+                </a>
+            {% endif %}
+        {% endblock %}
+
+        <div class="flex items-center gap-1">
+            {# Toggle de tema: el local puede estar a contraluz o de noche, y
+               obligar a salir del módulo para cambiarlo sería absurdo. #}
+            <button type="button" @click="alternar()"
+                    :aria-label="dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+                    class="grid place-items-center min-h-toque min-w-toque rounded-input
+                           text-texto-muted hover:text-primary">
+                <span x-show="!dark" aria-hidden="true">☾</span>
+                <span x-show="dark" x-cloak aria-hidden="true">☀</span>
+            </button>
+
+            {# TODAVÍA NO HACE NADA: es el lugar reservado para el módulo de
+               notificaciones. Va `disabled` a propósito, para que se lea como
+               no disponible en vez de como un botón roto. #}
+            <button type="button" disabled
+                    aria-label="Notificaciones (no disponible todavía)"
+                    class="grid place-items-center min-h-toque min-w-toque rounded-input
+                           text-texto-muted opacity-60 cursor-not-allowed">
+                {{ icono('campana', clases='w-[22px] h-[22px]') }}
+            </button>
+        </div>
+    </header>
+
+    {# ---------------- CONTENIDO ----------------
+       El padding inferior deja libre el alto de la barra fija: sin él, el
+       último producto del carrito queda tapado justo cuando hay que
+       tocarlo. #}
+    <main class="flex-1 px-5 pb-[7.5rem]">
+        {% block contenido_mobile %}{% endblock %}
+    </main>
+
+    {# ---------------- BARRA INFERIOR ----------------
+       Fija, con el botón de venta nueva sobresaliendo en el centro: es la
+       acción que se repite todo el día y por eso es la más grande y la más
+       fácil de acertar sin mirar.
+
+       `max-w` y `mx-auto` la mantienen alineada con la columna en pantallas
+       anchas; sin eso quedaría estirada de borde a borde en una tablet. #}
+    <nav class="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[26rem]
+                bg-surface border-t border-borde
+                pb-[env(safe-area-inset-bottom)]"
+         aria-label="Navegación del punto de venta">
+        <div class="relative flex items-end justify-between px-8 h-[4.5rem]">
+
+            <a href="/ventas" aria-label="Inicio"
+               class="flex flex-col items-center justify-center gap-1 min-h-toque min-w-toque
+                      pb-2 {{ 'text-primary' if activa_mobile == 'inicio' else 'text-texto-muted' }}">
+                {{ icono('home', clases='w-7 h-7') }}
+                <span class="text-[0.625rem] font-semibold">Inicio</span>
+            </a>
+
+            {# Sobresale por encima del borde de la barra: es el centro
+               óptico de la pantalla y el destino más buscado. #}
+            <a href="/ventas/nueva" aria-label="Nueva venta"
+               class="absolute left-1/2 -translate-x-1/2 -top-6
+                      grid place-items-center w-[4.375rem] h-[4.375rem] rounded-full
+                      bg-primary text-white shadow-[0_4px_14px_0_rgba(0,0,0,0.25)]
+                      hover:bg-primary-hover">
+                {{ icono('cart', clases='w-8 h-8') }}
+            </a>
+
+            <a href="/ventas/consulta-stock" aria-label="Consulta de stock"
+               class="flex flex-col items-center justify-center gap-1 min-h-toque min-w-toque
+                      pb-2 {{ 'text-primary' if activa_mobile == 'stock' else 'text-texto-muted' }}">
+                {{ icono('almacen', clases='w-7 h-7') }}
+                <span class="text-[0.625rem] font-semibold">Stock</span>
+            </a>
+        </div>
+    </nav>
+</div>
+
+{{ contenedor_toasts() }}
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

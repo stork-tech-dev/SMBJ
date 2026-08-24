@@ -124,6 +124,7 @@ def aplicar_movimiento(
     auditoria_id: int | None = None,
     referencia_venta_id: int | None = None,
     puntas: tuple[str, ...] | None = None,
+    permitir_faltante: bool = False,
     notas: str | None = None,
     ip_origen: str | None = None,
 ) -> MovimientoStock:
@@ -143,6 +144,15 @@ def aplicar_movimiento(
 
     En None se aplican las dos puntas que el tipo indique, que es lo que
     corresponde a todo el resto.
+
+    `permitir_faltante` deja que el stock quede en negativo. Lo usa UNA sola
+    cosa: la confirmación de una venta. Cuando el sistema dice 0 y la
+    vendedora tiene el producto en la mano, el que está mal es el sistema, y
+    frenar la venta significaría no vender algo que está sobre el mostrador.
+    El negativo que queda no es un error tolerado: es la señal visible de
+    que ese artículo necesita una auditoría de inventario. Para cualquier
+    otro tipo de movimiento el faltante sigue cortando la operación, que es
+    lo correcto — un remito no puede mandar mercadería que no está.
 
     No hace commit: lo hace el endpoint. Así el movimiento, el stock y la
     auditoría del Principio 3 se confirman o se descartan juntos: si algo
@@ -206,7 +216,7 @@ def aplicar_movimiento(
     # existe. El movimiento igual se registra, para que quede la trazabilidad.
     lleva_cuenta = not variante.producto.stock_infinito
 
-    if aplica_origen and lleva_cuenta:
+    if aplica_origen and lleva_cuenta and not permitir_faltante:
         disponible = cantidad_en(db, variante_id, punto_venta_origen_id)
         if disponible < cantidad:
             punto = obtener_punto(db, punto_venta_origen_id)

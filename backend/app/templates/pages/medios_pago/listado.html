@@ -1,0 +1,335 @@
+{# Catálogo de medios de pago y sus planes de cuotas. Datos desde
+   /api/v1/configuracion/medios-de-pago (Principio 1).
+
+   Los dos porcentajes se muestran en columnas separadas y rotuladas a
+   propósito: `recargo_cliente` cambia lo que paga el cliente y `costo_medio`
+   no. Juntarlos en una sola columna "%" sería invitar a confundirlos, que es
+   el error caro de este módulo. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones %}
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/switch_activos.html" import switch_activos %}
+
+{% block contenido %}
+<div x-data="abmMediosDePago()" x-init="cargar()">
+
+    {% call encabezado('Medios de pago', volver_url='/configuracion',
+                       volver_texto='Configuraciones') %}
+        {% if puede_editar %}
+        <button type="button" @click="abrirAltaMedio()"
+                class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                       bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
+        </button>
+        {% endif %}
+    {% endcall %}
+
+    {# ---------- Filtros (Principio 5). Tabla chica: en tiempo real ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <input type="text" x-model="filtros.nombre" @input.debounce.300ms="cargar()"
+               placeholder="Nombre" aria-label="Nombre"
+               class="h-control w-full sm:w-[15rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input placeholder:text-texto-disabled
+                      focus:outline-none focus:border-primary">
+
+        <div class="relative w-full sm:w-auto">
+            <select x-model="filtros.soporta_cuotas" @change="cargar()" aria-label="Cuotas"
+                    class="h-control w-full sm:w-[12rem] pl-4 pr-10 text-sm font-semibold bg-surface
+                           border-2 border-borde rounded-input appearance-none
+                           focus:outline-none focus:border-primary"
+                    :class="filtros.soporta_cuotas ? 'text-texto' : 'text-texto-disabled'">
+                <option value="">Cuotas (todos)</option>
+                <option value="true">Con cuotas</option>
+                <option value="false">Sin cuotas</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="medios.length"></span>
+            <span x-text="medios.length === 1 ? 'medio' : 'medios'"></span>
+        </p>
+
+        {{ switch_activos('filtros.activo') }}
+    </div>
+
+    {# ---------- Un panel por medio, con sus planes adentro ----------
+       Y no una tabla plana: un plan no significa nada fuera de su medio, y
+       verlos mezclados obligaría a leer la columna "medio" en cada fila. #}
+    <div class="mt-6 space-y-5">
+        <template x-for="m in medios" :key="m.id">
+            <section class="bg-surface rounded-[20px] tarjeta overflow-hidden"
+                     :class="!m.activo && 'opacity-60'">
+
+                <header class="flex flex-wrap items-center justify-between gap-4 px-8 pt-6 pb-4">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <h2 class="text-lg font-black text-welcome truncate" x-text="m.nombre"></h2>
+
+                        <span x-show="m.es_sena"
+                              class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs
+                                     font-medium bg-primary/15 text-primary">Señas</span>
+                        <span x-show="m.soporta_cuotas"
+                              class="inline-flex items-center px-3 py-0.5 rounded-pill text-xs
+                                     font-medium bg-surface-alt text-texto-muted">Cuotas</span>
+                        <span class="text-xs font-medium"
+                              :class="m.activo ? 'text-success' : 'text-danger'"
+                              x-text="m.activo ? 'Activo' : 'Inactivo'"></span>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        {% if puede_editar %}
+                        <button type="button" x-show="m.soporta_cuotas"
+                                @click="abrirAltaPlan(m)"
+                                class="h-boton px-4 inline-flex items-center gap-1.5 rounded-input
+                                       border border-borde text-sm font-medium
+                                       hover:border-primary hover:text-primary">
+                            {{ icono('mas', clases='w-4 h-4') }} Plan de cuotas
+                        </button>
+                        {% call acciones() %}
+                            {{ accion('editar', atributos='@click="abrirEdicionMedio(m)"') }}
+                            {{ accion('borrar',
+                                      atributos='x-show="m.activo"
+                                                 @click="estadoMedio(m, false)"
+                                                 title="Desactivar"') }}
+                            {{ accion('activar',
+                                      atributos='x-show="!m.activo" x-cloak
+                                                 @click="estadoMedio(m, true)"
+                                                 title="Activar"') }}
+                        {% endcall %}
+                        {% endif %}
+                    </div>
+                </header>
+
+                {# Planes de cuotas del medio #}
+                <div x-show="m.soporta_cuotas" class="overflow-x-auto border-t border-borde">
+                    <table class="w-full border-collapse text-base">
+                        <thead>
+                            <tr>
+                                <th class="px-8 pt-5 pb-3 text-left text-sm font-semibold text-texto-disabled">
+                                    Cuotas
+                                </th>
+                                <th class="px-4 pt-5 pb-3 text-right text-sm font-semibold text-texto-disabled">
+                                    Recargo al cliente
+                                </th>
+                                <th class="px-4 pt-5 pb-3 text-right text-sm font-semibold text-texto-disabled">
+                                    Costo del medio
+                                </th>
+                                <th class="px-4 pt-5 pb-3 text-right text-sm font-semibold text-texto-disabled">
+                                    Monto mínimo
+                                </th>
+                                <th class="px-4 pt-5 pb-3 text-left text-sm font-semibold text-texto-disabled">
+                                    Estado
+                                </th>
+                                <th class="px-8 pt-5 pb-3 text-right"><span class="sr-only">Acciones</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="p in m.planes" :key="p.id">
+                                <tr class="border-t border-borde" :class="!p.activo && 'opacity-60'">
+                                    <td class="px-8 py-3 font-medium tabular-nums"
+                                        x-text="p.cuotas + (p.cuotas === 1 ? ' pago' : ' cuotas')"></td>
+                                    <td class="px-4 py-3 text-right tabular-nums"
+                                        :class="Number(p.recargo_cliente) === 0 && 'text-success'"
+                                        x-text="Number(p.recargo_cliente) === 0
+                                                ? 'Sin interés'
+                                                : porcentaje(p.recargo_cliente)"></td>
+                                    {# Rotulado aparte y en gris: NO entra en lo
+                                       que paga el cliente, solo en reportes. #}
+                                    <td class="px-4 py-3 text-right tabular-nums text-texto-muted"
+                                        x-text="porcentaje(p.costo_medio)"></td>
+                                    <td class="px-4 py-3 text-right tabular-nums"
+                                        x-text="Number(p.monto_minimo) === 0
+                                                ? 'Siempre'
+                                                : pesos(p.monto_minimo)"></td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-xs font-medium"
+                                              :class="p.activo ? 'text-success' : 'text-danger'"
+                                              x-text="p.activo ? 'Activo' : 'Inactivo'"></span>
+                                    </td>
+                                    <td class="px-8 py-3 text-right whitespace-nowrap">
+                                        {% if puede_editar %}
+                                        {% call acciones() %}
+                                            {{ accion('editar', atributos='@click="abrirEdicionPlan(m, p)"') }}
+                                            {{ accion('borrar',
+                                                      atributos='x-show="p.activo"
+                                                                 @click="estadoPlan(p, false)"
+                                                                 title="Desactivar"') }}
+                                            {{ accion('activar',
+                                                      atributos='x-show="!p.activo" x-cloak
+                                                                 @click="estadoPlan(p, true)"
+                                                                 title="Activar"') }}
+                                        {% endcall %}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </template>
+
+                            <tr x-show="!m.planes.length">
+                                <td colspan="6" class="px-8 py-16 text-center text-texto-muted text-sm">
+                                    Todavía no tiene planes de cuotas cargados.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </template>
+
+        <p x-show="!medios.length && !cargando"
+           class="py-16 text-center text-texto-muted">Sin resultados.</p>
+    </div>
+
+    {% if puede_editar %}
+    {# ---------- Modal: medio de pago ---------- #}
+    <div x-show="medio.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @keydown.escape.window="medio.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-medio">
+        <div class="w-full max-w-md bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-center justify-between px-8 pt-7 pb-2">
+                <h2 id="titulo-medio" class="text-lg font-black text-welcome"
+                    x-text="medio.id ? 'Editar medio de pago' : 'Nuevo medio de pago'"></h2>
+                <button type="button" @click="medio.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardarMedio()" class="px-8 pb-8 pt-4 grid gap-5">
+                <div class="flex flex-col gap-1">
+                    <label for="mp-nombre" class="text-sm font-semibold text-texto-header">
+                        Nombre<span class="text-danger ml-0.5">*</span>
+                    </label>
+                    <input id="mp-nombre" x-model="medio.nombre" required maxlength="60"
+                           placeholder="Tarjeta de Crédito" class="campo-linea">
+                </div>
+
+                <label class="flex items-start gap-3 min-h-toque">
+                    <input type="checkbox" x-model="medio.soporta_cuotas"
+                           :disabled="medio.es_sena"
+                           class="mt-1 w-5 h-5 accent-[color:var(--color-primary)]">
+                    <span>
+                        <span class="text-base text-texto">Se cobra en cuotas</span>
+                        <span class="block text-xs text-texto-disabled">
+                            Habilita cargarle planes. Sin esto, el medio se cobra siempre
+                            en un pago.
+                        </span>
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-3 min-h-toque">
+                    <input type="checkbox" x-model="medio.es_sena"
+                           @change="if (medio.es_sena) medio.soporta_cuotas = false"
+                           class="mt-1 w-5 h-5 accent-[color:var(--color-primary)]">
+                    <span>
+                        <span class="text-base text-texto">Es el medio de las señas</span>
+                        <span class="block text-xs text-texto-disabled">
+                            Solo uno puede serlo. Es la marca que busca el sistema al cobrar,
+                            no el nombre: renombrarlo no rompe nada. Una seña se descuenta de
+                            un saldo ya cobrado, así que no se financia en cuotas.
+                        </span>
+                    </span>
+                </label>
+
+                <div class="flex justify-end gap-3 mt-2">
+                    <button type="button" @click="medio.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="medio.guardando"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="medio.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ---------- Modal: plan de cuotas ---------- #}
+    <div x-show="plan.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @keydown.escape.window="plan.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-plan">
+        <div class="w-full max-w-lg bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-center justify-between px-8 pt-7 pb-2">
+                <h2 id="titulo-plan" class="text-lg font-black text-welcome"
+                    x-text="(plan.id ? 'Editar plan' : 'Nuevo plan') + ' — ' + plan.medio_nombre"></h2>
+                <button type="button" @click="plan.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardarPlan()" class="px-8 pb-8 pt-4 grid gap-5">
+                <div class="grid gap-5" style="grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr))">
+                    <div class="flex flex-col gap-1">
+                        <label for="pc-cuotas" class="text-sm font-semibold text-texto-header">
+                            Cuotas<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="pc-cuotas" x-model.number="plan.cuotas" type="number"
+                               min="1" max="99" required class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="pc-recargo" class="text-sm font-semibold text-texto-header">
+                            Recargo al cliente (%)<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="pc-recargo" x-model.number="plan.recargo_cliente" type="number"
+                               min="0" max="100" step="0.01" required class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Lo que paga de más el cliente. 0 = sin interés.
+                        </span>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="pc-costo" class="text-sm font-semibold text-texto-header">
+                            Costo del medio (%)
+                        </label>
+                        <input id="pc-costo" x-model.number="plan.costo_medio" type="number"
+                               min="0" max="100" step="0.01" class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Lo que cobra la terminal. <strong>No</strong> afecta el precio:
+                            solo aparece en los reportes de costo.
+                        </span>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="pc-minimo" class="text-sm font-semibold text-texto-header">
+                            Monto mínimo
+                        </label>
+                        <input id="pc-minimo" x-model.number="plan.monto_minimo" type="number"
+                               min="0" step="0.01" class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            El plan solo se ofrece desde este monto. 0 = siempre disponible.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-2">
+                    <button type="button" @click="plan.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="plan.guardando"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="plan.guardando ? 'Guardando…' : 'Finalizar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/medios_pago.js') }}"></script>
+{% endblock %}

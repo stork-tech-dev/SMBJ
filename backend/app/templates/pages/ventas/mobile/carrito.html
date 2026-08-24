@@ -1,0 +1,223 @@
+{# Nueva venta — carrito (Figma `293:359`).
+
+   Cada unidad es una fila propia, sin contador de cantidad: dos anillos
+   iguales son dos renglones. No es un capricho del diseño — es lo que la
+   promoción 2x1 necesita para poder dejar uno en $0 y cobrar el otro, y
+   mostrarlo agrupado escondería justamente eso.
+
+   El total y sus descuentos vienen calculados del backend. La pantalla no
+   suma nada: si sumara por su cuenta y diera distinto, la vendedora vería un
+   número y el cliente pagaría otro. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido_mobile %}
+<div x-data="carritoVenta({{ 'true' if puede_descontar else 'false' }})" x-init="cargar()">
+
+    <p x-show="!venta && !cargando" x-cloak
+       class="mt-16 text-center text-sm text-texto-disabled">
+        No hay ninguna venta abierta.
+        <a href="/ventas/nueva" class="block mt-2 text-primary font-semibold">Empezar una</a>
+    </p>
+
+    <template x-if="venta">
+        <div>
+            {# ---------- Promoción aplicada ----------
+               La elige el sistema sola, y elige la que más conviene. Se
+               muestra para que la vendedora pueda explicarle al cliente por
+               qué un producto quedó en $0. #}
+            <p x-show="venta.promocion" x-cloak
+               class="mt-2 flex items-center gap-2 px-4 py-3 rounded-input bg-success/15
+                      text-success text-sm">
+                {{ icono('check', clases='w-5 h-5 shrink-0') }}
+                <span x-text="'Promoción aplicada: ' + (venta.promocion?.nombre || '')"></span>
+            </p>
+
+            {# ---------- Ítems ---------- #}
+            <ul class="mt-4 divide-y divide-borde">
+                <template x-for="i in venta.items" :key="i.id">
+                    <li class="py-3 flex items-start gap-3">
+                        <div class="min-w-0 flex-1">
+                            <p class="text-base font-medium truncate"
+                               x-text="i.variante?.producto?.descripcion || '—'"></p>
+                            <p class="text-xs text-texto-muted truncate"
+                               x-text="i.variante?.producto?.categoria?.nombre || ''"></p>
+
+                            <p class="text-xs mt-0.5">
+                                <span x-show="i.en_promocion" class="text-success font-semibold">
+                                    Promoción · sin cargo
+                                </span>
+                                <span x-show="Number(i.descuento_item) > 0" class="text-primary font-semibold"
+                                      x-text="Number(i.descuento_item) + '% de descuento'"></span>
+                            </p>
+                        </div>
+
+                        <div class="text-right shrink-0">
+                            <p class="text-base font-medium tabular-nums"
+                               x-text="pesos(i.precio_final)"></p>
+                            {# El precio tachado solo cuando difiere: si no,
+                               sería el mismo número dos veces. #}
+                            <p class="text-xs text-texto-disabled line-through tabular-nums"
+                               x-show="Number(i.precio_final) !== Number(i.precio_unitario)"
+                               x-text="pesos(i.precio_unitario)"></p>
+                        </div>
+
+                        <div class="flex flex-col items-center shrink-0">
+                            <button type="button" @click="quitar(i)"
+                                    :aria-label="'Quitar ' + (i.variante?.producto?.descripcion || 'producto')"
+                                    class="grid place-items-center min-h-toque min-w-toque
+                                           text-texto-muted hover:text-danger">
+                                {{ icono('papelera', clases='w-5 h-5') }}
+                            </button>
+
+                            {% if puede_descontar %}
+                            {# El descuento se aplica por unidad, no por venta:
+                               el tope del 50% es POR producto y el motivo
+                               queda registrado en ese ítem. #}
+                            <button type="button" @click="abrirDescuento(i)"
+                                    x-show="!i.en_promocion"
+                                    :aria-label="'Descuento en ' + (i.variante?.producto?.descripcion || 'producto')"
+                                    class="grid place-items-center min-h-toque min-w-toque
+                                           text-texto-muted hover:text-primary">
+                                <span class="text-base font-black" aria-hidden="true">%</span>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </li>
+                </template>
+            </ul>
+
+            <p x-show="!venta.items.length" x-cloak
+               class="py-16 text-center text-sm text-texto-disabled">
+                El carrito está vacío.
+                <a href="/ventas/nueva" class="block mt-2 text-primary font-semibold">
+                    Escanear un producto
+                </a>
+            </p>
+
+            {# ---------- Totales ---------- #}
+            <dl x-show="venta.items.length" class="mt-6 pt-4 border-t border-borde space-y-2">
+                <div class="flex justify-between text-sm">
+                    <dt class="text-texto-muted">Subtotal</dt>
+                    <dd class="tabular-nums" x-text="pesos(venta.subtotal)"></dd>
+                </div>
+                <div class="flex justify-between text-sm" x-show="Number(venta.descuento_total) > 0">
+                    <dt class="text-texto-muted">Descuentos y promociones</dt>
+                    <dd class="tabular-nums text-success"
+                        x-text="'– ' + pesos(venta.descuento_total)"></dd>
+                </div>
+                <div class="flex justify-between text-lg font-black text-welcome pt-1">
+                    <dt>Total</dt>
+                    <dd class="tabular-nums" x-text="pesos(venta.a_cobrar)"></dd>
+                </div>
+            </dl>
+
+            <div class="mt-6 grid gap-3">
+                <a href="/ventas/finalizar" x-show="venta.items.length"
+                   class="h-[3.25rem] grid place-items-center rounded-input bg-primary text-white
+                          text-base font-medium hover:bg-primary-hover">
+                    Confirmar
+                </a>
+                <a href="/ventas/nueva"
+                   class="h-boton grid place-items-center rounded-input border border-borde
+                          text-base hover:border-primary hover:text-primary">
+                    Seguir agregando
+                </a>
+                <button type="button" @click="descartar()" x-show="venta.items.length"
+                        class="h-boton rounded-input text-sm text-texto-muted
+                               hover:text-danger">
+                    Descartar la venta
+                </button>
+            </div>
+        </div>
+    </template>
+
+    {% if puede_descontar %}
+    {# ---------- Descuento sobre una unidad ----------
+       El motivo va PRIMERO y es obligatorio: sin él no hay descuento, porque
+       uno que no se puede explicar no sirve en el reporte de fin de mes.
+
+       El porcentaje es una lista, no un campo: la vendedora elige de 5 en 5
+       hasta 50 y no puede escribir un número. Los valores los manda el
+       backend desde la misma constante que valida. #}
+    <div x-show="descuento.abierto" x-cloak
+         class="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+         @keydown.escape.window="descuento.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-descuento">
+        <div class="w-full max-w-[26rem] bg-surface rounded-t-[20px] p-6
+                    pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+            <div class="flex items-center justify-between">
+                <h2 id="titulo-descuento" class="text-lg font-black text-welcome">Descuento</h2>
+                <button type="button" @click="descuento.abierto = false" aria-label="Cerrar"
+                        class="grid place-items-center min-h-toque min-w-toque text-texto-muted">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <p class="mt-1 text-sm text-texto-muted truncate" x-text="descuento.descripcion"></p>
+
+            <form @submit.prevent="aplicarDescuento()" class="mt-5 grid gap-5">
+                <div class="flex flex-col gap-1">
+                    <label for="d-motivo" class="text-sm font-semibold text-texto-header">
+                        Motivo<span class="text-danger ml-0.5">*</span>
+                    </label>
+                    <div class="relative">
+                        <select id="d-motivo" x-model="descuento.motivo_id"
+                                @change="alElegirMotivo()" required
+                                class="campo-linea w-full appearance-none pr-10">
+                            <option value="">Elegí un motivo</option>
+                            <template x-for="m in motivos" :key="m.id">
+                                <option :value="m.id" x-text="m.nombre"></option>
+                            </template>
+                        </select>
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            {{ icono('chevron') }}
+                        </span>
+                    </div>
+                </div>
+
+                {# Deshabilitado hasta que haya motivo: es el orden que pide
+                   el flujo, y dejarlo activo antes invitaría a elegir un
+                   porcentaje que después hay que volver a elegir. #}
+                <div class="flex flex-col gap-2" :class="!descuento.motivo_id && 'opacity-50'">
+                    <span class="text-sm font-semibold text-texto-header">Porcentaje</span>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="p in porcentajes" :key="p">
+                            <button type="button" @click="descuento.porcentaje = p"
+                                    :disabled="!descuento.motivo_id"
+                                    class="min-h-toque px-4 rounded-input border-2 text-base font-medium"
+                                    :class="descuento.porcentaje === p
+                                            ? 'border-primary bg-primary text-white'
+                                            : 'border-borde text-texto'"
+                                    x-text="p + '%'"></button>
+                        </template>
+                    </div>
+                    <span class="text-xs text-texto-disabled">
+                        El descuento del producto y el de la venta suman como máximo
+                        <span x-text="tope + '%'"></span> por unidad.
+                    </span>
+                </div>
+
+                <div class="grid gap-2">
+                    <button type="submit" :disabled="!descuento.motivo_id || !descuento.porcentaje"
+                            class="h-[3.25rem] rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60">
+                        Aplicar
+                    </button>
+                    <button type="button" @click="quitarDescuento()"
+                            x-show="descuento.tenia"
+                            class="h-boton rounded-input text-sm text-texto-muted hover:text-danger">
+                        Sacar el descuento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/ventas_mobile.js') }}"></script>
+{% endblock %}

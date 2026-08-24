@@ -1,0 +1,126 @@
+{# Nueva venta — búsqueda de producto (Figma `292:170` y variante `293:451`).
+
+   La pantalla es un campo con foco y poco más. El lector de códigos escribe
+   en él y manda Enter; la vendedora también puede tipear el código a mano.
+
+   Si no hay stock en el local NO se bloquea nada: la vendedora tiene el
+   producto en la mano, así que el que está mal es el sistema. Lo que hace la
+   pantalla es pedirle que controle el código, porque la otra explicación
+   posible es que escaneó otra cosa. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido_mobile %}
+<div x-data="nuevaVenta()" x-init="iniciar()">
+
+    {% if sin_asignacion %}
+    <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+        {{ mensaje_sin_asignacion }}
+    </p>
+    {% elif not puede_vender %}
+    <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+        Tu perfil no tiene permiso para registrar ventas.
+    </p>
+    {% else %}
+
+    {# ---------- Campo de código ----------
+       `x-ref` + foco automático al entrar y después de cada carga: el lector
+       escribe donde esté el cursor, y si el foco se pierde el código se
+       pierde con él. #}
+    <form @submit.prevent="buscar()" class="mt-2">
+        <label for="codigo" class="sr-only">Código del producto</label>
+        <div class="relative">
+            <input id="codigo" x-ref="codigo" x-model="codigo"
+                   type="search" inputmode="text" autocomplete="off"
+                   enterkeyhint="search" placeholder="Ingrese un código"
+                   class="w-full h-[3.25rem] pl-4 pr-12 text-base text-center bg-surface
+                          border-2 border-borde rounded-input placeholder:text-texto-disabled
+                          focus:outline-none focus:border-primary">
+            <button type="submit" aria-label="Buscar"
+                    class="absolute right-1 top-1/2 -translate-y-1/2 grid place-items-center
+                           min-h-toque min-w-toque text-texto-muted hover:text-primary">
+                {{ icono('lupa', clases='w-5 h-5') }}
+            </button>
+        </div>
+    </form>
+
+    {# Contador del carrito: da contexto sin salir de la pantalla, y es lo
+       que evita escanear dos veces lo mismo "por las dudas". #}
+    <a x-show="venta && venta.items.length" x-cloak href="/ventas/carrito"
+       class="mt-3 flex items-center justify-between gap-3 px-4 py-3 rounded-input
+              bg-surface-alt hover:opacity-90">
+        <span class="text-sm font-semibold text-texto">
+            <span x-text="venta ? venta.items.length : 0"></span>
+            <span x-text="venta && venta.items.length === 1 ? 'producto' : 'productos'"></span>
+            en el carrito
+        </span>
+        <span class="text-base font-black text-welcome tabular-nums"
+              x-text="venta ? pesos(venta.a_cobrar) : ''"></span>
+    </a>
+
+    {# ---------- Producto encontrado ---------- #}
+    <section x-show="producto" x-cloak class="mt-6" aria-live="polite">
+        {# Foto: `object-contain` y no `cover` — recortar una cadena para
+           llenar el recuadro puede dejar afuera justo el dije, que es lo que
+           la vendedora está mirando para confirmar que escaneó bien. #}
+        <div class="w-full aspect-[3/2] rounded-input bg-surface-alt overflow-hidden
+                    grid place-items-center">
+            <template x-if="producto && producto.foto">
+                <img :src="producto.foto" :alt="producto.descripcion"
+                     class="w-full h-full object-contain">
+            </template>
+            <template x-if="producto && !producto.foto">
+                <span class="text-sm text-texto-disabled">Sin foto cargada</span>
+            </template>
+        </div>
+
+        <h2 class="mt-4 text-lg font-black text-welcome" x-text="producto?.descripcion"></h2>
+
+        <dl class="mt-4 space-y-2 text-base">
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Código</dt>
+                <dd class="font-mono text-sm" x-text="producto?.codigo"></dd>
+            </div>
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Categoría</dt>
+                <dd class="text-right" x-text="producto?.categoria || '—'"></dd>
+            </div>
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Precio</dt>
+                <dd class="font-medium tabular-nums" x-text="pesos(producto?.precio)"></dd>
+            </div>
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Stock en este local</dt>
+                {# En rojo cuando es 0: no bloquea, avisa. #}
+                <dd class="font-medium tabular-nums"
+                    :class="producto && producto.stock <= 0 ? 'text-danger' : 'text-texto'"
+                    x-text="producto?.stock_infinito
+                            ? 'Sin control de stock'
+                            : (producto?.stock ?? 0)"></dd>
+            </div>
+        </dl>
+
+        <p x-show="aviso" x-cloak
+           class="mt-4 flex items-start gap-2 p-3 rounded-input bg-danger/15 text-danger text-sm">
+            {{ icono('alerta', clases='w-5 h-5 shrink-0') }}
+            <span x-text="aviso"></span>
+        </p>
+
+        <button type="button" @click="agregar()" :disabled="agregando"
+                class="mt-5 w-full h-[3.25rem] rounded-input bg-primary text-white text-base
+                       font-medium hover:bg-primary-hover disabled:opacity-60"
+                x-text="agregando ? 'Agregando…' : 'Agregar al carrito'"></button>
+    </section>
+
+    <p x-show="!producto && !buscando" x-cloak
+       class="mt-16 text-center text-sm text-texto-disabled">
+        Escaneá una etiqueta o escribí el código.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/ventas_mobile.js') }}"></script>
+{% endblock %}

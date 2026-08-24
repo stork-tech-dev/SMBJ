@@ -14,6 +14,8 @@ from app.api.v1 import (
     auditoria_inventario,
     auth,
     categorias,
+    clientes,
+    configuracion_ventas,
     dispositivos,
     health,
     productos,
@@ -21,8 +23,10 @@ from app.api.v1 import (
     puntos_de_venta,
     remitos,
     roles,
+    senas,
     stock,
     usuarios,
+    ventas,
 )
 
 api_router = APIRouter()
@@ -31,6 +35,7 @@ api_router.include_router(auth.router)
 api_router.include_router(roles.router)
 api_router.include_router(usuarios.router)
 api_router.include_router(proveedores.router)
+api_router.include_router(clientes.router)
 api_router.include_router(categorias.router)
 api_router.include_router(productos.router)
 api_router.include_router(stock.router)
@@ -39,6 +44,9 @@ api_router.include_router(auditoria_inventario.router)
 api_router.include_router(puntos_de_venta.router)
 api_router.include_router(dispositivos.router)
 api_router.include_router(admin_dispositivos.router)
+api_router.include_router(ventas.router)
+api_router.include_router(senas.router)
+api_router.include_router(configuracion_ventas.router)
 api_router.include_router(auditoria.router)
 
 __all__ = ["api_router"]

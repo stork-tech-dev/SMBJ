@@ -70,6 +70,11 @@ class Recurso(str, Enum):
     # Autorizar un cambio por falla, que se hace sin código de cambio. Se
     # asigna a roles o a usuarios sueltos desde la pantalla de permisos.
     CAMBIO_FALLA_AUTORIZAR = "cambio.falla_autorizar"
+    # Las promociones las administra el Supervisor además de la Cuenta
+    # Maestra. Va como recurso suelto y no con el permiso general de
+    # CONFIGURACION porque ese habilitaría también los medios de pago y
+    # los motivos de descuento, que son solo de la Cuenta Maestra.
+    PROMOCIONES = "configuracion.promociones"
 
     # recurso=NULL (ausencia de Recurso) = acceso general al módulo completo
 
@@ -134,6 +139,7 @@ LABEL_RECURSO: dict[Recurso, str] = {
     Recurso.STOCK_MOTIVOS_BAJA: "Motivos de baja",
     Recurso.STOCK_AUDITORIA: "Auditoría de inventario",
     Recurso.CAMBIO_FALLA_AUTORIZAR: "Autorización de cambio por falla",
+    Recurso.PROMOCIONES: "Promociones",
 }
 
 # A qué módulo pertenece cada recurso. Define la jerarquía del árbol de
@@ -161,6 +167,7 @@ MODULO_DE_RECURSO: dict[Recurso, Modulo] = {
     # Los cambios cuelgan del flujo de ventas: los endpoints van junto a
     # ventas y el recurso convive con VENTA_ANULAR y VENTA_DESCUENTO.
     Recurso.CAMBIO_FALLA_AUTORIZAR: Modulo.VENTAS,
+    Recurso.PROMOCIONES: Modulo.CONFIGURACION,
 }
 
 # Qué acciones tienen sentido en cada recurso. Las que no están listadas
@@ -192,6 +199,7 @@ ACCIONES_DE_RECURSO: dict[Recurso, tuple[str, ...]] = {
     # "crear": autorizar habilita a registrar el cambio, igual que
     # VENTA_DESCUENTO habilita a aplicar el descuento.
     Recurso.CAMBIO_FALLA_AUTORIZAR: ("crear",),
+    Recurso.PROMOCIONES: ("editar",),
 }
 
 

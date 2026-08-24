@@ -103,10 +103,15 @@ class Stock(Base):
         UniqueConstraint(
             "variante_id", "punto_de_venta_id", name="uq_stock_variante_punto_de_venta"
         ),
-        # El stock no puede quedar negativo. Es la última barrera: el service
-        # valida antes y con un mensaje entendible, pero si un camino nuevo se
-        # olvidara de hacerlo, la base no lo deja pasar igual.
-        CheckConstraint("cantidad >= 0", name="ck_stock_cantidad_no_negativa"),
+        # El CHECK `cantidad >= 0` estuvo acá hasta la migración 0024 y se
+        # fue con la llegada de las ventas. La venta no pide permiso: la
+        # vendedora tiene el producto en la mano, y si el sistema dice 0, el
+        # que está mal es el sistema. Un negativo es la señal de que ese
+        # artículo necesita una auditoría de inventario.
+        #
+        # La garantía no se perdió, se mudó a `aplicar_movimiento()`, que
+        # sigue rechazando el faltante para todo salvo la confirmación de una
+        # venta — un remito no puede mandar mercadería que no está.
         CheckConstraint(
             "stock_minimo_cd >= 0 AND stock_minimo_local >= 0",
             name="ck_stock_minimos_no_negativos",
