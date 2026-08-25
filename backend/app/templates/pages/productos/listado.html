@@ -270,7 +270,7 @@
                     <p class="text-sm font-semibold text-texto-header">
                         Fotos
                         <span class="font-light text-texto-disabled"
-                              x-text="'(' + (detalle.producto?.fotos.length || 0) + ' de 5)'"></span>
+                              x-text="'(' + (fotosVisibles().length || 0) + ' de 5)'"></span>
                     </p>
 
                     {# El input va oculto y lo dispara el label: el control
@@ -278,7 +278,7 @@
                     <label class="h-boton px-4 inline-flex items-center gap-2 rounded-input
                                   border border-borde text-sm font-semibold cursor-pointer
                                   hover:border-primary hover:text-primary"
-                           :class="(detalle.producto?.fotos.length || 0) >= 5
+                           :class="(fotosVisibles().length || 0) >= 5
                                    && 'opacity-50 pointer-events-none'">
                         {{ icono('mas', clases='w-4 h-4') }} Subir foto
                         <input type="file" class="sr-only"
@@ -287,9 +287,9 @@
                     </label>
                 </div>
 
-                <div x-show="detalle.producto?.fotos.length" x-cloak
+                <div x-show="fotosVisibles().length" x-cloak
                      class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <template x-for="f in (detalle.producto?.fotos || [])" :key="f.id">
+                    <template x-for="f in (fotosVisibles() || [])" :key="f.id">
                         <div class="relative border rounded-input overflow-hidden"
                              :class="f.es_principal ? 'border-primary' : 'border-borde'">
                             <img :src="f.url" alt="" class="w-full aspect-square object-cover">
@@ -314,7 +314,7 @@
                     </template>
                 </div>
 
-                <p x-show="!detalle.producto?.fotos.length" x-cloak
+                <p x-show="!fotosVisibles().length" x-cloak
                    class="mt-3 text-sm text-texto-muted">Sin fotos cargadas.</p>
 
                 {# ---------- Variantes ---------- #}

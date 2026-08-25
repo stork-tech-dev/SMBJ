@@ -409,6 +409,37 @@ function abmProductos() {
             return this.detalle.varianteId ? todas.length - 1 : 0;
         },
 
+        /**
+         * Fotos que muestra el panel, con fallback:
+         * - Si hay una variante seleccionada y tiene fotos propias → esas.
+         * - Si no → las fotos del producto (compartidas).
+         */
+        fotosVisibles() {
+            const p = this.detalle.producto;
+            if (!p) return [];
+            if (this.detalle.varianteId) {
+                const v = (p.variantes || []).find(
+                    (v) => v.id === this.detalle.varianteId
+                );
+                if (v?.fotos?.length) return v.fotos;
+            }
+            return p.fotos || [];
+        },
+
+        /**
+         * TRUE si las fotos que se muestran son de una variante (no las
+         * compartidas del producto). Sirve para que subirFoto sepa si
+         * mandar variante_id o no.
+         */
+        fotosDeVariante() {
+            const p = this.detalle.producto;
+            if (!p || !this.detalle.varianteId) return false;
+            const v = (p.variantes || []).find(
+                (v) => v.id === this.detalle.varianteId
+            );
+            return !!(v?.fotos?.length);
+        },
+
         /* --- Alta de variante --- */
 
         abrirVariante() {
@@ -653,9 +684,16 @@ function abmProductos() {
             const cuerpo = new FormData();
             cuerpo.append('archivo', archivo);
 
+            // Si se está viendo una variante específica, la foto va a esa
+            // variante; si no, al producto (compartida).
+            let url = `/api/v1/productos/${this.detalle.producto.id}/fotos`;
+            if (this.detalle.varianteId) {
+                url += `?variante_id=${this.detalle.varianteId}`;
+            }
+
             try {
                 const resp = await fetch(
-                    `/api/v1/productos/${this.detalle.producto.id}/fotos`,
+                    url,
                     { method: 'POST', credentials: 'same-origin', body: cuerpo }
                 );
                 if (!resp.ok) {

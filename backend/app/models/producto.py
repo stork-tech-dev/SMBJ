@@ -134,10 +134,17 @@ class Producto(Base):
     variantes: Mapped[list["Variante"]] = relationship(
         back_populates="producto", cascade="all, delete-orphan", order_by="Variante.sufijo"
     )
+    # Solo las fotos compartidas (variante_id IS NULL). Las de cada variante
+    # viajan por Variante.fotos: así ProductoResponse.fotos y
+    # VarianteResponse.fotos son pools separados sin solapamiento.
     fotos: Mapped[list["ProductoFoto"]] = relationship(
         back_populates="producto",
         cascade="all, delete-orphan",
         order_by="ProductoFoto.orden, ProductoFoto.id",
+        primaryjoin=(
+            "and_(Producto.id == foreign(ProductoFoto.producto_id), "
+            "ProductoFoto.variante_id == None)"
+        ),
     )
 
     __table_args__ = (
@@ -231,6 +238,14 @@ class Variante(Base):
     )
 
     producto: Mapped["Producto"] = relationship(back_populates="variantes")
+
+    # Fotos propias de esta variante (variante_id apunta acá). Puede estar
+    # vacío: en ese caso el frontend muestra las fotos del producto (fallback).
+    fotos: Mapped[list["ProductoFoto"]] = relationship(
+        back_populates="variante",
+        cascade="all, delete-orphan",
+        order_by="ProductoFoto.orden, ProductoFoto.id",
+    )
 
     __table_args__ = (
         # La BASE no lleva sufijo y las reales sí: son excluyentes.

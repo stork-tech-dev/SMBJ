@@ -98,6 +98,18 @@ class VarianteEditar(BaseModel):
     sku_proveedor: str | None = Field(default=None, max_length=30)
 
 
+class FotoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    # Ruta relativa: el frontend la usa tal cual como src.
+    url: str
+    es_principal: bool
+    orden: int
+    # NULL = foto compartida del producto; con valor = exclusiva de la variante.
+    variante_id: int | None
+
+
 class VarianteResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -132,16 +144,9 @@ class VarianteResponse(BaseModel):
     tiene_precio_propio: bool
     sku_proveedor_efectivo: str | None
     tiene_sku_proveedor_propio: bool
-
-
-class FotoResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    # Ruta relativa: el frontend la usa tal cual como src.
-    url: str
-    es_principal: bool
-    orden: int
+    # Fotos propias de esta variante (puede ser lista vacía: el frontend
+    # resuelve el fallback mostrando las del producto).
+    fotos: list[FotoResponse]
 
 
 class CategoriaResumen(BaseModel):

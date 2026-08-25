@@ -11,6 +11,11 @@ que las validaciones son deliberadamente desconfiadas:
   los manda el cliente y se falsifican en un segundo. Se leen los bytes
   mágicos del archivo.
 - El tamaño se corta antes de escribir nada en disco.
+
+Cada foto pertenece a un POOL: las del producto (variante_id IS NULL,
+compartidas por todas sus variantes) o las de una variante específica
+(variante_id apunta a ella). El tope de fotos, la principal y la sucesión
+al borrar se resuelven dentro de cada pool por separado.
 """
 
 import uuid
@@ -20,8 +25,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
-from app.models.producto import Producto
-from app.models.producto_foto import MAX_FOTOS_POR_PRODUCTO, ProductoFoto
+from app.models.producto import Producto, Variante
+from app.models.producto_foto import (
+    MAX_FOTOS_POR_PRODUCTO,
+    MAX_FOTOS_POR_VARIANTE,
+    ProductoFoto,
+)
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -70,11 +79,31 @@ def _obtener_producto(db: Session, producto_id: int) -> Producto:
     return producto
 
 
+def _obtener_variante(db: Session, variante_id: int) -> Variante:
+    variante = db.get(Variante, variante_id)
+    if variante is None:
+        raise NoEncontrado("Variante inexistente")
+    return variante
+
+
 def obtener_foto(db: Session, foto_id: int) -> ProductoFoto:
     foto = db.get(ProductoFoto, foto_id)
     if foto is None:
         raise NoEncontrado("Foto inexistente")
     return foto
+
+
+def _filtro_pool(foto: ProductoFoto):
+    """
+    WHERE que scopa al mismo pool que `foto`: por variante si es foto de
+    variante, por producto (con variante_id IS NULL) si es compartida.
+    """
+    if foto.variante_id is not None:
+        return (ProductoFoto.variante_id == foto.variante_id,)
+    return (
+        ProductoFoto.producto_id == foto.producto_id,
+        ProductoFoto.variante_id.is_(None),
+    )
 
 
 # ============================================================================
@@ -87,15 +116,25 @@ def subir_foto(
     autor: Usuario,
     producto_id: int,
     contenido: bytes,
+    variante_id: int | None = None,
     ip_origen: str | None = None,
 ) -> ProductoFoto:
     """
     Guarda una foto en disco y registra su fila.
 
+    Si `variante_id` es None, la foto es del producto (compartida). Si se
+    pasa, es exclusiva de esa variante.
+
     Valida ANTES de escribir: si algo falla, no queda un archivo huérfano
     en el directorio sin fila que lo referencie.
     """
     producto = _obtener_producto(db, producto_id)
+
+    variante = None
+    if variante_id is not None:
+        variante = _obtener_variante(db, variante_id)
+        if variante.producto_id != producto.id:
+            raise ReglaDeNegocio("La variante no pertenece a ese producto")
 
     if not contenido:
         raise ReglaDeNegocio("El archivo está vacío")
@@ -106,27 +145,40 @@ def subir_foto(
 
     extension = _detectar_formato(contenido)
 
-    cuantas = db.execute(
-        select(func.count(ProductoFoto.id)).where(ProductoFoto.producto_id == producto.id)
-    ).scalar_one()
-    if cuantas >= MAX_FOTOS_POR_PRODUCTO:
-        raise ReglaDeNegocio(
-            f"El producto ya tiene {MAX_FOTOS_POR_PRODUCTO} fotos: hay que "
-            "borrar una antes de subir otra"
+    # Conteo y tope dentro del pool correspondiente.
+    if variante is not None:
+        filtro_conteo = (ProductoFoto.variante_id == variante.id,)
+        tope = MAX_FOTOS_POR_VARIANTE
+        msg_tope = f"La variante ya tiene {tope} fotos"
+        prefijo = variante.codigo_completo
+    else:
+        filtro_conteo = (
+            ProductoFoto.producto_id == producto.id,
+            ProductoFoto.variante_id.is_(None),
         )
+        tope = MAX_FOTOS_POR_PRODUCTO
+        msg_tope = f"El producto ya tiene {tope} fotos"
+        prefijo = producto.sku
+
+    cuantas = db.execute(
+        select(func.count(ProductoFoto.id)).where(*filtro_conteo)
+    ).scalar_one()
+    if cuantas >= tope:
+        raise ReglaDeNegocio(f"{msg_tope}: hay que borrar una antes de subir otra")
 
     # Nombre propio, nunca el del cliente: evita el path traversal ('../')
     # y que dos subidas con el mismo nombre se pisen entre sí.
-    nombre = f"{producto.sku}_{uuid.uuid4().hex[:12]}.{extension}"
+    nombre = f"{prefijo}_{uuid.uuid4().hex[:12]}.{extension}"
 
     _DIRECTORIO.mkdir(parents=True, exist_ok=True)
     (_DIRECTORIO / nombre).write_bytes(contenido)
 
     foto = ProductoFoto(
         producto_id=producto.id,
+        variante_id=variante_id,
         url=f"{_URL_BASE}/{nombre}",
-        # La primera foto queda principal sola: un producto con fotos pero
-        # sin principal no tendría qué mostrar en el listado.
+        # La primera foto del pool queda principal sola: sin principal no
+        # habría qué mostrar en el listado.
         es_principal=(cuantas == 0),
         orden=cuantas,
     )
@@ -154,10 +206,10 @@ def marcar_principal(
     db: Session, autor: Usuario, foto_id: int, ip_origen: str | None = None
 ) -> ProductoFoto:
     """
-    Marca una foto como principal y desmarca la anterior.
+    Marca una foto como principal y desmarca la anterior del mismo pool.
 
     El desmarcado va PRIMERO y con un flush: el índice único parcial de la
-    base rechazaría dos principales simultáneas del mismo producto.
+    base rechazaría dos principales simultáneas del mismo pool.
     """
     foto = obtener_foto(db, foto_id)
     antes = snapshot(foto)
@@ -165,7 +217,7 @@ def marcar_principal(
     anteriores = list(
         db.execute(
             select(ProductoFoto).where(
-                ProductoFoto.producto_id == foto.producto_id,
+                *_filtro_pool(foto),
                 ProductoFoto.es_principal.is_(True),
                 ProductoFoto.id != foto.id,
             )
@@ -200,12 +252,12 @@ def eliminar_foto(
     """
     Borra la fila y el archivo.
 
-    Si la borrada era la principal, la más antigua de las que quedan toma
-    su lugar: el producto no puede quedar con fotos y ninguna principal.
+    Si la borrada era la principal, la más antigua de las que quedan en el
+    mismo pool toma su lugar: no puede quedar con fotos y ninguna principal.
     """
     foto = obtener_foto(db, foto_id)
     antes = snapshot(foto)
-    producto_id = foto.producto_id
+    pool = _filtro_pool(foto)
     era_principal = foto.es_principal
 
     ruta = _DIRECTORIO / Path(foto.url).name
@@ -217,7 +269,7 @@ def eliminar_foto(
         siguiente = (
             db.execute(
                 select(ProductoFoto)
-                .where(ProductoFoto.producto_id == producto_id)
+                .where(*pool)
                 .order_by(ProductoFoto.orden, ProductoFoto.id)
             )
             .scalars()

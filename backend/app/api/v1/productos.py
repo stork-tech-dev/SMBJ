@@ -421,11 +421,17 @@ async def subir_foto(
     producto_id: int,
     request: Request,
     archivo: UploadFile = File(..., description="JPG, PNG, GIF o WebP, hasta 5 MB"),
+    variante_id: int | None = Query(
+        default=None,
+        description="Si se pasa, la foto es exclusiva de esa variante; "
+        "si no, es compartida por todas.",
+    ),
     db: Session = Depends(get_db),
     autor=Depends(requiere_permiso(Modulo.PRODUCTOS, "editar")),
 ):
     """
-    Máximo 5 por producto. La primera queda como principal.
+    Máximo 5 por producto (compartidas) y 5 por variante (propias).
+    La primera de cada pool queda como principal.
 
     El tipo se valida por los bytes del archivo, no por su extensión ni por
     el Content-Type: los dos los manda el cliente.
@@ -433,7 +439,9 @@ async def subir_foto(
     contenido = await archivo.read()
     try:
         foto = servicio_fotos.subir_foto(
-            db, autor, producto_id, contenido, ip_origen=ip_de_request(request)
+            db, autor, producto_id, contenido,
+            variante_id=variante_id,
+            ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:
         raise _404(exc) from exc
