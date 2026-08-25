@@ -234,6 +234,7 @@ def crear(
             peso_gramos=datos.peso_gramos,
             temporada=datos.temporada,
             stock_infinito=datos.stock_infinito,
+            stock_inicial=datos.stock_inicial,
             ip_origen=ip_de_request(request),
         )
     except servicio.SinPermiso as exc:
@@ -325,6 +326,7 @@ def agregar_variante(
             descripcion_sufijo=datos.descripcion_sufijo,
             sku_proveedor=datos.sku_proveedor,
             ubicacion_deposito=datos.ubicacion_deposito,
+            stock_inicial=datos.stock_inicial,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:

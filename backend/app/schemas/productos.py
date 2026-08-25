@@ -28,6 +28,9 @@ class ProductoCrear(BaseModel):
     peso_gramos: Decimal | None = Field(default=None, gt=0)
     temporada: str = Field(default="atemporal", pattern=_TEMPORADA)
     stock_infinito: bool = False
+    # Stock inicial en el Centro de Distribución. Opcional: si no se manda o
+    # es 0, el producto se crea sin stock (como antes).
+    stock_inicial: int | None = Field(default=None, ge=0)
 
 
 class ProductoEditar(BaseModel):
@@ -76,6 +79,8 @@ class VarianteCrear(BaseModel):
     # siempre.
     sku_proveedor: str | None = Field(default=None, max_length=30)
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
+    # Stock inicial en el Centro de Distribución.
+    stock_inicial: int | None = Field(default=None, ge=0)
 
 
 class VarianteEditar(BaseModel):

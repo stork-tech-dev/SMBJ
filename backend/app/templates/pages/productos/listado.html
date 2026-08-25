@@ -518,6 +518,20 @@
                         <input id="va-ubicacion" x-model="variante.ubicacion_deposito"
                                maxlength="100" class="campo-linea">
                     </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="va-stock" class="text-sm font-semibold text-texto-header">
+                            Stock inicial
+                        </label>
+                        <input id="va-stock" type="number" min="0" step="1"
+                               x-model="variante.stock_inicial"
+                               placeholder="0"
+                               class="h-control w-full rounded-input border border-borde-campo
+                                      px-3 text-base bg-surface">
+                        <span class="text-xs text-texto-disabled">
+                            Se asigna al Centro de Distribución.
+                        </span>
+                    </div>
                 </div>
 
                 {# Sufijos ya tomados: la API rechaza el repetido, pero verlo
@@ -1059,42 +1073,60 @@
                        `/productos/{id}/fotos` y ese id todavía no existe.
                        Espera acá y la sube `guardar()`. #}
                     <template x-if="!form.id">
-                        <div class="sm:col-span-2 flex flex-col gap-1">
-                            <span class="text-sm font-semibold text-texto-header">Foto</span>
+                        <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {# --- Foto --- #}
+                            <div class="flex flex-col gap-1">
+                                <span class="text-sm font-semibold text-texto-header">Foto</span>
 
-                            <div class="flex items-center gap-3">
-                                {# El input va oculto y lo dispara el label:
-                                   el control nativo de archivo no se puede
-                                   estilar. Mismo patrón que la ficha. #}
-                                <label class="h-boton px-4 inline-flex items-center gap-2
-                                              rounded-input border border-borde text-sm
-                                              font-semibold cursor-pointer
-                                              hover:border-primary hover:text-primary">
-                                    {{ icono('mas', clases='w-4 h-4') }}
-                                    <span x-text="form.foto.archivo ? 'Cambiar foto' : 'Elegir foto'"></span>
-                                    <input type="file" class="sr-only"
-                                           accept="image/jpeg,image/png,image/gif,image/webp"
-                                           @change="elegirFoto($event)">
-                                </label>
+                                <div class="flex items-center gap-3">
+                                    {# El input va oculto y lo dispara el label:
+                                       el control nativo de archivo no se puede
+                                       estilar. Mismo patrón que la ficha. #}
+                                    <label class="h-boton px-4 inline-flex items-center gap-2
+                                                  rounded-input border border-borde text-sm
+                                                  font-semibold cursor-pointer
+                                                  hover:border-primary hover:text-primary">
+                                        {{ icono('mas', clases='w-4 h-4') }}
+                                        <span x-text="form.foto.archivo ? 'Cambiar foto' : 'Elegir foto'"></span>
+                                        <input type="file" class="sr-only"
+                                               accept="image/jpeg,image/png,image/gif,image/webp"
+                                               @change="elegirFoto($event)">
+                                    </label>
 
-                                <template x-if="form.foto.archivo">
-                                    <div class="flex items-center gap-3">
-                                        <img :src="form.foto.previo" alt=""
-                                             class="w-14 h-14 rounded-input object-cover
-                                                    border border-borde">
-                                        <button type="button" @click="quitarFoto()"
-                                                class="min-h-toque text-sm font-semibold
-                                                       text-danger hover:opacity-80">
-                                            Quitar
-                                        </button>
-                                    </div>
-                                </template>
+                                    <template x-if="form.foto.archivo">
+                                        <div class="flex items-center gap-3">
+                                            <img :src="form.foto.previo" alt=""
+                                                 class="w-14 h-14 rounded-input object-cover
+                                                        border border-borde">
+                                            <button type="button" @click="quitarFoto()"
+                                                    class="min-h-toque text-sm font-semibold
+                                                           text-danger hover:opacity-80">
+                                                Quitar
+                                            </button>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <span x-show="!form.foto.archivo"
+                                      class="text-xs text-texto-disabled">
+                                    Opcional. Las otras cuatro se cargan desde la ficha.
+                                </span>
                             </div>
 
-                            <span x-show="!form.foto.archivo"
-                                  class="text-xs text-texto-disabled">
-                                Opcional. Las otras cuatro se cargan desde la ficha.
-                            </span>
+                            {# --- Stock inicial --- #}
+                            <div class="flex flex-col gap-1">
+                                <label for="stock_inicial" class="text-sm font-semibold text-texto-header">
+                                    Stock inicial
+                                </label>
+                                <input id="stock_inicial" type="number" min="0" step="1"
+                                       x-model="form.stock_inicial"
+                                       placeholder="0"
+                                       class="h-control w-full rounded-input border border-borde-campo
+                                              px-3 text-base bg-surface">
+                                <span class="text-xs text-texto-disabled">
+                                    Se asigna al Centro de Distribución.
+                                </span>
+                            </div>
                         </div>
                     </template>
                 </div>

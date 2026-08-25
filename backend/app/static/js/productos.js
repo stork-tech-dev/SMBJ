@@ -87,7 +87,7 @@ function abmProductos() {
         variante: {
             abierto: false, guardando: false, reemplazaBase: false,
             sufijo: '', descripcion_sufijo: '', sku_proveedor: '',
-            ubicacion_deposito: '',
+            ubicacion_deposito: '', stock_inicial: '',
         },
 
         // Edición de una variante ya creada. El sufijo NO está: entra en el
@@ -145,6 +145,7 @@ function abmProductos() {
             // y se sube apenas hay id. `previo` es el object URL de la
             // miniatura, que hay que revocar para no filtrar memoria.
             foto: { archivo: null, previo: '' },
+            stock_inicial: '',
         },
 
         /* --- Formato: la API manda números, no strings con símbolo --- */
@@ -454,6 +455,7 @@ function abmProductos() {
                 descripcion_sufijo: '',
                 sku_proveedor: '',
                 ubicacion_deposito: '',
+                stock_inicial: '',
             };
         },
 
@@ -592,6 +594,8 @@ function abmProductos() {
                             // El backend normaliza el texto; mandar '' sería
                             // guardar una ubicación vacía en vez de ninguna.
                             ubicacion_deposito: this.variante.ubicacion_deposito || null,
+                            stock_inicial: this.variante.stock_inicial
+                                ? Number(this.variante.stock_inicial) : null,
                         }),
                     }
                 );
@@ -944,6 +948,7 @@ function abmProductos() {
                 temporada: p.temporada,
                 stock_infinito: p.stock_infinito,
                 foto: { archivo: null, previo: '' },
+                stock_inicial: '',
             };
             // En edición ya hay proveedor y precio: se muestra de entrada.
             this.calcularPreview();
@@ -974,7 +979,11 @@ function abmProductos() {
                 };
                 // El SKU y el precio de venta los genera el backend; el
                 // proveedor solo se define en el alta.
-                if (alta) cuerpo.proveedor_id = Number(this.form.proveedor_id);
+                if (alta) {
+                    cuerpo.proveedor_id = Number(this.form.proveedor_id);
+                    if (this.form.stock_inicial)
+                        cuerpo.stock_inicial = Number(this.form.stock_inicial);
+                }
 
                 const resp = await fetch(
                     alta ? '/api/v1/productos' : '/api/v1/productos/' + this.form.id,

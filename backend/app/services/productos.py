@@ -39,13 +39,48 @@ from app.models.categoria import Categoria
 from app.models.configuracion import ConfiguracionSistema
 from app.models.producto import Producto, Temporada, Variante
 from app.models.proveedor import EstadoProveedor, Proveedor
-from app.models.stock import Stock
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
+from app.models.stock import Stock, TipoMovimiento
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
 
 class SinPermiso(Exception):
     """El autor no puede tocar este campo del producto (403)."""
+
+
+def _ingresar_stock_inicial(
+    db: Session, autor: Usuario, variante: Variante,
+    cantidad: int, ip_origen: str | None,
+) -> None:
+    """
+    Registra un ingreso de proveedor al CD con la cantidad indicada.
+
+    Se llama después de crear un producto o variante si el usuario cargó
+    stock inicial. Usa el mismo `aplicar_movimiento` que el resto del
+    sistema: la mercadería queda en el CD con su movimiento y auditoría.
+    """
+    if cantidad <= 0:
+        return
+
+    from app.services.stock import aplicar_movimiento
+
+    cd = db.execute(
+        select(PuntoDeVenta).where(PuntoDeVenta.tipo == TipoPuntoVenta.CD)
+    ).scalars().first()
+    if cd is None:
+        raise ReglaDeNegocio(
+            "No hay un Centro de Distribución configurado para cargar stock"
+        )
+
+    aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id,
+        cantidad=cantidad,
+        punto_venta_destino_id=cd.id,
+        ip_origen=ip_origen,
+    )
 
 
 def _validar_stock_infinito(autor: Usuario, pedido: bool | None, actual: bool) -> None:
@@ -368,6 +403,7 @@ def agregar_variante(
     descripcion_sufijo: str,
     sku_proveedor: str | None = None,
     ubicacion_deposito: str | None = None,
+    stock_inicial: int | None = None,
     ip_origen: str | None = None,
 ) -> Variante:
     """
@@ -432,6 +468,10 @@ def agregar_variante(
         estado_nuevo=variante,
         ip_origen=ip_origen,
     )
+
+    if stock_inicial:
+        _ingresar_stock_inicial(db, autor, variante, stock_inicial, ip_origen)
+
     return variante
 
 
@@ -783,6 +823,7 @@ def crear_producto(
     peso_gramos: Decimal | None = None,
     temporada: str = Temporada.ATEMPORAL.value,
     stock_infinito: bool = False,
+    stock_inicial: int | None = None,
     ip_origen: str | None = None,
 ) -> Producto:
     """
@@ -831,7 +872,7 @@ def crear_producto(
 
     # Todo producto arranca con su BASE: así el stock siempre cuelga de una
     # variante, con o sin variantes reales.
-    _crear_variante(db, producto, sufijo=None, es_base=True)
+    base = _crear_variante(db, producto, sufijo=None, es_base=True)
 
     registrar_auditoria(
         db,
@@ -842,6 +883,10 @@ def crear_producto(
         estado_nuevo=producto,
         ip_origen=ip_origen,
     )
+
+    if stock_inicial:
+        _ingresar_stock_inicial(db, autor, base, stock_inicial, ip_origen)
+
     return producto
 
 
