@@ -38,11 +38,6 @@ function abmStock({ puntoFijo = null } = {}) {
             solo_bajo_minimo: '',
         },
 
-        ingreso: {
-            abierto: false, guardando: false, codigo: '', variante: null,
-            punto_de_venta_id: '', cantidad: 1, notas: '',
-        },
-
         minimos: {
             abierto: false, guardando: false, variante_id: null,
             punto_de_venta_id: null, codigo: '', tipo: '',
@@ -165,47 +160,6 @@ function abmStock({ puntoFijo = null } = {}) {
             } catch {
                 // Silencioso: es una ayuda para completar el formulario y no
                 // puede trabar la carga.
-            }
-        },
-
-        /* --- Ingreso de mercadería --- */
-
-        abrirIngreso() {
-            this.ingreso = {
-                abierto: true, guardando: false, codigo: '', variante: null,
-                // Con una sola ubicación posible se elige sola: no hay nada
-                // que decidir y obligar a tocarla es fricción sin sentido.
-                punto_de_venta_id: this.puntoFijo || '',
-                cantidad: 1, notas: '',
-            };
-        },
-
-        async guardarIngreso() {
-            const i = this.ingreso;
-            i.guardando = true;
-            try {
-                const resp = await fetch('/api/v1/stock/ingresos', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        variante_id: i.variante.id,
-                        punto_de_venta_id: Number(i.punto_de_venta_id),
-                        cantidad: Number(i.cantidad),
-                        notas: i.notas || null,
-                    }),
-                });
-                if (!resp.ok) {
-                    const error = await resp.json().catch(() => ({}));
-                    throw new Error(error.detail || 'No se pudo registrar el ingreso');
-                }
-                window.toast(`Ingresaron ${i.cantidad} unidades`, 'exito');
-                i.abierto = false;
-                this.cargar();
-            } catch (e) {
-                window.toast(e.message, 'error');
-            } finally {
-                i.guardando = false;
             }
         },
 

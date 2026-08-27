@@ -30,8 +30,9 @@ class PuntoResumen(BaseModel):
 class VarianteEnStock(BaseModel):
     """
     La variante vista desde el stock: el código que se escanea y de qué
-    producto es. No trae sus hermanas ni las fotos: acá la fila es la
-    variante EN una ubicación.
+    producto es. No trae sus hermanas ni el pool completo de fotos: acá
+    la fila es la variante EN una ubicación. Solo viaja la URL de la foto
+    principal (con fallback variante → producto) para el thumbnail.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -42,6 +43,7 @@ class VarianteEnStock(BaseModel):
     sufijo: str | None
     descripcion_sufijo: str | None
     es_base: bool
+    foto_url: str | None = None
     producto: ProductoResumen
 
 

@@ -285,4 +285,5 @@ class VarianteListadoResponse(BaseModel):
     tiene_precio_propio: bool
     sku_proveedor_efectivo: str | None
     tiene_sku_proveedor_propio: bool
+    foto_url: str | None = None
     producto: ProductoResumen

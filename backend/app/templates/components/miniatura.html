@@ -1,0 +1,37 @@
+{# ===========================================================================
+   Macro: miniatura de producto con zoom al hacer hover.
+
+   Muestra un thumbnail pequeño que, al pasar el mouse, despliega una
+   versión ampliada usando posición fija para evitar recortes por
+   overflow-hidden de contenedores padre.
+
+   Parámetros:
+     src        expresión Alpine con la URL de la imagen (ej. "v.foto_url")
+     tamano     clase Tailwind del thumbnail: "w-8 h-8" (default) o "w-10 h-10"
+
+   Uso:
+     {% from "components/miniatura.html" import miniatura %}
+     {{ miniatura('v.foto_url') }}
+     {{ miniatura('item.variante?.foto_url', tamano='w-10 h-10') }}
+   =========================================================================== #}
+
+{% macro miniatura(src, tamano='w-8 h-8') %}
+<div class="inline-block" x-show="{{ src }}"
+     x-data="{ hover: false, pos: { top: 0, left: 0 } }"
+     @mouseenter="
+        const r = $el.getBoundingClientRect();
+        pos.top = r.bottom + 4;
+        pos.left = r.left;
+        hover = true;
+     "
+     @mouseleave="hover = false">
+    <img :src="{{ src }}" alt=""
+         class="{{ tamano }} rounded object-cover cursor-pointer flex-shrink-0">
+    <template x-teleport="body">
+        <img x-show="hover" x-cloak :src="{{ src }}" alt=""
+             class="fixed z-[100] w-48 h-48 rounded-lg object-cover
+                    shadow-xl border-2 border-surface pointer-events-none"
+             :style="`top:${pos.top}px; left:${pos.left}px`">
+    </template>
+</div>
+{% endmacro %}

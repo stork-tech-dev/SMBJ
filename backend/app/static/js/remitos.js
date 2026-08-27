@@ -196,6 +196,7 @@ function abmRemitos({ puntoFijo = null } = {}) {
                     variante_id: variante.id,
                     codigo: variante.codigo_completo + variante.verificador,
                     descripcion: variante.producto.descripcion,
+                    foto_url: variante.foto_url || null,
                     disponible,
                     cantidad: 1,
                 });
@@ -336,6 +337,7 @@ function abmRemitos({ puntoFijo = null } = {}) {
                         variante_id: i.variante.id,
                         codigo: i.variante.codigo_completo + i.variante.verificador,
                         descripcion: i.variante.producto.descripcion,
+                        foto_url: i.variante.foto_url || null,
                         enviada: i.cantidad_enviada,
                         recibida: i.cantidad_enviada,
                     })),

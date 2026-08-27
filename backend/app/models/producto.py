@@ -159,6 +159,14 @@ class Producto(Base):
         ),
     )
 
+    @property
+    def foto_principal_url(self) -> str | None:
+        """URL de la foto principal del producto, o la primera si ninguna es principal."""
+        for f in self.fotos:
+            if f.es_principal:
+                return f.url
+        return self.fotos[0].url if self.fotos else None
+
     def __repr__(self) -> str:  # pragma: no cover - solo debug
         return f"<Producto {self.id} {self.sku}>"
 
@@ -319,6 +327,16 @@ class Variante(Base):
             if self.sku_proveedor is not None
             else self.producto.sku_proveedor
         )
+
+    @property
+    def foto_url(self) -> str | None:
+        """URL de la foto principal: propias de la variante primero, fallback al producto."""
+        for f in self.fotos:
+            if f.es_principal:
+                return f.url
+        if self.fotos:
+            return self.fotos[0].url
+        return self.producto.foto_principal_url
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
         return f"<Variante {self.id} {self.codigo_completo}>"

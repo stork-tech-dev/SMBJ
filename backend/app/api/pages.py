@@ -126,6 +126,12 @@ CONFIGURACION_SECCIONES = [
 # pantalla al módulo es una línea acá.
 SECCIONES_STOCK = [
     {
+        "nombre": "Carga de Compras",
+        "descripcion": "Registro de compras a proveedores con carga de productos",
+        "url": "/compras",
+        "modulo": Modulo.COMPRAS,
+    },
+    {
         "nombre": "Movimientos de Stock",
         "descripcion": "Lo que hay en cada ubicación, ingresos y bajas",
         "url": "/stock",
@@ -644,7 +650,6 @@ def _contexto_stock(request, db, usuario, titulo, ruta):
         # Con un solo local a la vista, los filtros por punto de venta sobran:
         # la pantalla ya está acotada a ese local.
         punto_fijo=scope.punto_de_venta_id if scope.restringido else None,
-        puede_ingresar=puede("crear"),
         puede_minimos=puede("editar"),
         puede_baja=puede("crear", Recurso.STOCK_BAJA),
         # Abre la puerta al catálogo de motivos. Es el mismo permiso que exige
@@ -657,6 +662,71 @@ def _contexto_stock(request, db, usuario, titulo, ruta):
         puede_aprobar=puede("editar", Recurso.STOCK_AUDITORIA_APROBAR),
     )
 
+
+# ---- Compras a proveedores -------------------------------------------------
+
+@router.get("/compras", response_class=HTMLResponse)
+async def compras(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    puede_crear = resolver_permiso(db, usuario.id, Modulo.COMPRAS, "crear")
+    return templates.TemplateResponse(
+        request,
+        "pages/compras/listado.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Carga de Compras",
+            ruta_activa=RUTA_HUB_STOCK,
+            puede_crear=puede_crear,
+        ),
+    )
+
+
+@router.get("/compras/nueva", response_class=HTMLResponse)
+async def compra_nueva(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/compras/compra.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Nuevo Ingreso de Mercadería",
+            ruta_activa=RUTA_HUB_STOCK,
+            compra_id="null",
+            estado_compra="borrador",
+            nivel_maximo=NIVEL_MAXIMO,
+        ),
+    )
+
+
+@router.get("/compras/{compra_id}", response_class=HTMLResponse)
+async def compra_detalle_pagina(
+    compra_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    from app.models.compra import Compra
+
+    compra = db.query(Compra).filter_by(id=compra_id).first()
+    if not compra:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "pages/compras/compra.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Ingreso de Mercadería",
+            ruta_activa=RUTA_HUB_STOCK,
+            compra_id=compra_id,
+            estado_compra=compra.estado.value,
+            nivel_maximo=NIVEL_MAXIMO,
+        ),
+    )
+
+
+# ---- Stock -----------------------------------------------------------------
 
 @router.get("/stock", response_class=HTMLResponse)
 async def stock(

@@ -192,6 +192,10 @@ class MovimientoStock(Base):
         BigInteger, ForeignKey("auditorias_inventario.id", ondelete="RESTRICT")
     )
 
+    compra_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("compras.id", ondelete="RESTRICT"), index=True
+    )
+
     # Sin FK todavía: la tabla `ventas` llega en el módulo 06. La columna se
     # crea ahora porque el tipo `venta` ya existe y el dato hay que poder
     # guardarlo; la restricción se agrega cuando exista a qué apuntar.
