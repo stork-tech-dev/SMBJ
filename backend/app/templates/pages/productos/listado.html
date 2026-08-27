@@ -278,16 +278,24 @@
 
                     {# El input va oculto y lo dispara el label: el control
                        nativo de archivo no se puede estilar. #}
-                    <label class="h-boton px-4 inline-flex items-center gap-2 rounded-input
-                                  border border-borde text-sm font-semibold cursor-pointer
-                                  hover:border-primary hover:text-primary"
-                           :class="(fotosVisibles().length || 0) >= 5
-                                   && 'opacity-50 pointer-events-none'">
-                        {{ icono('mas', clases='w-4 h-4') }} Subir foto
-                        <input type="file" class="sr-only"
-                               accept="image/jpeg,image/png,image/gif,image/webp"
-                               @change="subirFoto($event)">
-                    </label>
+                    <div class="flex items-center gap-2"
+                         :class="(fotosVisibles().length || 0) >= 5
+                                 && 'opacity-50 pointer-events-none'">
+                        <label class="h-boton px-4 inline-flex items-center gap-2 rounded-input
+                                      border border-borde text-sm font-semibold cursor-pointer
+                                      hover:border-primary hover:text-primary">
+                            {{ icono('mas', clases='w-4 h-4') }} Subir foto
+                            <input type="file" class="sr-only"
+                                   accept="image/jpeg,image/png,image/gif,image/webp"
+                                   @change="subirFoto($event)">
+                        </label>
+                        <button type="button" @click="tomarFotoDetalle()"
+                                class="h-boton px-4 inline-flex items-center gap-2 rounded-input
+                                       border border-borde text-sm font-semibold
+                                       hover:border-primary hover:text-primary">
+                            {{ icono('camara', clases='w-4 h-4') }} Tomar foto
+                        </button>
+                    </div>
                 </div>
 
                 <div x-show="fotosVisibles().length" x-cloak

@@ -272,7 +272,7 @@
                         <div class="flex flex-col gap-1">
                             <span class="text-sm font-semibold text-texto-header">Foto</span>
 
-                            <div class="flex items-center gap-3">
+                            <div class="flex flex-wrap items-center gap-3">
                                 <label class="h-boton px-4 inline-flex items-center gap-2
                                               rounded-input border border-borde text-sm
                                               font-semibold cursor-pointer
@@ -283,6 +283,13 @@
                                            accept="image/jpeg,image/png,image/gif,image/webp"
                                            @change="elegirFoto($event)">
                                 </label>
+                                <button type="button" @click="tomarFoto()"
+                                        class="h-boton px-4 inline-flex items-center gap-2
+                                               rounded-input border border-borde text-sm
+                                               font-semibold
+                                               hover:border-primary hover:text-primary">
+                                    {{ icono('camara', clases='w-4 h-4') }} Tomar foto
+                                </button>
 
                                 <template x-if="form.foto.archivo">
                                     <div class="flex items-center gap-3">

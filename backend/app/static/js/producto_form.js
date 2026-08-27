@@ -225,6 +225,18 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
             this.form.foto = { archivo, previo: URL.createObjectURL(archivo) };
         },
 
+        async tomarFoto() {
+            try {
+                const blob = await window.webcamCapture();
+                if (!blob) return;
+                const archivo = new File([blob], 'captura.jpg', { type: 'image/jpeg' });
+                this.quitarFoto();
+                this.form.foto = { archivo, previo: URL.createObjectURL(archivo) };
+            } catch (e) {
+                window.toast('No se pudo acceder a la cámara', 'error');
+            }
+        },
+
         quitarFoto() {
             if (this.form.foto?.previo) URL.revokeObjectURL(this.form.foto.previo);
             this.form.foto = { archivo: null, previo: '' };

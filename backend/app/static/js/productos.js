@@ -470,6 +470,33 @@ function abmProductos() {
             this.cargar();
         },
 
+        async tomarFotoDetalle() {
+            try {
+                const blob = await window.webcamCapture();
+                if (!blob) return;
+
+                const cuerpo = new FormData();
+                cuerpo.append('archivo', new File([blob], 'captura.jpg', { type: 'image/jpeg' }));
+
+                let url = `/api/v1/productos/${this.detalle.producto.id}/fotos`;
+                if (this.detalle.varianteId) {
+                    url += `?variante_id=${this.detalle.varianteId}`;
+                }
+
+                const resp = await fetch(url, {
+                    method: 'POST', credentials: 'same-origin', body: cuerpo,
+                });
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo subir la foto');
+                }
+                window.toast('Foto capturada y subida', 'exito');
+                await this.refrescarDetalle();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
+
         async subirFoto(evento) {
             const archivo = evento.target.files?.[0];
             if (!archivo) return;
