@@ -39,9 +39,7 @@ def generar_pdf_auditoria(db: Session, auditoria) -> bytes:
 
 ETIQUETAS_ESTADO = {
     "en_curso": "En curso",
-    "pendiente_aprobacion": "Pendiente de aprobación",
-    "aprobada": "Aprobada",
-    "rechazada": "Rechazada",
+    "cerrada": "Cerrada",
 }
 
 
@@ -66,9 +64,8 @@ def generar_xls_auditoria(auditoria) -> bytes:
     hoja.append(["Ubicación", auditoria.punto_de_venta.nombre])
     hoja.append(["Contó", auditoria.usuario.nombre,
                  auditoria.fecha_inicio.strftime("%d/%m/%Y %H:%M") if auditoria.fecha_inicio else ""])
-    aprobador = auditoria.aprobador.nombre if auditoria.aprobador else "—"
-    fecha_aprob = auditoria.fecha_aprobacion.strftime("%d/%m/%Y %H:%M") if auditoria.fecha_aprobacion else ""
-    hoja.append(["Aprobó", aprobador, fecha_aprob])
+    if auditoria.fecha_fin:
+        hoja.append(["Cerrada", auditoria.fecha_fin.strftime("%d/%m/%Y %H:%M")])
     if auditoria.notas:
         hoja.append(["Notas", auditoria.notas])
     hoja.append([])

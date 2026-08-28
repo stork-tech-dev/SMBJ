@@ -2,9 +2,8 @@
 Modelos de `auditorias_inventario` y `auditoria_items`.
 
 Contar la mercadería que hay en una ubicación y compararla contra lo que
-dice el sistema. Las diferencias no corrigen el stock solas: quedan a la
-espera de que el Dueño las apruebe, y recién ahí se generan los movimientos
-que ajustan.
+dice el sistema. Al finalizar el conteo se generan automáticamente los
+movimientos que ajustan el stock a lo contado.
 
 Es distinta de la tabla `auditoria` del Principio 3, que registra QUIÉN hizo
 QUÉ en el sistema. Acá se audita la mercadería; allá, las acciones.
@@ -31,9 +30,7 @@ from app.core.database import Base
 
 class EstadoAuditoria(str, enum.Enum):
     EN_CURSO = "en_curso"
-    PENDIENTE_APROBACION = "pendiente_aprobacion"
-    APROBADA = "aprobada"
-    RECHAZADA = "rechazada"
+    CERRADA = "cerrada"
 
 
 def _enum(tipo, nombre):
@@ -69,15 +66,10 @@ class AuditoriaInventario(Base):
         BigInteger, ForeignKey("categorias.id", ondelete="RESTRICT")
     )
 
-    aprobada_por: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("usuarios.id", ondelete="RESTRICT")
-    )
-
     fecha_inicio: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
     fecha_fin: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
-    fecha_aprobacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
 
     notas: Mapped[str | None] = mapped_column(Text)
 
@@ -90,7 +82,6 @@ class AuditoriaInventario(Base):
 
     punto_de_venta: Mapped["PuntoDeVenta"] = relationship()  # noqa: F821
     usuario: Mapped["Usuario"] = relationship(foreign_keys=[usuario_id])  # noqa: F821
-    aprobador: Mapped["Usuario"] = relationship(foreign_keys=[aprobada_por])  # noqa: F821
     categoria: Mapped["Categoria"] = relationship()  # noqa: F821
     items: Mapped[list["AuditoriaItem"]] = relationship(
         back_populates="auditoria", cascade="all, delete-orphan", lazy="selectin"

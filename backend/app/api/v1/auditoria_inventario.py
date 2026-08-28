@@ -1,10 +1,8 @@
 """
 Endpoints de la auditoría de inventario.
 
-Contar y aprobar tienen permisos distintos, y ahí está el control: el que
-cuenta no valida su propio conteo. Iniciar y cargar ítems va con el recurso
-`stock.auditoria`; aprobar o rechazar, con `stock.auditoria_aprobar`, que
-tiene el Dueño.
+Iniciar, contar y cerrar van con el recurso `stock.auditoria`. Al cerrar
+se aplican automáticamente los ajustes de stock.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -17,7 +15,6 @@ from app.core.permisos import Modulo, Recurso, requiere_permiso
 from app.core.utils import ip_de_request
 from app.schemas.auditoria_inventario import (
     AuditoriaIniciar,
-    AuditoriaRechazar,
     AuditoriaResponse,
     AuditoriaResumen,
     ItemEditar,
@@ -41,7 +38,7 @@ def _409(exc):
 @router.get("", response_model=RespuestaPaginada[AuditoriaResumen], summary="Listado")
 def listar(
     estado: str | None = Query(
-        default=None, pattern="^(en_curso|pendiente_aprobacion|aprobada|rechazada)$"
+        default=None, pattern="^(en_curso|cerrada)$"
     ),
     punto_de_venta_id: int | None = Query(default=None),
     pagina: int = Query(default=1, ge=1),
@@ -281,7 +278,7 @@ def eliminar_item(
 @router.patch(
     "/{auditoria_id}/finalizar",
     response_model=AuditoriaResponse,
-    summary="Cerrar el conteo y mandarlo a aprobación",
+    summary="Cerrar el conteo y ajustar el stock",
 )
 def finalizar(
     auditoria_id: int,
@@ -290,71 +287,10 @@ def finalizar(
     scope: DeviceScope = Depends(get_device_scope),
     autor=Depends(requiere_permiso(Modulo.STOCK, "crear", Recurso.STOCK_AUDITORIA)),
 ):
-    """No mueve stock: solo cierra el conteo."""
+    """Cierra el conteo y genera los ajustes de stock por cada diferencia."""
     try:
         auditoria = servicio.finalizar(
             db, autor, scope, auditoria_id, ip_origen=ip_de_request(request)
-        )
-    except NoEncontrado as exc:
-        raise _404(exc) from exc
-    except ReglaDeNegocio as exc:
-        raise _409(exc) from exc
-
-    db.commit()
-    return auditoria
-
-
-@router.patch(
-    "/{auditoria_id}/aprobar",
-    response_model=AuditoriaResponse,
-    summary="Aprobar: ajusta el stock",
-)
-def aprobar(
-    auditoria_id: int,
-    request: Request,
-    db: Session = Depends(get_db),
-    autor=Depends(
-        requiere_permiso(Modulo.STOCK, "editar", Recurso.STOCK_AUDITORIA_APROBAR)
-    ),
-):
-    """
-    Genera un movimiento `ajuste_auditoria` por cada código con diferencia
-    distinta de cero y deja el stock igual a lo contado.
-
-    Sin `get_device_scope`: aprueba el Dueño, que no está limitado por
-    dispositivo. Es el control que separa a quien cuenta de quien corrige.
-    """
-    try:
-        auditoria = servicio.aprobar(
-            db, autor, auditoria_id, ip_origen=ip_de_request(request)
-        )
-    except NoEncontrado as exc:
-        raise _404(exc) from exc
-    except ReglaDeNegocio as exc:
-        raise _409(exc) from exc
-
-    db.commit()
-    return auditoria
-
-
-@router.patch(
-    "/{auditoria_id}/rechazar",
-    response_model=AuditoriaResponse,
-    summary="Rechazar: el stock queda como estaba",
-)
-def rechazar(
-    auditoria_id: int,
-    datos: AuditoriaRechazar,
-    request: Request,
-    db: Session = Depends(get_db),
-    autor=Depends(
-        requiere_permiso(Modulo.STOCK, "editar", Recurso.STOCK_AUDITORIA_APROBAR)
-    ),
-):
-    """El conteo no se borra: queda con sus diferencias y el motivo."""
-    try:
-        auditoria = servicio.rechazar(
-            db, autor, auditoria_id, notas=datos.notas, ip_origen=ip_de_request(request)
         )
     except NoEncontrado as exc:
         raise _404(exc) from exc

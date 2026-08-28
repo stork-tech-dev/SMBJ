@@ -659,7 +659,6 @@ def _contexto_stock(request, db, usuario, titulo, ruta):
         puede_remitir=puede("crear"),
         puede_recibir=puede("editar", Recurso.STOCK_REMITO_RECEPCION),
         puede_auditar=puede("crear", Recurso.STOCK_AUDITORIA),
-        puede_aprobar=puede("editar", Recurso.STOCK_AUDITORIA_APROBAR),
     )
 
 

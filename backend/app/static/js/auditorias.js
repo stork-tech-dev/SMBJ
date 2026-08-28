@@ -11,9 +11,7 @@
 
 const ESTADOS = [
     { id: 'en_curso', etiqueta: 'En curso' },
-    { id: 'pendiente_aprobacion', etiqueta: 'Pendiente de aprobación' },
-    { id: 'aprobada', etiqueta: 'Aprobada' },
-    { id: 'rechazada', etiqueta: 'Rechazada' },
+    { id: 'cerrada', etiqueta: 'Cerrada' },
 ];
 
 function abmAuditorias({ puntoFijo = null } = {}) {
@@ -66,9 +64,7 @@ function abmAuditorias({ puntoFijo = null } = {}) {
         colorEstado(estado) {
             return {
                 en_curso: 'text-primary',
-                pendiente_aprobacion: 'text-accent',
-                aprobada: 'text-success',
-                rechazada: 'text-danger',
+                cerrada: 'text-success',
             }[estado] || 'text-texto-muted';
         },
 
@@ -354,9 +350,8 @@ function abmAuditorias({ puntoFijo = null } = {}) {
                 abierta: true,
                 titulo: 'Finalizar el conteo',
                 mensaje:
-                    `Se cierra el conteo con ${diferencias} código(s) con diferencia y `
-                    + 'queda esperando la aprobación del Dueño. El stock no cambia todavía, '
-                    + 'y después de cerrar no se pueden cargar más códigos.',
+                    `Se cierra el conteo con ${diferencias} código(s) con diferencia. `
+                    + 'El stock se va a ajustar a lo contado y no se pueden cargar más códigos.',
                 accion: () => this.finalizar(),
             };
         },
@@ -372,7 +367,7 @@ function abmAuditorias({ puntoFijo = null } = {}) {
                     const error = await resp.json().catch(() => ({}));
                     throw new Error(error.detail || 'No se pudo finalizar');
                 }
-                window.toast('Conteo finalizado: espera aprobación', 'exito');
+                window.toast('Conteo cerrado: el stock quedó ajustado', 'exito');
                 this.conteo.abierto = false;
                 this.cargar();
             } catch (e) {
@@ -380,65 +375,11 @@ function abmAuditorias({ puntoFijo = null } = {}) {
             }
         },
 
-        /* --- Detalle y aprobación --- */
+        /* --- Detalle --- */
 
         async abrirDetalle(auditoriaId) {
             const auditoria = await this.traer(auditoriaId);
             if (auditoria) this.detalle = { abierto: true, auditoria };
-        },
-
-        confirmarAprobacion() {
-            const diferencias = this.conDiferencia(this.detalle.auditoria);
-            this.confirmacion = {
-                abierta: true,
-                titulo: 'Aprobar la auditoría',
-                mensaje:
-                    `Se van a generar ${diferencias} ajuste(s) de stock y las cantidades `
-                    + 'quedan iguales a lo contado. Los movimientos quedan registrados y '
-                    + 'no se deshacen.',
-                accion: () => this.resolver('aprobar'),
-            };
-        },
-
-        confirmarRechazo() {
-            this.confirmacion = {
-                abierta: true,
-                titulo: 'Rechazar la auditoría',
-                mensaje:
-                    'El stock queda como está. El conteo no se borra: queda registrado '
-                    + 'con sus diferencias para poder revisarlo después.',
-                accion: () => this.resolver('rechazar'),
-            };
-        },
-
-        async resolver(decision) {
-            this.confirmacion.abierta = false;
-            try {
-                const resp = await fetch(
-                    `/api/v1/auditorias-inventario/${this.detalle.auditoria.id}/${decision}`,
-                    {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'same-origin',
-                        // `rechazar` acepta notas; `aprobar` ignora el cuerpo.
-                        body: JSON.stringify({}),
-                    }
-                );
-                if (!resp.ok) {
-                    const error = await resp.json().catch(() => ({}));
-                    throw new Error(error.detail || `No se pudo ${decision} la auditoría`);
-                }
-                window.toast(
-                    decision === 'aprobar'
-                        ? 'Auditoría aprobada: el stock quedó ajustado'
-                        : 'Auditoría rechazada: el stock no cambió',
-                    'exito'
-                );
-                this.detalle.abierto = false;
-                this.cargar();
-            } catch (e) {
-                window.toast(e.message, 'error');
-            }
         },
     };
 }

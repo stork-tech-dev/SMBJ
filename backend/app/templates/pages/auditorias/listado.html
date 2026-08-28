@@ -8,6 +8,7 @@
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
 {% from "components/paginacion.html" import paginacion %}
+{% from "components/miniatura.html" import miniatura %}
 
 {% block contenido %}
 
@@ -236,11 +237,13 @@
                                @input.debounce.300ms="identificar()"
                                placeholder="Escaneá o tipeá el código"
                                autocomplete="off" class="campo-linea font-mono">
-                        <span class="text-xs"
-                              :class="conteo.variante ? 'text-primary' : 'text-texto-disabled'"
-                              x-text="conteo.variante
-                                      ? conteo.variante.producto.descripcion
-                                      : 'Todavía sin identificar'"></span>
+                        <div class="flex items-center gap-2 text-xs min-h-[2rem]"
+                             :class="conteo.variante ? 'text-primary' : 'text-texto-disabled'">
+                            {{ miniatura(src='conteo.variante?.foto_url', tamano='w-8 h-8') }}
+                            <span x-text="conteo.variante
+                                          ? conteo.variante.producto.descripcion
+                                          : 'Todavía sin identificar'"></span>
+                        </div>
                     </div>
 
                     <div class="flex flex-col gap-1">
@@ -270,6 +273,7 @@
                        x-show="conteo.auditoria?.items.length" x-cloak>
                     <thead>
                         <tr class="bg-surface-alt">
+                            <th class="w-10"></th>
                             <th class="px-4 py-3 text-left font-semibold text-texto-header">Código</th>
                             <th class="px-4 py-3 text-left font-semibold text-texto-header hidden sm:table-cell">Descripción</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Sistema</th>
@@ -280,8 +284,11 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="item in (conteo.auditoria?.items || [])" :key="item.id">
+                        <template x-for="item in (conteo.auditoria?.items || []).slice().reverse()" :key="item.id">
                             <tr class="border-t border-borde">
+                                <td class="px-2 py-3 text-center">
+                                    {{ miniatura(src='item.variante.foto_url', tamano='w-7 h-7') }}
+                                </td>
                                 <td class="px-4 py-3 font-mono"
                                     x-text="item.variante.codigo_completo + (item.variante.verificador || '')"></td>
                                 <td class="px-4 py-3 hidden sm:table-cell" x-text="item.variante.producto.descripcion"></td>
@@ -434,31 +441,6 @@
                     </button>
                 </div>
 
-                {# Aprobar y rechazar solo aparecen en el estado en el que
-                   tienen sentido. Quien no tenga el permiso recibe 403 de la
-                   API: esconder el botón es comodidad, no la barrera. #}
-                {% if puede_aprobar %}
-                <div x-show="detalle.auditoria?.estado === 'pendiente_aprobacion'" x-cloak
-                     class="mt-6 p-4 rounded-input border border-borde">
-                    <p class="text-sm text-texto-muted">
-                        Al aprobar, el stock queda igual a lo contado: se genera un ajuste
-                        por cada código con diferencia. Al rechazar no cambia nada, y el
-                        conteo queda registrado igual.
-                    </p>
-                    <div class="flex flex-wrap justify-end gap-3 mt-4">
-                        <button type="button" @click="confirmarRechazo()"
-                                class="h-boton px-5 rounded-input border border-danger
-                                       text-danger text-base font-medium hover:bg-danger/10">
-                            Rechazar
-                        </button>
-                        <button type="button" @click="confirmarAprobacion()"
-                                class="h-boton px-8 rounded-input bg-primary text-white text-base
-                                       font-medium hover:bg-primary-hover">
-                            Aprobar y ajustar
-                        </button>
-                    </div>
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>

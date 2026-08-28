@@ -20,9 +20,7 @@
    vista, y el PDF es una vista más. #}
 {% set ETIQUETAS = {
     'en_curso': 'En curso',
-    'pendiente_aprobacion': 'Pendiente de aprobación',
-    'aprobada': 'Aprobada',
-    'rechazada': 'Rechazada',
+    'cerrada': 'Cerrada',
 } %}
 {% set items = auditoria.items | sort(attribute='variante.codigo_completo') %}
 {% set con_diferencia = items | rejectattr('diferencia', 'equalto', 0) | list %}
@@ -69,13 +67,10 @@
             <div class="codigo">{{ auditoria.fecha_inicio.strftime('%d/%m/%Y %H:%M') }}</div>
         </div>
         <div>
-            {# Quién aprobó es el dato que convierte el conteo en un ajuste
-               de stock: sin firma, la planilla es solo una observación. #}
-            <div class="rotulo">Aprobó</div>
-            <div class="valor">{{ auditoria.aprobador.nombre if auditoria.aprobador else '—' }}</div>
-            <div class="codigo">
-                {{ auditoria.fecha_aprobacion.strftime('%d/%m/%Y %H:%M')
-                   if auditoria.fecha_aprobacion else '' }}
+            <div class="rotulo">Cerrada</div>
+            <div class="valor">
+                {{ auditoria.fecha_fin.strftime('%d/%m/%Y %H:%M')
+                   if auditoria.fecha_fin else '—' }}
             </div>
         </div>
     </div>

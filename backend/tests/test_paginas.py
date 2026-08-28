@@ -2368,19 +2368,17 @@ def test_el_remito_muestra_cada_accion_en_su_estado(client, crear_usuario):
     assert 'x-show="r.pdf_url"' in html                # reimprimir
 
 
-def test_la_auditoria_separa_contar_de_aprobar(client, crear_usuario):
+def test_la_auditoria_tiene_conteo_y_cierre(client, crear_usuario):
     """
-    El que cuenta no valida su propio conteo: aprobar y rechazar aparecen
-    recién con el conteo cerrado, y la API los pide con otro permiso.
+    El conteo solo se puede hacer mientras la auditoría está en curso.
+    Al finalizar se cierra y se ajusta el stock.
     """
     _sesion_maestra(client, crear_usuario)
     html = client.get("/auditorias-inventario").text
 
     assert "a.estado === 'en_curso'" in html, "contar tiene que ser solo del conteo abierto"
-    assert "detalle.auditoria?.estado === 'pendiente_aprobacion'" in html
-    assert "confirmarAprobacion()" in html and "confirmarRechazo()" in html
-    # Las dos decisiones piden confirmación: mueven stock o lo dejan quieto,
-    # y las dos son difíciles de deshacer.
+    assert "confirmarFinalizar()" in html
+    # Finalizar pide confirmación porque mueve stock.
     assert "modal_confirmacion" not in html, "el macro se renderiza, no se nombra"
     assert 'x-show="confirmacion.abierta"' in html
 
@@ -2440,7 +2438,6 @@ def test_las_pantallas_no_ofrecen_acciones_sin_permiso(
 
     auditorias = client.get("/auditorias-inventario").text
     assert "Iniciar conteo" in auditorias, "sí puede contar su local"
-    assert "confirmarAprobacion()" not in auditorias, "aprobar es del Dueño"
 
 
 def test_las_pantallas_de_stock_no_dependen_del_permiso_de_configuracion(

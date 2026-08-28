@@ -1,17 +1,12 @@
 """
 Auditoría de inventario: contar la mercadería y corregir lo que no coincide.
 
-El flujo separa a propósito quién cuenta de quién corrige:
+Flujo simplificado:
 
-  1. `en_curso`               — se abre el conteo en una ubicación.
-  2. se registran los ítems   — por cada código, cuántas unidades hay.
-  3. `pendiente_aprobacion`   — se cierra el conteo. NADA cambió todavía.
-  4. `aprobada` / `rechazada` — el Dueño decide. Solo al aprobar se generan
-     los movimientos que ajustan el stock.
-
-Que el conteo no ajuste solo es el punto: una diferencia de inventario puede
-ser un error de conteo, un robo o una venta mal registrada, y las tres se
-arreglan distinto. Ajustar automáticamente taparía las tres por igual.
+  1. `en_curso` — se abre el conteo en una ubicación.
+  2. se registran los ítems — por cada código, cuántas unidades hay.
+  3. `cerrada` — se finaliza el conteo. Se generan los movimientos que ajustan
+     el stock a lo contado.
 
 Es distinta de la tabla `auditoria` del Principio 3: acá se audita la
 mercadería, allá las acciones de los usuarios. Cada paso de este flujo, además,
@@ -87,15 +82,13 @@ def iniciar(
     abierta = db.execute(
         select(AuditoriaInventario.id).where(
             AuditoriaInventario.punto_de_venta_id == punto_de_venta_id,
-            AuditoriaInventario.estado.in_(
-                (EstadoAuditoria.EN_CURSO, EstadoAuditoria.PENDIENTE_APROBACION)
-            ),
+            AuditoriaInventario.estado == EstadoAuditoria.EN_CURSO,
         )
     ).scalar_one_or_none()
     if abierta:
         raise ReglaDeNegocio(
             f"Ya hay una auditoría sin cerrar en esa ubicación (#{abierta}): "
-            "hay que terminarla o rechazarla antes de abrir otra"
+            "hay que cerrarla antes de abrir otra"
         )
 
     auditoria = AuditoriaInventario(
@@ -262,7 +255,11 @@ def finalizar(
     ip_origen: str | None = None,
 ) -> AuditoriaInventario:
     """
-    Cierra el conteo y lo manda a aprobación. No toca el stock.
+    Cierra el conteo y ajusta el stock a lo contado.
+
+    Un movimiento `ajuste_auditoria` por cada ítem con diferencia distinta de
+    cero. Los que coinciden no generan nada: no hubo nada que corregir, y una
+    fila por cada código contado llenaría el historial de ruido.
     """
     auditoria = obtener(db, auditoria_id)
     scope.exigir(auditoria.punto_de_venta_id)
@@ -273,49 +270,6 @@ def finalizar(
         )
     if not auditoria.items:
         raise ReglaDeNegocio("No se contó ningún código: la auditoría está vacía")
-
-    antes = snapshot(auditoria)
-    auditoria.estado = EstadoAuditoria.PENDIENTE_APROBACION
-    auditoria.fecha_fin = ahora_db()
-    auditoria.updated_at = ahora_db()
-    db.flush()
-
-    registrar_auditoria(
-        db,
-        usuario_id=autor.id,
-        accion="auditoria_inventario.finalizar",
-        entidad="auditorias_inventario",
-        entidad_id=auditoria.id,
-        estado_anterior=antes,
-        estado_nuevo=auditoria,
-        ip_origen=ip_origen,
-    )
-    return obtener(db, auditoria_id)
-
-
-def aprobar(
-    db: Session,
-    autor: Usuario,
-    auditoria_id: int,
-    ip_origen: str | None = None,
-) -> AuditoriaInventario:
-    """
-    El Dueño acepta el conteo: se ajusta el stock a lo que se contó.
-
-    Un movimiento `ajuste_auditoria` por cada ítem con diferencia distinta de
-    cero. Los que coinciden no generan nada: no hubo nada que corregir, y una
-    fila por cada código contado llenaría el historial de ruido.
-
-    Sin `scope`: aprobar es del Dueño, que no está limitado por dispositivo.
-    Es justamente el control que separa a quien cuenta de quien corrige.
-    """
-    auditoria = obtener(db, auditoria_id)
-
-    if auditoria.estado != EstadoAuditoria.PENDIENTE_APROBACION:
-        raise ReglaDeNegocio(
-            f"La auditoría está {auditoria.estado.value}: solo se aprueba una "
-            "que esté pendiente de aprobación"
-        )
 
     antes = snapshot(auditoria)
 
@@ -345,62 +299,15 @@ def aprobar(
             **puntas,
         )
 
-    auditoria.estado = EstadoAuditoria.APROBADA
-    auditoria.aprobada_por = autor.id
-    auditoria.fecha_aprobacion = ahora_db()
+    auditoria.estado = EstadoAuditoria.CERRADA
+    auditoria.fecha_fin = ahora_db()
     auditoria.updated_at = ahora_db()
     db.flush()
 
     registrar_auditoria(
         db,
         usuario_id=autor.id,
-        accion="auditoria_inventario.aprobar",
-        entidad="auditorias_inventario",
-        entidad_id=auditoria.id,
-        estado_anterior=antes,
-        estado_nuevo=auditoria,
-        ip_origen=ip_origen,
-    )
-    return obtener(db, auditoria_id)
-
-
-def rechazar(
-    db: Session,
-    autor: Usuario,
-    auditoria_id: int,
-    notas: str | None = None,
-    ip_origen: str | None = None,
-) -> AuditoriaInventario:
-    """
-    El Dueño no acepta el conteo: el stock queda como estaba.
-
-    El conteo NO se borra: queda registrado con sus diferencias y el motivo
-    del rechazo. Es lo que permite ver después que alguien contó mal, o que
-    se contó bien y el problema estaba en otra parte.
-    """
-    auditoria = obtener(db, auditoria_id)
-
-    if auditoria.estado != EstadoAuditoria.PENDIENTE_APROBACION:
-        raise ReglaDeNegocio(
-            f"La auditoría está {auditoria.estado.value}: solo se rechaza una "
-            "que esté pendiente de aprobación"
-        )
-
-    antes = snapshot(auditoria)
-    auditoria.estado = EstadoAuditoria.RECHAZADA
-    auditoria.aprobada_por = autor.id
-    auditoria.fecha_aprobacion = ahora_db()
-    if notas:
-        auditoria.notas = "\n".join(
-            filter(None, [auditoria.notas, normalizar_texto(notas)])
-        )
-    auditoria.updated_at = ahora_db()
-    db.flush()
-
-    registrar_auditoria(
-        db,
-        usuario_id=autor.id,
-        accion="auditoria_inventario.rechazar",
+        accion="auditoria_inventario.cerrar",
         entidad="auditorias_inventario",
         entidad_id=auditoria.id,
         estado_anterior=antes,

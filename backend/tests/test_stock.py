@@ -559,7 +559,7 @@ def test_la_diferencia_la_calcula_el_motor(db, autor, con_stock, cd):
     assert item.diferencia == -5
 
 
-def test_aprobar_ajusta_el_stock_a_lo_contado(db, autor, con_stock, cd):
+def test_finalizar_ajusta_el_stock_a_lo_contado(db, autor, con_stock, cd):
     """
     Criterio de aceptación: cada variante con diferencia distinta de cero
     genera un movimiento `ajuste_auditoria` y el stock se actualiza.
@@ -570,7 +570,6 @@ def test_aprobar_ajusta_el_stock_a_lo_contado(db, autor, con_stock, cd):
         [{"variante_id": con_stock.id, "cantidad_contada": 95}],
     )
     servicio_auditoria.finalizar(db, autor, LIBRE, auditoria.id)
-    servicio_auditoria.aprobar(db, autor, auditoria.id)
     db.flush()
 
     assert servicio.cantidad_en(db, con_stock.id, cd.id) == 95
@@ -591,31 +590,9 @@ def test_contar_de_mas_suma_al_stock(db, autor, con_stock, cd):
         [{"variante_id": con_stock.id, "cantidad_contada": 104}],
     )
     servicio_auditoria.finalizar(db, autor, LIBRE, auditoria.id)
-    servicio_auditoria.aprobar(db, autor, auditoria.id)
     db.flush()
 
     assert servicio.cantidad_en(db, con_stock.id, cd.id) == 104
-
-
-def test_rechazar_no_cambia_el_stock(db, autor, con_stock, cd):
-    """Criterio de aceptación: al rechazar, el stock no cambia."""
-    auditoria = servicio_auditoria.iniciar(db, autor, LIBRE, punto_de_venta_id=cd.id)
-    servicio_auditoria.registrar_items(
-        db, autor, LIBRE, auditoria.id,
-        [{"variante_id": con_stock.id, "cantidad_contada": 40}],
-    )
-    servicio_auditoria.finalizar(db, autor, LIBRE, auditoria.id)
-    servicio_auditoria.rechazar(db, autor, auditoria.id, notas="Se contó mal el estante")
-    db.flush()
-
-    assert servicio.cantidad_en(db, con_stock.id, cd.id) == 100
-    assert db.query(MovimientoStock).filter_by(
-        tipo=TipoMovimiento.AJUSTE_AUDITORIA
-    ).count() == 0
-    # El conteo NO se borra: queda con su diferencia y el motivo del rechazo.
-    auditoria = servicio_auditoria.obtener(db, auditoria.id)
-    assert auditoria.items[0].diferencia == -60
-    assert "Se contó mal" in auditoria.notas
 
 
 def test_un_conteo_que_coincide_no_genera_ningun_ajuste(db, autor, con_stock, cd):
@@ -626,7 +603,6 @@ def test_un_conteo_que_coincide_no_genera_ningun_ajuste(db, autor, con_stock, cd
         [{"variante_id": con_stock.id, "cantidad_contada": 100}],
     )
     servicio_auditoria.finalizar(db, autor, LIBRE, auditoria.id)
-    servicio_auditoria.aprobar(db, autor, auditoria.id)
 
     assert db.query(MovimientoStock).filter_by(
         tipo=TipoMovimiento.AJUSTE_AUDITORIA
@@ -692,17 +668,6 @@ def test_recontar_un_codigo_sobreescribe(db, autor, con_stock, cd):
     auditoria = servicio_auditoria.obtener(db, auditoria.id)
     assert len(auditoria.items) == 1
     assert auditoria.items[0].cantidad_contada == 97
-
-
-def test_no_se_aprueba_una_auditoria_que_no_esta_cerrada(db, autor, con_stock, cd):
-    auditoria = servicio_auditoria.iniciar(db, autor, LIBRE, punto_de_venta_id=cd.id)
-    servicio_auditoria.registrar_items(
-        db, autor, LIBRE, auditoria.id,
-        [{"variante_id": con_stock.id, "cantidad_contada": 1}],
-    )
-
-    with pytest.raises(ReglaDeNegocio, match="solo se aprueba"):
-        servicio_auditoria.aprobar(db, autor, auditoria.id)
 
 
 # ============================================================================
