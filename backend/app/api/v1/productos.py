@@ -21,6 +21,7 @@ from app.core.utils import ip_de_request
 from app.models.proveedor import Proveedor
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.productos import (
+    EtiquetasRequest,
     FotoResponse,
     PrecioPreview,
     ProductoCrear,
@@ -493,3 +494,41 @@ def eliminar_foto(
         raise _404(exc) from exc
 
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Etiquetas de código de barras
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/etiquetas",
+    response_class=Response,
+    summary="PDF de etiquetas de código de barras",
+)
+def etiquetas_pdf(
+    payload: EtiquetasRequest,
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.PRODUCTOS, "ver")),
+):
+    """
+    Genera un PDF con etiquetas para la impresora Zebra GC420t. El PDF se
+    abre en el navegador y el usuario lo imprime desde el diálogo del SO,
+    eligiendo la impresora que tenga cargado el tipo de etiqueta pedido.
+    """
+    from app.reports.etiquetas_pdf import generar_etiquetas
+
+    try:
+        pdf = generar_etiquetas(
+            db,
+            items=[(i.variante_id, i.cantidad) for i in payload.items],
+            tipo=payload.tipo,
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="etiquetas.pdf"'},
+    )

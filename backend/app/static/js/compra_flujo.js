@@ -58,6 +58,9 @@ function flujoCompra({ compraId = null, estadoInicial = 'borrador' } = {}) {
         /* --- Trigger para el form compartido de producto nuevo --- */
         abrirFormProducto: false,
 
+        /* --- Estado post-cierre (para imprimir etiquetas) --- */
+        compraCerradaExitosamente: false,
+
         /* --- Variantes (al crear producto con variantes) --- */
         productoParaVariantes: null,
         variante: {
@@ -118,6 +121,8 @@ function flujoCompra({ compraId = null, estadoInicial = 'borrador' } = {}) {
                 this.items = data.items || [];
                 this.estado = data.estado || 'borrador';
                 this.compraIniciada = true;
+                // Mostrar panel de etiquetas si la compra ya estaba cerrada.
+                if (this.estado === 'cerrada') this.compraCerradaExitosamente = true;
                 this.ultimoGuardado = new Date(data.updated_at).toLocaleTimeString('es-AR', {
                     hour: '2-digit', minute: '2-digit',
                 });
@@ -363,7 +368,9 @@ function flujoCompra({ compraId = null, estadoInicial = 'borrador' } = {}) {
                     throw new Error(err.detail || 'No se pudo cerrar la compra');
                 }
                 window.toast('Compra cerrada correctamente', 'exito');
-                window.location = '/compras';
+                // Quedarse en la página para ofrecer imprimir etiquetas.
+                this.estado = 'cerrada';
+                this.compraCerradaExitosamente = true;
             } catch (e) {
                 window.toast(e.message, 'error');
             } finally {
@@ -395,6 +402,33 @@ function flujoCompra({ compraId = null, estadoInicial = 'borrador' } = {}) {
                 }
             };
             this.confirmacion.abierta = true;
+        },
+
+        /* ================================================================
+           Etiquetas (imprimir después de cerrar la compra)
+           ================================================================ */
+
+        async imprimirEtiquetasCompra(tipo) {
+            try {
+                const itemsPayload = this.items.map((i) => ({
+                    variante_id: i.variante?.id || i.variante_id,
+                    cantidad: Number(i.cantidad) || 1,
+                }));
+                const resp = await fetch('/api/v1/productos/etiquetas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ tipo, items: itemsPayload }),
+                });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Error al generar etiquetas');
+                }
+                const blob = await resp.blob();
+                window.open(URL.createObjectURL(blob), '_blank');
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
         },
 
         /* ================================================================

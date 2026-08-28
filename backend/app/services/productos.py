@@ -1015,6 +1015,55 @@ def cambiar_estado_producto(
 # ============================================================================
 
 
+def barcode_svg_para_etiqueta(db: Session, variante_id: int) -> tuple[str, str]:
+    """
+    SVG compacto + texto del código, para incrustar en el PDF de etiquetas.
+
+    El SVG se genera sin texto (lo pone la plantilla HTML con tipografía
+    controlada) y con módulos más finos para que quepa en 3,5 cm de ancho.
+
+    WeasyPrint respeta los atributos ``width``/``height`` del SVG en lugar del
+    CSS, así que se fuerzan a dimensiones fijas que dejan espacio para el texto
+    del código debajo (5.5mm de barcode + ~3.5mm de texto = ~9mm en 1cm).
+    """
+    import io
+    import re
+
+    from barcode import Code128
+    from barcode.writer import SVGWriter
+
+    variante = obtener_variante(db, variante_id)
+    codigo = variante.codigo_con_verificador
+
+    buffer = io.BytesIO()
+    Code128(codigo, writer=SVGWriter()).write(
+        buffer,
+        options={
+            "module_width": 0.2,
+            "module_height": 4.0,
+            "write_text": False,
+            "quiet_zone": 1.0,
+        },
+    )
+    svg = buffer.getvalue().decode("utf-8")
+    # Quitar la declaración XML para incrustar directo en HTML.
+    svg = svg.replace('<?xml version="1.0" encoding="UTF-8"?>\n', "")
+
+    # Quitar DOCTYPE (WeasyPrint no lo necesita y puede causar problemas).
+    svg = re.sub(r"<!DOCTYPE[^>]+>", "", svg)
+
+    # Forzar dimensiones del SVG para que ocupe ~50% del ancho de la
+    # etiqueta (33mm) y deje espacio al código de texto debajo.
+    # WeasyPrint respeta los atributos width/height del tag SVG, no el CSS.
+    svg = re.sub(
+        r'width="[\d.]+mm"\s+height="[\d.]+mm"',
+        'width="16mm" height="4.5mm"',
+        svg,
+        count=1,
+    )
+    return svg, codigo
+
+
 def barcode_svg(db: Session, variante_id: int) -> str:
     """
     Code128 de la variante, en SVG.

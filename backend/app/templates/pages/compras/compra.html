@@ -211,6 +211,39 @@
                     </button>
                 </div>
             </template>
+
+            {# --- Post-cierre: imprimir etiquetas --- #}
+            <div x-show="compraCerradaExitosamente" x-cloak
+                 class="mt-8 p-6 bg-success/10 border border-success/30 rounded-[10px]">
+                <h3 class="text-lg font-black text-welcome mb-2">
+                    {{ icono('imprimir', clases='w-5 h-5 inline -mt-0.5 text-welcome') }}
+                    Imprimir etiquetas
+                </h3>
+                <p class="text-sm text-texto-muted mb-4">
+                    <span class="font-semibold text-texto" x-text="items.length"></span>
+                    producto(s) en
+                    <span class="font-semibold text-texto" x-text="nombrePunto()"></span>.
+                </p>
+                <div class="flex flex-wrap gap-3">
+                    <button type="button" @click="imprimirEtiquetasCompra('rectangular')"
+                            class="h-boton px-5 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover inline-flex items-center gap-2">
+                        {{ icono('imprimir', clases='w-4 h-4') }} Etiquetas rectangulares
+                    </button>
+                    <button type="button" @click="imprimirEtiquetasCompra('colita')"
+                            class="h-boton px-5 rounded-input border-2 border-primary text-primary
+                                   text-base font-medium hover:bg-primary hover:text-white
+                                   inline-flex items-center gap-2">
+                        {{ icono('imprimir', clases='w-4 h-4') }} Etiquetas con colita
+                    </button>
+                    <a href="/compras"
+                       class="h-boton px-5 rounded-input border border-borde text-base
+                              text-texto-muted hover:border-primary hover:text-primary
+                              inline-flex items-center">
+                        Ir al listado
+                    </a>
+                </div>
+            </div>
         </div>
     </template>
 

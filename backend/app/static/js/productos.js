@@ -497,6 +497,28 @@ function abmProductos() {
             }
         },
 
+        async imprimirEtiquetas(varianteId, cantidad, tipo) {
+            try {
+                const resp = await fetch('/api/v1/productos/etiquetas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        tipo,
+                        items: [{ variante_id: varianteId, cantidad: parseInt(cantidad) || 1 }],
+                    }),
+                });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Error al generar etiquetas');
+                }
+                const blob = await resp.blob();
+                window.open(URL.createObjectURL(blob), '_blank');
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
+
         async subirFoto(evento) {
             const archivo = evento.target.files?.[0];
             if (!archivo) return;

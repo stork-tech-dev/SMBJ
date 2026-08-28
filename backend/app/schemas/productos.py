@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 _TEMPORADA = "^(atemporal|otoño_invierno|primavera_verano)$"
+_TIPO_ETIQUETA = "^(rectangular|colita)$"
 
 
 class ProductoCrear(BaseModel):
@@ -287,3 +288,19 @@ class VarianteListadoResponse(BaseModel):
     tiene_sku_proveedor_propio: bool
     foto_url: str | None = None
     producto: ProductoResumen
+
+
+# ---------------------------------------------------------------------------
+# Etiquetas de código de barras
+# ---------------------------------------------------------------------------
+
+class EtiquetaItem(BaseModel):
+    variante_id: int
+    cantidad: int = Field(gt=0)
+
+
+class EtiquetasRequest(BaseModel):
+    """Solicitud de PDF de etiquetas para la impresora Zebra."""
+
+    tipo: str = Field(pattern=_TIPO_ETIQUETA)
+    items: list[EtiquetaItem] = Field(min_length=1)
