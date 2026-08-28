@@ -18,6 +18,8 @@ function abmStock({ puntoFijo = null } = {}) {
     return {
         filas: [],
         total: 0,
+        pagina: 1,
+        tamano: 10,
         cargando: false,
 
         // Catálogos de los desplegables.
@@ -92,6 +94,8 @@ function abmStock({ puntoFijo = null } = {}) {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
 
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
                 const resp = await fetch('/api/v1/stock?' + params, {
                     credentials: 'same-origin',
                 });

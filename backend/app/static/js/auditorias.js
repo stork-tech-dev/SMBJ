@@ -22,6 +22,8 @@ function abmAuditorias({ puntoFijo = null } = {}) {
 
         auditorias: [],
         total: 0,
+        pagina: 1,
+        tamano: 10,
         cargando: false,
         puntos: [],
         categorias: [],
@@ -111,6 +113,8 @@ function abmAuditorias({ puntoFijo = null } = {}) {
                 for (const [clave, valor] of Object.entries(this.filtros)) {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
                 const resp = await fetch('/api/v1/auditorias-inventario?' + params, {
                     credentials: 'same-origin',
                 });

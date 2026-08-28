@@ -6,6 +6,7 @@
 {% from "components/combobox.html" import combobox %}
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/paginacion.html" import paginacion %}
 
 {% block contenido %}
 
@@ -60,7 +61,7 @@
                         etiqueta='Proveedor', label_oculto=true,
                         placeholder='Proveedor',
                         vacio='Todos',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -114,6 +115,7 @@
             </tbody>
         </table>
     </div>
+    {{ paginacion() }}
     </div>
 
     {{ modal_confirmacion() }}

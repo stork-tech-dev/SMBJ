@@ -5,6 +5,8 @@ function abmCompras() {
     return {
         filas: [],
         total: 0,
+        pagina: 1,
+        tamano: 10,
         cargando: false,
         borrador: null,
         proveedores: [],
@@ -27,6 +29,8 @@ function abmCompras() {
                 // Listado de cerradas.
                 const params = new URLSearchParams();
                 if (this.filtros.proveedor_id) params.set('proveedor_id', this.filtros.proveedor_id);
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
                 const rl = await fetch(`/api/v1/compras?${params}`, { credentials: 'same-origin' });
                 if (rl.ok) {
                     const data = await rl.json();

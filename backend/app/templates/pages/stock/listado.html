@@ -6,6 +6,7 @@
 {% from "components/combobox.html" import combobox %}
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/paginacion.html" import paginacion %}
 
 {% block contenido %}
 
@@ -47,7 +48,7 @@
     <div class="flex flex-wrap items-center gap-4 mt-8">
         <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
         <input id="f-texto" type="text" x-model="filtros.busqueda"
-               @input.debounce.400ms="cargar()" placeholder="Código, SKU o descripción"
+               @input.debounce.400ms="pagina = 1; cargar()" placeholder="Código, SKU o descripción"
                class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
                       border-2 border-borde rounded-input text-texto
                       placeholder:text-texto-disabled focus:outline-none focus:border-primary">
@@ -61,7 +62,7 @@
                         etiqueta='Ubicación', label_oculto=true,
                         placeholder='Ubicación',
                         vacio='Todas las ubicaciones',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -75,7 +76,7 @@
                         etiqueta='Categoría', label_oculto=true,
                         placeholder='Categoría',
                         vacio='Todas las categorías',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -88,7 +89,7 @@
                         etiqueta='Proveedor', label_oculto=true,
                         placeholder='Proveedor',
                         vacio='Todos los proveedores',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -114,7 +115,7 @@
                     aria-labelledby="bajo-minimo-label"
                     :aria-checked="filtros.solo_bajo_minimo === 'true' ? 'true' : 'false'"
                     @click="filtros.solo_bajo_minimo =
-                            filtros.solo_bajo_minimo === 'true' ? '' : 'true'; cargar()"
+                            filtros.solo_bajo_minimo === 'true' ? '' : 'true'; pagina = 1; cargar()"
                     class="inline-flex items-center min-h-toque focus:outline-none
                            focus-visible:ring-2 focus-visible:ring-primary rounded-input">
                 <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
@@ -209,6 +210,7 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
     {# El modal de "Ingreso de mercadería" se eliminó: esa funcionalidad

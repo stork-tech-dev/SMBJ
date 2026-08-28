@@ -7,6 +7,7 @@
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/miniatura.html" import miniatura %}
+{% from "components/paginacion.html" import paginacion %}
 
 {% block contenido %}
 
@@ -43,7 +44,7 @@
                         etiqueta='Estado', label_oculto=true,
                         placeholder='Estado',
                         vacio='Todos los estados',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -57,7 +58,7 @@
                         etiqueta='Origen', label_oculto=true,
                         placeholder='Origen',
                         vacio='Cualquier origen',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -70,7 +71,7 @@
                         etiqueta='Destino', label_oculto=true,
                         placeholder='Destino',
                         vacio='Cualquier destino',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -162,6 +163,7 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
     {% if puede_remitir %}

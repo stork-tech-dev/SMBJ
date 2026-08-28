@@ -37,6 +37,9 @@ function abmProductos() {
             activo: 'true',
         },
 
+        pagina: 1,
+        tamano: 10,
+
         // Filtro "Stock 0": muestra solo variantes con stock = 0 y habilita
         // checkboxes para selección y desactivación masiva.
         stockCero: false,
@@ -167,6 +170,8 @@ function abmProductos() {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
                 if (this.stockCero) params.set('stock_cero', 'true');
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
 
                 // Listado a nivel VARIANTE: cada fila es lo que tiene stock y
                 // lo que dice una etiqueta. `/productos` sigue existiendo para
@@ -208,6 +213,7 @@ function abmProductos() {
                 activo: 'true',
             };
             this.stockCero = false;
+            this.pagina = 1;
             this.cargar();
         },
 

@@ -7,6 +7,7 @@
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
 {% from "components/switch_activos.html" import switch_activos %}
+{% from "components/paginacion.html" import paginacion %}
 
 {% block contenido %}
 <div x-data="abmUsuarios()" x-init="cargar(); cargarRoles(); cargarPuntosDeVenta()">
@@ -22,7 +23,7 @@
     {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
         <label class="sr-only" for="f-nombre">Nombre</label>
-        <input id="f-nombre" type="text" x-model="filtros.nombre" @input.debounce.400ms="cargar()"
+        <input id="f-nombre" type="text" x-model="filtros.nombre" @input.debounce.400ms="pagina = 1; cargar()"
                placeholder="Nombre"
                class="h-control w-full sm:w-[13.75rem] px-4 text-sm font-semibold bg-surface border-2 border-borde
                       rounded-input text-texto placeholder:text-texto-disabled
@@ -32,7 +33,7 @@
            dibuja el del diseño con el icono del sistema. #}
         <div class="relative w-full sm:w-auto">
             <label class="sr-only" for="f-rol">Rol</label>
-            <select id="f-rol" x-model="filtros.rol_id" @change="cargar()"
+            <select id="f-rol" x-model="filtros.rol_id" @change="pagina = 1; cargar()"
                     class="h-control w-full sm:w-[13.75rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2
                            border-borde rounded-input appearance-none focus:outline-none
                            focus:border-primary"
@@ -53,7 +54,7 @@
            backend (Principio 5). #}
         <div class="relative w-full sm:w-auto">
             <label class="sr-only" for="f-local">Punto de Venta</label>
-            <select id="f-local" x-model="filtros.local_asignado_id" @change="cargar()"
+            <select id="f-local" x-model="filtros.local_asignado_id" @change="pagina = 1; cargar()"
                     class="h-control w-full sm:w-[13.75rem] pl-4 pr-10 text-sm font-semibold bg-surface border-2
                            border-borde rounded-input appearance-none focus:outline-none
                            focus:border-primary"
@@ -72,7 +73,7 @@
             <span x-text="total"></span>
             <span x-text="total === 1 ? 'registro encontrado' : 'registros encontrados'"></span>
         </p>
-        {{ switch_activos('filtros.activo') }}
+        {{ switch_activos('filtros.activo', al_cambiar='pagina = 1; cargar()') }}
 
     </div>
 
@@ -144,6 +145,7 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
     {# ---------- Panel de detalle (botón "Ver") ---------- #}

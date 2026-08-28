@@ -649,7 +649,7 @@ def test_el_filtro_de_categoria_recarga_y_se_puede_limpiar(client, crear_usuario
 
     html = client.get("/productos").text
 
-    assert "filtros.categoria_id = v; cargar();" in html
+    assert "filtros.categoria_id = v; pagina = 1; cargar();" in html
     assert "vacio: 'Todas las categorías'" in html
 
     # Los del formulario NO la llevan: los cinco niveles de categoría, el
@@ -693,7 +693,7 @@ def test_el_filtro_de_proveedor_recarga_y_se_puede_limpiar(client, crear_usuario
 
     html = client.get("/productos").text
 
-    assert "filtros.proveedor_id = v; cargar();" in html
+    assert "filtros.proveedor_id = v; pagina = 1; cargar();" in html
     assert "vacio: 'Todos los proveedores'" in html
 
 
@@ -732,7 +732,7 @@ def test_la_temporada_ofrece_solo_las_tres_opciones(client, crear_usuario):
     for campo in ("f-temporada", "pf-temporada"):
         assert f'id="{campo}"' in html
     assert html.count("opciones: () => TEMPORADAS") == 2
-    assert "filtros.temporada = v; cargar();" in html
+    assert "filtros.temporada = v; pagina = 1; cargar();" in html
     assert "form.temporada = v;" in html
 
     # TEMPORADAS y el form están en producto_form.js (componente compartido).

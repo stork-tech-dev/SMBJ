@@ -8,6 +8,7 @@
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
 {% from "components/switch_estado.html" import switch_estado %}
+{% from "components/paginacion.html" import paginacion %}
 {% from "components/miniatura.html" import miniatura %}
 {% from "components/producto_form.html" import producto_form_modal %}
 
@@ -37,7 +38,7 @@
            el SKU encontraban nada. Lo desambigua `listar_variantes`. #}
         <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
         <input id="f-texto" type="text" x-model="filtros.busqueda"
-               @input.debounce.400ms="cargar()" placeholder="Código, SKU o descripción"
+               @input.debounce.400ms="pagina = 1; cargar()" placeholder="Código, SKU o descripción"
                class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
                       border-2 border-borde rounded-input text-texto
                       placeholder:text-texto-disabled focus:outline-none focus:border-primary">
@@ -52,7 +53,7 @@
                         etiqueta='Categoría', label_oculto=true,
                         placeholder='Categoría',
                         vacio='Todas las categorías',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -69,7 +70,7 @@
                         etiqueta='Proveedor', label_oculto=true,
                         placeholder='Proveedor',
                         vacio='Todos los proveedores',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -86,7 +87,7 @@
                         etiqueta='Temporada', label_oculto=true,
                         placeholder='Temporada',
                         vacio='Todas las temporadas',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -104,14 +105,14 @@
                haría que el número no coincidiera con lo que se ve. #}
             <span x-text="total === 1 ? 'código encontrado' : 'códigos encontrados'"></span>
         </p>
-        {{ switch_estado('filtros.activo') }}
+        {{ switch_estado('filtros.activo', al_cambiar='pagina = 1; cargar()') }}
 
         {# Switch "Stock 0": filtra variantes sin stock y habilita selección masiva #}
         <div class="flex items-center gap-3">
             <span class="text-sm font-semibold text-texto-muted">Stock 0</span>
             <button type="button" role="switch"
                     :aria-checked="stockCero ? 'true' : 'false'"
-                    @click="stockCero = !stockCero; cargar()"
+                    @click="stockCero = !stockCero; pagina = 1; cargar()"
                     class="inline-flex items-center min-h-toque focus:outline-none
                            focus-visible:ring-2 focus-visible:ring-primary rounded-input">
                 <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
@@ -284,6 +285,7 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
     {# ---------- Panel de detalle: variantes y códigos ---------- #}
