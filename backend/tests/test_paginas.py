@@ -2185,7 +2185,7 @@ def test_el_switch_solo_activos_esta_en_los_seis_listados(client, crear_usuario)
                 "/roles", "/motivos-baja"):
         html = client.get(url).text
         assert 'role="switch"' in html, f"{url} no tiene el switch"
-        assert "Solo activos" in html, f"{url} no tiene el label"
+        assert ("Solo activos" in html or "Estado" in html), f"{url} no tiene el label"
         # `ml-auto` es lo que lo alinea contra la derecha de la fila.
         assert "ml-auto" in html, f"{url}: el switch no está alineado a la derecha"
         # Y el select viejo de estado no puede haber quedado al lado.

@@ -7,7 +7,7 @@
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
-{% from "components/switch_activos.html" import switch_activos %}
+{% from "components/switch_estado.html" import switch_estado %}
 {% from "components/miniatura.html" import miniatura %}
 {% from "components/producto_form.html" import producto_form_modal %}
 
@@ -104,7 +104,34 @@
                haría que el número no coincidiera con lo que se ve. #}
             <span x-text="total === 1 ? 'código encontrado' : 'códigos encontrados'"></span>
         </p>
-        {{ switch_activos('filtros.activo') }}
+        {{ switch_estado('filtros.activo') }}
+
+        {# Switch "Stock 0": filtra variantes sin stock y habilita selección masiva #}
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold text-texto-muted">Stock 0</span>
+            <button type="button" role="switch"
+                    :aria-checked="stockCero ? 'true' : 'false'"
+                    @click="stockCero = !stockCero; cargar()"
+                    class="inline-flex items-center min-h-toque focus:outline-none
+                           focus-visible:ring-2 focus-visible:ring-primary rounded-input">
+                <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
+                      :class="stockCero ? 'bg-primary' : 'bg-borde'">
+                    <span class="inline-block w-4 h-4 rounded-full bg-white shadow transition-transform"
+                          :class="stockCero ? 'translate-x-6' : 'translate-x-1'"></span>
+                </span>
+            </button>
+            <span class="text-sm font-semibold text-texto w-6"
+                  x-text="stockCero ? 'Sí' : 'No'"></span>
+        </div>
+
+        {# Botón desactivar masivo: solo cuando hay selección #}
+        <button type="button" x-show="stockCero && seleccion.length > 0" x-cloak
+                @click="desactivarMasivo()"
+                class="h-boton px-5 rounded-input bg-danger text-white text-sm font-semibold
+                       hover:bg-danger/80 inline-flex items-center gap-2">
+            Desactivar seleccionados
+            (<span x-text="seleccion.length"></span>)
+        </button>
 
     </div>
 
@@ -121,7 +148,14 @@
                    en el detalle y sirve para buscar. #}
                 <thead>
                     <tr>
-                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
+                        <th x-show="stockCero" x-cloak class="pl-8 pr-2 pt-8 pb-4 w-10">
+                            <input type="checkbox"
+                                   :checked="todosSeleccionados()"
+                                   @change="toggleTodos()"
+                                   class="w-4 h-4 accent-primary cursor-pointer">
+                        </th>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled"
+                            :class="stockCero && '!pl-2'">Código</th>
                         <th class="pl-0 pr-4 pt-8 pb-4"><span class="sr-only">Foto</span></th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Descripción</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Categoría</th>
@@ -137,10 +171,19 @@
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!v.producto.activo && 'opacity-60'">
 
+                            {# Checkbox de selección (solo en modo Stock 0) #}
+                            <td x-show="stockCero" x-cloak class="pl-8 pr-2 py-3 align-middle w-10">
+                                <input type="checkbox"
+                                       :checked="estaSeleccionado(v.producto_id)"
+                                       @change="toggleSeleccion(v.producto_id)"
+                                       class="w-4 h-4 accent-primary cursor-pointer">
+                            </td>
+
                             {# Con el dígito verificador: es exactamente lo que
                                está impreso en la etiqueta, así que se puede
                                comparar carácter por carácter. #}
-                            <td class="px-8 py-3 align-middle whitespace-nowrap">
+                            <td class="py-3 align-middle whitespace-nowrap"
+                                :class="stockCero ? 'pl-2 pr-8' : 'px-8'">
                                 <span class="font-mono font-medium"
                                       x-text="v.codigo_completo + v.verificador"></span>
                                 <span x-show="!v.producto.activo" x-cloak

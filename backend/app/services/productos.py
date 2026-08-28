@@ -705,6 +705,7 @@ def listar_variantes(
     proveedor_id: int | None = None,
     temporada: str | None = None,
     activo: bool | None = None,
+    stock_cero: bool | None = None,
     precio_desde: Decimal | None = None,
     precio_hasta: Decimal | None = None,
     pagina: int = 1,
@@ -773,6 +774,18 @@ def listar_variantes(
         consulta = consulta.where(Producto.temporada == temporada)
     if activo is not None:
         consulta = consulta.where(Producto.activo.is_(activo))
+    if stock_cero:
+        # Variantes con stock total = 0, excluyendo productos con stock
+        # infinito (esos nunca están "sin stock").
+        from app.models.stock import Stock
+
+        subq_stock = (
+            select(func.coalesce(func.sum(Stock.cantidad), 0))
+            .where(Stock.variante_id == Variante.id)
+            .correlate(Variante)
+            .scalar_subquery()
+        )
+        consulta = consulta.where(subq_stock == 0, Producto.stock_infinito.is_(False))
 
     # Sobre el precio EFECTIVO: filtrar por `Producto.precio_venta` dejaría
     # afuera justamente a las variantes que tienen precio propio, que son

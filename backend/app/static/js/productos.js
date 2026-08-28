@@ -31,11 +31,16 @@ function abmProductos() {
         // descripción. Lo desambigua el backend (ver `listar_variantes`).
         filtros: {
             busqueda: '', categoria_id: '', proveedor_id: '', temporada: '',
-            // 'true' = solo activos, que es como arranca la pantalla.
-            // Vacío = todos. Es string y no booleano para que entre sin
+            // 'true' = activos, 'false' = inactivos. Siempre filtra por
+            // un estado; no existe "todos". Es string para que entre sin
             // cambios en el bucle que arma los query params.
             activo: 'true',
         },
+
+        // Filtro "Stock 0": muestra solo variantes con stock = 0 y habilita
+        // checkboxes para selección y desactivación masiva.
+        stockCero: false,
+        seleccion: [],
 
         // `varianteId` acota el panel al código desde el que se abrió; en
         // null muestra todas las variantes del producto.
@@ -155,11 +160,13 @@ function abmProductos() {
 
         async cargar() {
             this.cargando = true;
+            this.seleccion = [];
             try {
                 const params = new URLSearchParams();
                 for (const [clave, valor] of Object.entries(this.filtros)) {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
+                if (this.stockCero) params.set('stock_cero', 'true');
 
                 // Listado a nivel VARIANTE: cada fila es lo que tiene stock y
                 // lo que dice una etiqueta. `/productos` sigue existiendo para
@@ -195,11 +202,12 @@ function abmProductos() {
 
         limpiar() {
             // 'Limpiar filtros' vuelve al estado de entrada, que incluye
-            // el switch en Sí: limpiar no es 'mostrar todo'.
+            // el switch en Activo: limpiar no es 'mostrar todo'.
             this.filtros = {
                 busqueda: '', categoria_id: '', proveedor_id: '', temporada: '',
                 activo: 'true',
             };
+            this.stockCero = false;
             this.cargar();
         },
 
@@ -618,6 +626,80 @@ function abmProductos() {
             } catch (e) {
                 window.toast(e.message, 'error');
             }
+        },
+
+        /* --- Selección y desactivación masiva (modo Stock 0) --- */
+
+        toggleSeleccion(productoId) {
+            const idx = this.seleccion.indexOf(productoId);
+            if (idx >= 0) {
+                this.seleccion.splice(idx, 1);
+            } else {
+                this.seleccion.push(productoId);
+            }
+        },
+
+        estaSeleccionado(productoId) {
+            return this.seleccion.includes(productoId);
+        },
+
+        /** IDs de producto únicos en la tabla visible. */
+        _productosVisibles() {
+            const ids = new Set();
+            for (const v of this.variantes) ids.add(v.producto_id);
+            return [...ids];
+        },
+
+        toggleTodos() {
+            const todos = this._productosVisibles();
+            if (this.seleccion.length === todos.length) {
+                this.seleccion = [];
+            } else {
+                this.seleccion = todos;
+            }
+        },
+
+        todosSeleccionados() {
+            const todos = this._productosVisibles();
+            return todos.length > 0 && this.seleccion.length === todos.length;
+        },
+
+        desactivarMasivo() {
+            const n = this.seleccion.length;
+            if (!n) return;
+            this.confirmacion = {
+                abierta: true,
+                titulo: 'Desactivar productos',
+                mensaje: `¿Desactivar ${n} producto(s)? Dejan de aparecer para vender `
+                       + 'con todas sus variantes. No se borran: el stock y el historial '
+                       + 'se conservan y se pueden volver a activar.',
+                accion: () => this._ejecutarDesactivacionMasiva(),
+            };
+        },
+
+        async _ejecutarDesactivacionMasiva() {
+            this.confirmacion.abierta = false;
+            let ok = 0;
+            let errores = 0;
+            for (const id of this.seleccion) {
+                try {
+                    const resp = await fetch(`/api/v1/productos/${id}/estado`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ activo: false }),
+                    });
+                    if (resp.ok) ok++; else errores++;
+                } catch {
+                    errores++;
+                }
+            }
+            if (errores) {
+                window.toast(`${ok} desactivado(s), ${errores} con error`, 'error');
+            } else {
+                window.toast(`${ok} producto(s) desactivado(s)`, 'exito');
+            }
+            this.cargar();
         },
     };
 }
