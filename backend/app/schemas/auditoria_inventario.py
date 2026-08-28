@@ -24,6 +24,10 @@ class ItemsCargar(BaseModel):
     items: list[ItemContado] = Field(min_length=1)
 
 
+class ItemEditar(BaseModel):
+    cantidad_contada: int = Field(ge=0)
+
+
 class AuditoriaRechazar(BaseModel):
     """El motivo del rechazo queda con el conteo, no lo reemplaza."""
 

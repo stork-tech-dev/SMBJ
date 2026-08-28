@@ -271,24 +271,67 @@
                     <thead>
                         <tr class="bg-surface-alt">
                             <th class="px-4 py-3 text-left font-semibold text-texto-header">Código</th>
-                            <th class="px-4 py-3 text-left font-semibold text-texto-header">Descripción</th>
+                            <th class="px-4 py-3 text-left font-semibold text-texto-header hidden sm:table-cell">Descripción</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Sistema</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Contado</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Dif.</th>
+                            <th class="px-4 py-3 text-right font-semibold text-texto-header
+                                       w-[5.5rem]"></th>
                         </tr>
                     </thead>
                     <tbody>
                         <template x-for="item in (conteo.auditoria?.items || [])" :key="item.id">
                             <tr class="border-t border-borde">
                                 <td class="px-4 py-3 font-mono"
-                                    x-text="item.variante.codigo_completo + item.variante.verificador"></td>
-                                <td class="px-4 py-3" x-text="item.variante.producto.descripcion"></td>
+                                    x-text="item.variante.codigo_completo + (item.variante.verificador || '')"></td>
+                                <td class="px-4 py-3 hidden sm:table-cell" x-text="item.variante.producto.descripcion"></td>
                                 <td class="px-4 py-3 text-right text-texto-muted"
                                     x-text="item.cantidad_sistema"></td>
-                                <td class="px-4 py-3 text-right" x-text="item.cantidad_contada"></td>
+                                {# Celda contado: muestra el número o un input de edición #}
+                                <td class="px-4 py-3 text-right">
+                                    <span x-show="edicion.item_id !== item.id"
+                                          x-text="item.cantidad_contada"></span>
+                                    <input x-show="edicion.item_id === item.id" x-cloak
+                                           type="number" min="0" step="1"
+                                           x-model="edicion.cantidad"
+                                           @keydown.enter.prevent="guardarEdicion(item)"
+                                           @keydown.escape.prevent="cancelarEdicion()"
+                                           class="campo-linea w-20 text-right text-sm">
+                                </td>
                                 <td class="px-4 py-3 text-right font-medium"
                                     :class="item.diferencia && 'text-danger'"
                                     x-text="item.diferencia > 0 ? '+' + item.diferencia : item.diferencia"></td>
+                                <td class="px-4 py-3 text-right">
+                                    {# Modo lectura: lápiz y papelera #}
+                                    <div x-show="edicion.item_id !== item.id"
+                                         class="inline-flex items-center gap-2">
+                                        <button type="button" @click="editarItem(item)"
+                                                title="Editar cantidad"
+                                                class="text-texto-muted hover:text-primary">
+                                            {{ icono('lapiz', clases='w-4 h-4') }}
+                                        </button>
+                                        <button type="button" @click="eliminarItem(item)"
+                                                title="Eliminar del conteo"
+                                                class="text-texto-muted hover:text-danger">
+                                            {{ icono('papelera', clases='w-4 h-4') }}
+                                        </button>
+                                    </div>
+                                    {# Modo edición: guardar y cancelar #}
+                                    <div x-show="edicion.item_id === item.id" x-cloak
+                                         class="inline-flex items-center gap-2">
+                                        <button type="button" @click="guardarEdicion(item)"
+                                                :disabled="edicion.guardando"
+                                                title="Guardar"
+                                                class="text-success hover:text-success/80">
+                                            {{ icono('check', clases='w-4 h-4') }}
+                                        </button>
+                                        <button type="button" @click="cancelarEdicion()"
+                                                title="Cancelar"
+                                                class="text-texto-muted hover:text-danger">
+                                            {{ icono('cerrar', clases='w-4 h-4') }}
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         </template>
                     </tbody>
@@ -376,12 +419,18 @@
                 {# La planilla en papel: para firmarla o archivarla. Disponible
                    en cualquier estado —un conteo en curso también se imprime
                    para seguir contando sobre el papel—. #}
-                <div class="flex justify-end mt-6">
+                <div class="flex justify-end gap-3 mt-6">
                     <button type="button" @click="descargarPdf(detalle.auditoria)"
                             class="h-boton px-4 inline-flex items-center gap-2 rounded-input
                                    border border-borde text-base text-texto-muted
                                    hover:border-primary hover:text-primary">
                         {{ icono('remito', clases='w-4 h-4') }} Descargar PDF
+                    </button>
+                    <button type="button" @click="descargarXls(detalle.auditoria)"
+                            class="h-boton px-4 inline-flex items-center gap-2 rounded-input
+                                   border border-borde text-base text-texto-muted
+                                   hover:border-primary hover:text-primary">
+                        {{ icono('remito', clases='w-4 h-4') }} Descargar XLS
                     </button>
                 </div>
 

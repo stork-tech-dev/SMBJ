@@ -189,6 +189,71 @@ def registrar_items(
     return obtener(db, auditoria_id)
 
 
+def editar_item(
+    db: Session,
+    autor: Usuario,
+    scope: DeviceScope,
+    auditoria_id: int,
+    item_id: int,
+    cantidad_contada: int,
+    ip_origen: str | None = None,
+) -> AuditoriaInventario:
+    """Corrige la cantidad contada de un ítem ya registrado."""
+    auditoria = obtener(db, auditoria_id)
+    scope.exigir(auditoria.punto_de_venta_id)
+
+    if auditoria.estado != EstadoAuditoria.EN_CURSO:
+        raise ReglaDeNegocio(
+            f"La auditoría está {auditoria.estado.value}: solo se editan ítems "
+            "mientras el conteo está en curso"
+        )
+
+    if cantidad_contada < 0:
+        raise ReglaDeNegocio("La cantidad contada no puede ser negativa")
+
+    item = next((i for i in auditoria.items if i.id == item_id), None)
+    if item is None:
+        raise NoEncontrado("Ítem no encontrado en esta auditoría")
+
+    # Se refresca el sistema: si se corrige una hora después, la foto
+    # contra la que se compara es la de ahora.
+    item.cantidad_sistema = servicio_stock.cantidad_en(
+        db, item.variante_id, auditoria.punto_de_venta_id
+    )
+    item.cantidad_contada = cantidad_contada
+    auditoria.updated_at = ahora_db()
+    db.flush()
+    return obtener(db, auditoria_id)
+
+
+def eliminar_item(
+    db: Session,
+    autor: Usuario,
+    scope: DeviceScope,
+    auditoria_id: int,
+    item_id: int,
+    ip_origen: str | None = None,
+) -> AuditoriaInventario:
+    """Quita un ítem del conteo — por ejemplo, cargado por error."""
+    auditoria = obtener(db, auditoria_id)
+    scope.exigir(auditoria.punto_de_venta_id)
+
+    if auditoria.estado != EstadoAuditoria.EN_CURSO:
+        raise ReglaDeNegocio(
+            f"La auditoría está {auditoria.estado.value}: solo se eliminan ítems "
+            "mientras el conteo está en curso"
+        )
+
+    item = next((i for i in auditoria.items if i.id == item_id), None)
+    if item is None:
+        raise NoEncontrado("Ítem no encontrado en esta auditoría")
+
+    db.delete(item)
+    auditoria.updated_at = ahora_db()
+    db.flush()
+    return obtener(db, auditoria_id)
+
+
 def finalizar(
     db: Session,
     autor: Usuario,

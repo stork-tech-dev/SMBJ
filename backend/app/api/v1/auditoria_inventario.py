@@ -20,6 +20,7 @@ from app.schemas.auditoria_inventario import (
     AuditoriaRechazar,
     AuditoriaResponse,
     AuditoriaResumen,
+    ItemEditar,
     ItemsCargar,
 )
 from app.schemas.comunes import RespuestaPaginada
@@ -154,6 +155,36 @@ def pdf(
     )
 
 
+@router.get(
+    "/{auditoria_id}/xls",
+    response_class=Response,
+    summary="Descargar la planilla en Excel",
+)
+def xls(
+    auditoria_id: int,
+    db: Session = Depends(get_db),
+    scope: DeviceScope = Depends(get_device_scope),
+    _=Depends(requiere_permiso(Modulo.STOCK, "ver")),
+):
+    """Mismo criterio que el PDF: quien puede ver, puede exportar."""
+    from app.reports.auditoria_pdf import generar_xls_auditoria
+
+    try:
+        auditoria = servicio.obtener(db, auditoria_id)
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+
+    scope.exigir(auditoria.punto_de_venta_id)
+
+    return Response(
+        content=generar_xls_auditoria(auditoria),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="auditoria-{auditoria.id}.xlsx"'
+        },
+    )
+
+
 @router.post(
     "/{auditoria_id}/items",
     response_model=AuditoriaResponse,
@@ -178,6 +209,64 @@ def cargar_items(
             scope,
             auditoria_id,
             [i.model_dump() for i in datos.items],
+            ip_origen=ip_de_request(request),
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+
+    db.commit()
+    return auditoria
+
+
+@router.patch(
+    "/{auditoria_id}/items/{item_id}",
+    response_model=AuditoriaResponse,
+    summary="Corregir la cantidad contada de un ítem",
+)
+def editar_item(
+    auditoria_id: int,
+    item_id: int,
+    datos: ItemEditar,
+    request: Request,
+    db: Session = Depends(get_db),
+    scope: DeviceScope = Depends(get_device_scope),
+    autor=Depends(requiere_permiso(Modulo.STOCK, "crear", Recurso.STOCK_AUDITORIA)),
+):
+    """Corrige un ítem ya cargado sin tener que eliminarlo y recargarlo."""
+    try:
+        auditoria = servicio.editar_item(
+            db, autor, scope, auditoria_id, item_id,
+            cantidad_contada=datos.cantidad_contada,
+            ip_origen=ip_de_request(request),
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+
+    db.commit()
+    return auditoria
+
+
+@router.delete(
+    "/{auditoria_id}/items/{item_id}",
+    response_model=AuditoriaResponse,
+    summary="Eliminar un ítem del conteo",
+)
+def eliminar_item(
+    auditoria_id: int,
+    item_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    scope: DeviceScope = Depends(get_device_scope),
+    autor=Depends(requiere_permiso(Modulo.STOCK, "crear", Recurso.STOCK_AUDITORIA)),
+):
+    """Quita un ítem cargado por error. Solo mientras el conteo está en curso."""
+    try:
+        auditoria = servicio.eliminar_item(
+            db, autor, scope, auditoria_id, item_id,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:

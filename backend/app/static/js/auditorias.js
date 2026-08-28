@@ -44,6 +44,9 @@ function abmAuditorias({ puntoFijo = null } = {}) {
             codigo: '', variante: null, cantidad: 0,
         },
 
+        // Edición inline de un ítem ya cargado.
+        edicion: { item_id: null, cantidad: 0, guardando: false },
+
         detalle: { abierto: false, auditoria: null },
 
         /* --- Formato --- */
@@ -79,6 +82,10 @@ function abmAuditorias({ puntoFijo = null } = {}) {
          */
         descargarPdf(auditoria) {
             window.open(`/api/v1/auditorias-inventario/${auditoria.id}/pdf`, '_blank');
+        },
+
+        descargarXls(auditoria) {
+            window.open(`/api/v1/auditorias-inventario/${auditoria.id}/xls`, '_blank');
         },
 
         /** Cuántos códigos no coinciden: es lo único que va a generar ajuste. */
@@ -273,6 +280,71 @@ function abmAuditorias({ puntoFijo = null } = {}) {
                 window.toast(e.message, 'error');
             } finally {
                 c.guardando = false;
+            }
+        },
+
+        /* --- Edición y eliminación de ítems --- */
+
+        editarItem(item) {
+            this.edicion = { item_id: item.id, cantidad: item.cantidad_contada, guardando: false };
+        },
+
+        cancelarEdicion() {
+            this.edicion = { item_id: null, cantidad: 0, guardando: false };
+        },
+
+        async guardarEdicion(item) {
+            this.edicion.guardando = true;
+            try {
+                const resp = await fetch(
+                    `/api/v1/auditorias-inventario/${this.conteo.auditoria.id}/items/${item.id}`,
+                    {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ cantidad_contada: Number(this.edicion.cantidad) || 0 }),
+                    }
+                );
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo editar el ítem');
+                }
+                this.conteo.auditoria = await resp.json();
+                this.cancelarEdicion();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.edicion.guardando = false;
+            }
+        },
+
+        async eliminarItem(item) {
+            this.confirmacion = {
+                abierta: true,
+                titulo: 'Eliminar ítem del conteo',
+                mensaje:
+                    `Se va a quitar "${item.variante.codigo_completo}${item.variante.verificador || ''}" `
+                    + 'del conteo. Si fue un error de carga, eliminalo; si querés corregir '
+                    + 'la cantidad, usá el lápiz.',
+                accion: () => this._ejecutarEliminarItem(item),
+            };
+        },
+
+        async _ejecutarEliminarItem(item) {
+            this.confirmacion.abierta = false;
+            try {
+                const resp = await fetch(
+                    `/api/v1/auditorias-inventario/${this.conteo.auditoria.id}/items/${item.id}`,
+                    { method: 'DELETE', credentials: 'same-origin' }
+                );
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo eliminar el ítem');
+                }
+                this.conteo.auditoria = await resp.json();
+                window.toast('Ítem eliminado del conteo', 'exito');
+            } catch (e) {
+                window.toast(e.message, 'error');
             }
         },
 
