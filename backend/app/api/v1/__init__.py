@@ -19,6 +19,7 @@ from app.api.v1 import (
     configuracion_ventas,
     dispositivos,
     health,
+    notificaciones,
     productos,
     proveedores,
     puntos_de_venta,
@@ -26,6 +27,7 @@ from app.api.v1 import (
     roles,
     senas,
     stock,
+    turnos,
     usuarios,
     ventas,
 )
@@ -50,5 +52,7 @@ api_router.include_router(ventas.router)
 api_router.include_router(senas.router)
 api_router.include_router(configuracion_ventas.router)
 api_router.include_router(auditoria.router)
+api_router.include_router(turnos.router)
+api_router.include_router(notificaciones.router)
 
 __all__ = ["api_router"]
