@@ -591,7 +591,7 @@ def crear_plataforma(
 def editar_plataforma(
     pid: int,
     body: PlataformaGiftCardRequest,
-    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "crear")),
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "editar")),
     db: Session = Depends(get_db),
 ):
     """Editar nombre de una plataforma de gift card virtual."""
@@ -608,7 +608,7 @@ def editar_plataforma(
 @pgc_router.patch("/{pid}/estado", response_model=PlataformaGiftCardResponse)
 def cambiar_estado_plataforma(
     pid: int,
-    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "crear")),
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "editar")),
     db: Session = Depends(get_db),
 ):
     """Activa o desactiva una plataforma. No hay borrado: las ventas ya registradas apuntan a ella."""
