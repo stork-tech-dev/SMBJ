@@ -22,6 +22,7 @@ recursos.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -30,6 +31,7 @@ from app.core.utils import ip_de_request
 from app.models.categoria import Categoria
 from app.models.producto import Producto
 from app.models.promocion import Promocion, TipoAlcance, TipoPromocion
+from app.models.turno import PlataformaGiftCard
 from app.schemas.medios_pago import (
     EstadoCambio,
     MedioDePagoCrear,
@@ -46,6 +48,7 @@ from app.schemas.promociones import (
     PromocionEstado,
     PromocionResponse,
 )
+from app.schemas.turnos import PlataformaGiftCardRequest, PlataformaGiftCardResponse
 from app.schemas.ventas import (
     MotivoDescuentoCrear,
     MotivoDescuentoEditar,
@@ -548,3 +551,72 @@ def estado_promocion(
 
     db.commit()
     return _promocion_response(db, promocion)
+
+
+# ============================================================================
+# PLATAFORMAS GIFT CARD VIRTUAL
+# ============================================================================
+
+pgc_router = APIRouter(prefix="/configuracion/plataformas-gift-card", tags=["configuracion"])
+
+
+@pgc_router.get("", response_model=list[PlataformaGiftCardResponse])
+def listar_plataformas(
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "ver")),
+    db: Session = Depends(get_db),
+):
+    """Catálogo de plataformas de gift cards virtuales (ej: Naranja X, Mercado Pago)."""
+    filas = db.execute(
+        select(PlataformaGiftCard).order_by(PlataformaGiftCard.nombre)
+    ).scalars().all()
+    return [PlataformaGiftCardResponse(id=p.id, nombre=p.nombre, activo=p.activo) for p in filas]
+
+
+@pgc_router.post("", response_model=PlataformaGiftCardResponse, status_code=201)
+def crear_plataforma(
+    body: PlataformaGiftCardRequest,
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "crear")),
+    db: Session = Depends(get_db),
+):
+    """Alta de plataforma de gift card virtual."""
+    ahora = ahora_db()
+    p = PlataformaGiftCard(nombre=body.nombre, created_at=ahora, updated_at=ahora)
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return PlataformaGiftCardResponse(id=p.id, nombre=p.nombre, activo=p.activo)
+
+
+@pgc_router.put("/{pid}", response_model=PlataformaGiftCardResponse)
+def editar_plataforma(
+    pid: int,
+    body: PlataformaGiftCardRequest,
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "crear")),
+    db: Session = Depends(get_db),
+):
+    """Editar nombre de una plataforma de gift card virtual."""
+    p = db.get(PlataformaGiftCard, pid)
+    if not p:
+        raise HTTPException(status_code=404, detail="Plataforma no encontrada")
+    p.nombre = body.nombre
+    p.updated_at = ahora_db()
+    db.commit()
+    db.refresh(p)
+    return PlataformaGiftCardResponse(id=p.id, nombre=p.nombre, activo=p.activo)
+
+
+@pgc_router.patch("/{pid}/estado", response_model=PlataformaGiftCardResponse)
+def cambiar_estado_plataforma(
+    pid: int,
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "crear")),
+    db: Session = Depends(get_db),
+):
+    """Activa o desactiva una plataforma. No hay borrado: las ventas ya registradas apuntan a ella."""
+    p = db.get(PlataformaGiftCard, pid)
+    if not p:
+        raise HTTPException(status_code=404, detail="Plataforma no encontrada")
+    p.activo = not p.activo
+    p.updated_at = ahora_db()
+    db.commit()
+    db.refresh(p)
+    return PlataformaGiftCardResponse(id=p.id, nombre=p.nombre, activo=p.activo)
