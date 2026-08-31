@@ -50,6 +50,19 @@ from app.models.venta import (
     VentaItem,
     VentaPago,
 )
+from app.models.turno import (
+    Arqueo,
+    ArqueoItem,
+    EstadoTurno,
+    GiftCardVirtualUso,
+    MedioPagoArqueoConfig,
+    Notificacion,
+    PlataformaGiftCard,
+    RetiroEfectivo,
+    TipoNotificacion,
+    Turno,
+    TurnoVendedora,
+)
 
 __all__ = [
     "Base",
@@ -107,4 +120,15 @@ __all__ = [
     "VentaPago",
     "EstadoVenta",
     "MotivoDescuento",
+    "Turno",
+    "TurnoVendedora",
+    "RetiroEfectivo",
+    "MedioPagoArqueoConfig",
+    "Arqueo",
+    "ArqueoItem",
+    "PlataformaGiftCard",
+    "GiftCardVirtualUso",
+    "Notificacion",
+    "EstadoTurno",
+    "TipoNotificacion",
 ]
