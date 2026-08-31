@@ -12,13 +12,12 @@ Reglas de negocio críticas:
 
 from datetime import datetime, date
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.utils import ahora_db
 from app.models.turno import EstadoTurno, RetiroEfectivo, Turno, TurnoVendedora
-from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
 
