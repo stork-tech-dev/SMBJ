@@ -11,6 +11,7 @@ QUÉ en el sistema. Acá se audita la mercadería; allá, las acciones.
 
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -26,6 +27,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.categoria import Categoria
+    from app.models.producto import Variante
+    from app.models.punto_de_venta import PuntoDeVenta
+    from app.models.usuario import Usuario
 
 
 class EstadoAuditoria(str, enum.Enum):
@@ -80,9 +87,9 @@ class AuditoriaInventario(Base):
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
 
-    punto_de_venta: Mapped["PuntoDeVenta"] = relationship()  # noqa: F821
-    usuario: Mapped["Usuario"] = relationship(foreign_keys=[usuario_id])  # noqa: F821
-    categoria: Mapped["Categoria"] = relationship()  # noqa: F821
+    punto_de_venta: Mapped["PuntoDeVenta"] = relationship()  # noqa: F821  # type: ignore[name-defined]
+    usuario: Mapped["Usuario"] = relationship(foreign_keys=[usuario_id])  # noqa: F821  # type: ignore[name-defined]
+    categoria: Mapped["Categoria"] = relationship()  # noqa: F821  # type: ignore[name-defined]
     items: Mapped[list["AuditoriaItem"]] = relationship(
         back_populates="auditoria", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -131,7 +138,7 @@ class AuditoriaItem(Base):
     )
 
     auditoria: Mapped["AuditoriaInventario"] = relationship(back_populates="items")
-    variante: Mapped["Variante"] = relationship()  # noqa: F821
+    variante: Mapped["Variante"] = relationship()  # noqa: F821  # type: ignore[name-defined]
 
     __table_args__ = (
         # Una variante se cuenta una vez por auditoría: dos filas serían dos

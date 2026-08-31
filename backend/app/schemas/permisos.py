@@ -6,6 +6,8 @@ frontend lo pinta como "—". Es distinto de `False`, que es "aplica pero no
 lo tiene".
 """
 
+from collections.abc import Sequence
+
 from pydantic import BaseModel, Field
 
 
@@ -29,7 +31,7 @@ class ModuloPermiso(BaseModel):
     puede_crear: bool | None = None
     puede_editar: bool | None = None
     puede_eliminar: bool | None = None
-    recursos: list[RecursoPermiso] = []
+    recursos: Sequence[RecursoPermiso] = []
 
 
 class RecursoPermisoEfectivo(RecursoPermiso):

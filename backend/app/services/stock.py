@@ -208,6 +208,7 @@ def aplicar_movimiento(
     lleva_cuenta = not variante.producto.stock_infinito
 
     if aplica_origen and lleva_cuenta:
+        assert punto_venta_origen_id is not None
         disponible = cantidad_en(db, variante_id, punto_venta_origen_id)
         if disponible < cantidad:
             punto = obtener_punto(db, punto_venta_origen_id)
@@ -235,10 +236,12 @@ def aplicar_movimiento(
 
     if lleva_cuenta:
         if aplica_origen:
+            assert punto_venta_origen_id is not None
             origen = fila_de_stock(db, variante_id, punto_venta_origen_id)
             origen.cantidad -= cantidad
             origen.updated_at = ahora_db()
         if aplica_destino:
+            assert punto_venta_destino_id is not None
             destino = fila_de_stock(db, variante_id, punto_venta_destino_id)
             destino.cantidad += cantidad
             destino.updated_at = ahora_db()

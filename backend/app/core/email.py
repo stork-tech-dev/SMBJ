@@ -43,6 +43,7 @@ def enviar_email(destinatario: str, asunto: str, cuerpo: str) -> bool:
     mensaje["Subject"] = asunto
     mensaje.set_content(cuerpo)
 
+    assert settings.SMTP_HOST, "SMTP_HOST no está configurado"
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as servidor:
         if settings.SMTP_TLS:
             servidor.starttls()

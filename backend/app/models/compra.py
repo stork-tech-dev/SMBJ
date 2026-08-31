@@ -11,6 +11,7 @@ Solo puede haber UNA compra en borrador por usuario a la vez.
 import enum
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -29,6 +30,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.producto import Variante
+    from app.models.proveedor import Proveedor
+    from app.models.punto_de_venta import PuntoDeVenta
+    from app.models.usuario import Usuario
 
 
 class EstadoCompra(str, enum.Enum):
@@ -102,9 +109,9 @@ class Compra(Base):
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
 
-    proveedor: Mapped["Proveedor"] = relationship()  # noqa: F821
-    punto_de_venta: Mapped["PuntoDeVenta"] = relationship()  # noqa: F821
-    usuario_carga: Mapped["Usuario"] = relationship()  # noqa: F821
+    proveedor: Mapped["Proveedor"] = relationship()  # noqa: F821  # type: ignore[name-defined]
+    punto_de_venta: Mapped["PuntoDeVenta"] = relationship()  # noqa: F821  # type: ignore[name-defined]
+    usuario_carga: Mapped["Usuario"] = relationship()  # noqa: F821  # type: ignore[name-defined]
     items: Mapped[list["CompraItem"]] = relationship(
         back_populates="compra", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -164,7 +171,7 @@ class CompraItem(Base):
     )
 
     compra: Mapped["Compra"] = relationship(back_populates="items")
-    variante: Mapped["Variante"] = relationship(lazy="selectin")  # noqa: F821
+    variante: Mapped["Variante"] = relationship(lazy="selectin")  # noqa: F821  # type: ignore[name-defined]
 
     __table_args__ = (
         # La misma variante dos veces en una compra serían dos líneas para lo

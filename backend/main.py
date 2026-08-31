@@ -20,7 +20,7 @@ from config import settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     """Arranque y apagado de la aplicación."""
     # Los modelos se importan acá para que queden registrados en Base
     # aunque nadie los haya importado todavía.

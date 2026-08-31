@@ -279,14 +279,9 @@ def finalizar(
 
         # El signo de la diferencia elige la punta: contado de más entra,
         # contado de menos sale. La cantidad viaja siempre positiva.
-        if item.diferencia > 0:
-            puntas = {"punto_venta_destino_id": auditoria.punto_de_venta_id}
-        else:
-            puntas = {"punto_venta_origen_id": auditoria.punto_de_venta_id}
-
-        servicio_stock.aplicar_movimiento(
-            db,
-            autor,
+        kwargs_comunes = dict(
+            db=db,
+            autor=autor,
             tipo=TipoMovimiento.AJUSTE_AUDITORIA,
             variante_id=item.variante_id,
             cantidad=abs(item.diferencia),
@@ -296,8 +291,17 @@ def finalizar(
                 f"sistema {item.cantidad_sistema}, contado {item.cantidad_contada}"
             ),
             ip_origen=ip_origen,
-            **puntas,
         )
+        if item.diferencia > 0:
+            servicio_stock.aplicar_movimiento(
+                **kwargs_comunes,  # type: ignore[arg-type]
+                punto_venta_destino_id=auditoria.punto_de_venta_id,
+            )
+        else:
+            servicio_stock.aplicar_movimiento(
+                **kwargs_comunes,  # type: ignore[arg-type]
+                punto_venta_origen_id=auditoria.punto_de_venta_id,
+            )
 
     auditoria.estado = EstadoAuditoria.CERRADA
     auditoria.fecha_fin = ahora_db()

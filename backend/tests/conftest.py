@@ -11,6 +11,7 @@ así que el orden de ejecución no importa.
 """
 
 import os
+from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -49,7 +50,7 @@ def engine_test():
 
 
 @pytest.fixture
-def db(engine_test) -> Session:
+def db(engine_test) -> Generator[Session, None, None]:
     """
     Sesión aislada por test.
 
@@ -89,7 +90,7 @@ class _SesionDeTest:
 
 
 @pytest.fixture
-def client(db, monkeypatch) -> TestClient:
+def client(db, monkeypatch) -> Generator[TestClient, None, None]:
     """Cliente HTTP con la sesión de test inyectada en lugar de la real."""
     from app.core.database import get_db
     from app.middleware import auth_refresh_middleware

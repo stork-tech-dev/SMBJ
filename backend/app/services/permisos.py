@@ -6,6 +6,8 @@ diferencia es que el de usuario informa además qué viene heredado del rol
 y qué es override (Principio 2: DRY).
 """
 
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -30,7 +32,7 @@ def _indexar(filas) -> dict[tuple[str, str | None], object]:
     return {(f.modulo, f.recurso): f for f in filas}
 
 
-def _flags(fila, acciones_validas: tuple[str, ...]) -> dict[str, bool]:
+def _flags(fila, acciones_validas: tuple[str, ...]) -> dict[str, bool | None]:
     """
     Los cuatro booleanos de una fila de permisos. Las acciones que no
     aplican al recurso devuelven None, y el frontend las pinta como "—".
@@ -57,7 +59,7 @@ def arbol_de_rol(db: Session, rol_id: int) -> list[dict]:
     arbol = []
     for modulo in Modulo:
         general = filas.get((modulo.value, None))
-        nodo = {
+        nodo: dict[str, Any] = {
             "modulo": modulo.value,
             "label": LABEL_MODULO[modulo],
             **_flags(general, ACCIONES),

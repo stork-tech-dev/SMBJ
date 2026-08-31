@@ -83,7 +83,7 @@ def listar(
         tamano=tamano,
     )
     return RespuestaPaginada[ProductoResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 
@@ -198,7 +198,7 @@ def listar_variantes(
         tamano=tamano,
     )
     return RespuestaPaginada[VarianteListadoResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 

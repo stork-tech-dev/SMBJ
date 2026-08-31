@@ -147,7 +147,7 @@ def subir_foto(
 
     # Conteo y tope dentro del pool correspondiente.
     if variante is not None:
-        filtro_conteo = (ProductoFoto.variante_id == variante.id,)
+        filtro_conteo: tuple = (ProductoFoto.variante_id == variante.id,)
         tope = MAX_FOTOS_POR_VARIANTE
         msg_tope = f"La variante ya tiene {tope} fotos"
         prefijo = variante.codigo_completo

@@ -14,6 +14,7 @@ Los dos caminos son:
 """
 
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -189,6 +190,7 @@ def recalcular_precios_de_proveedor(db: Session, proveedor_id: int) -> int:
     )
 
     for variante in variantes:
+        assert variante.precio_usd is not None  # filtrado por is_not(None) en la query
         variante.precio_venta = calcular_precio_venta(
             db, variante.precio_usd, proveedor.dolar_actual
         )
@@ -745,7 +747,7 @@ def listar_variantes(
         # ahí el buscador lo leía como etiqueta, le sacaba el último carácter
         # y comparaba contra un código que no existe. Tipear `AA009` no
         # devolvía nada, sin ninguna señal de por qué.
-        condiciones = [
+        condiciones: list[Any] = [
             Variante.codigo_completo.ilike(patron),
             Producto.sku.ilike(patron),
             Producto.descripcion.ilike(patron),

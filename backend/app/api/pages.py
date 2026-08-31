@@ -208,7 +208,7 @@ def _visible(db: Session, usuario, item: dict, es_maestra: bool) -> bool:
     # Hub de Configuraciones: visible si alguna de sus secciones lo es.
     if item.get("hub_configuracion"):
         return any(
-            _visible(db, usuario, s, es_maestra) for s in CONFIGURACION_SECCIONES
+            _visible(db, usuario, s, es_maestra) for s in CONFIGURACION_SECCIONES  # type: ignore[arg-type]
         )
     if item.get("modulo") is None:
         return True
@@ -222,15 +222,15 @@ def menu_visible(db: Session, usuario) -> tuple[list, list]:
     """
     es_maestra = _es_maestra(usuario)
     return (
-        [i for i in MENU_SIDEBAR if _visible(db, usuario, i, es_maestra)],
-        [i for i in MENU_SIDEBAR_PIE if _visible(db, usuario, i, es_maestra)],
+        [i for i in MENU_SIDEBAR if _visible(db, usuario, i, es_maestra)],  # type: ignore[arg-type]
+        [i for i in MENU_SIDEBAR_PIE if _visible(db, usuario, i, es_maestra)],  # type: ignore[arg-type]
     )
 
 
 def secciones_configuracion(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Configuraciones visibles para el usuario."""
     es_maestra = _es_maestra(usuario)
-    return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]
+    return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]  # type: ignore[arg-type, misc]
 
 
 def secciones_stock(db: Session, usuario) -> list[dict]:

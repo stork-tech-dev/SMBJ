@@ -13,6 +13,7 @@ resto, y esos son dos hechos distintos, no un total de 12.
 
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -28,6 +29,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.motivo_baja import MotivoBaja
+    from app.models.producto import Variante
+    from app.models.punto_de_venta import PuntoDeVenta
+    from app.models.usuario import Usuario
 
 
 class TipoMovimiento(str, enum.Enum):
@@ -94,8 +101,8 @@ class Stock(Base):
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
 
-    variante: Mapped["Variante"] = relationship()  # noqa: F821
-    punto_de_venta: Mapped["PuntoDeVenta"] = relationship()  # noqa: F821
+    variante: Mapped["Variante"] = relationship()  # noqa: F821  # type: ignore[name-defined]
+    punto_de_venta: Mapped["PuntoDeVenta"] = relationship()  # noqa: F821  # type: ignore[name-defined]
 
     __table_args__ = (
         # Una sola fila por variante y ubicación: dos filas para el mismo par
@@ -211,15 +218,15 @@ class MovimientoStock(Base):
 
     notas: Mapped[str | None] = mapped_column(Text)
 
-    variante: Mapped["Variante"] = relationship()  # noqa: F821
-    origen: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821
+    variante: Mapped["Variante"] = relationship()  # noqa: F821  # type: ignore[name-defined]
+    origen: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821  # type: ignore[name-defined]
         foreign_keys=[punto_venta_origen_id]
     )
-    destino: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821
+    destino: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821  # type: ignore[name-defined]
         foreign_keys=[punto_venta_destino_id]
     )
-    usuario: Mapped["Usuario"] = relationship()  # noqa: F821
-    motivo_baja: Mapped["MotivoBaja"] = relationship()  # noqa: F821
+    usuario: Mapped["Usuario"] = relationship()  # noqa: F821  # type: ignore[name-defined]
+    motivo_baja: Mapped["MotivoBaja"] = relationship()  # noqa: F821  # type: ignore[name-defined]
 
     __table_args__ = (
         CheckConstraint("cantidad > 0", name="ck_movimientos_stock_cantidad_positiva"),

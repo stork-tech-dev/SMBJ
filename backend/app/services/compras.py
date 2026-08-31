@@ -9,6 +9,7 @@ Solo puede haber UNA compra en borrador por usuario a la vez. Si el operador
 ya tiene una, `iniciar_compra` la devuelve para retomar.
 """
 
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -99,8 +100,8 @@ def listar_compras(
     db: Session,
     *,
     proveedor_id: int | None = None,
-    desde: str | None = None,
-    hasta: str | None = None,
+    desde: datetime | None = None,
+    hasta: datetime | None = None,
     pagina: int = 1,
     tamano: int = 25,
 ) -> tuple[list[Compra], int]:
@@ -150,7 +151,7 @@ def iniciar_compra(
     *,
     proveedor_id: int,
     punto_de_venta_id: int,
-    fecha_compra: str | None = None,
+    fecha_compra: date | None = None,
     notas: str | None = None,
     ip_origen: str | None = None,
 ) -> Compra:
