@@ -929,6 +929,10 @@ def _contexto_ventas(request, db, usuario, titulo, **extra):
         puede_descontar=puede("crear", Recurso.VENTA_DESCUENTO),
         puede_anular=puede("eliminar", Recurso.VENTA_ANULAR),
         puede_ver_clientes=resolver_permiso(db, usuario.id, Modulo.CLIENTES, "ver"),
+        # ID numérico del punto de venta para el componente cajaTurno() de caja.js.
+        # Ninguna pantalla distinta al home mobile lo usa, pero agregarlo acá (en
+        # vez de en el handler de /ventas) evita pasarlo como `extra` en cada ruta.
+        punto_de_venta_id_num=scope.punto_de_venta_id or 0,
         **extra,
     )
 
@@ -1081,3 +1085,40 @@ def _registrar_catalogos_ventas() -> None:
 
 
 _registrar_catalogos_ventas()
+
+
+# ============================================================================
+# CAJA
+# ============================================================================
+#
+# Solo mobile: desde un celular de local. El home de ventas ya muestra el
+# estado del turno; esta ruta sirve exclusivamente la pantalla de arqueo y
+# cierre, a la que se accede desde el link "Cerrar" de esa sección.
+
+
+@router.get("/caja/cerrar/{turno_id}", response_class=HTMLResponse)
+async def cerrar_turno_page(
+    turno_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    """
+    Pantalla de arqueo y cierre de turno.
+
+    Solo disponible desde un dispositivo asignado a un punto de venta.
+    El arqueo se carga desde GET /api/v1/turnos/{turno_id}/arqueo/esperado.
+    """
+    dispositivo = _dispositivo_de_request(request, db)
+    if not _es_dispositivo_de_local(dispositivo):
+        return RedirectResponse("/ventas", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "pages/caja/mobile/cerrar_turno.html",
+        _contexto_ventas(
+            request, db, usuario,
+            "Cerrar Turno",
+            turno_id=turno_id,
+            volver_url="/ventas",
+        ),
+    )

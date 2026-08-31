@@ -56,19 +56,120 @@
     </a>
 
     {# ---------- Turno ----------
-       El estado real llega con el módulo de Caja. Hasta entonces la tarjeta
-       dice lo que hay: que la apertura y el cierre todavía no se manejan
-       desde acá. Un botón "Iniciar turno" que no inicia nada sería peor. #}
-    <section class="mt-4 p-4 rounded-input bg-surface-alt" aria-labelledby="turno-titulo">
-        <div class="flex items-center gap-3">
+       Sección dinámica gestionada por cajaTurno() en caja.js.
+       - Sin turno: muestra botón "Iniciar Turno".
+       - Con turno propio: muestra fecha de apertura y link a cerrar.
+       - Turno de otro: muestra "Sumarse al Turno".
+       La comprobación ocurre en el init() de Alpine via GET /api/v1/turnos/activo. #}
+    <section x-data="cajaTurno({{ punto_de_venta_id_num | default(0) }})" x-init="init()"
+             class="mt-4">
+
+        {# Esqueleto durante la carga inicial #}
+        <div x-show="cargando"
+             class="flex items-center gap-3 p-4 rounded-input bg-surface-alt">
+            {{ icono('reloj', clases='w-6 h-6 text-texto-disabled shrink-0') }}
+            <span class="text-sm text-texto-disabled">Verificando turno…</span>
+        </div>
+
+        {# Sin turno activo: botón para iniciar #}
+        <button x-show="!turno && !cargando" x-cloak
+                @click="abrirOverlay()"
+                class="w-full flex items-center gap-3 p-4 rounded-input bg-surface-alt
+                       hover:border-primary tarjeta text-left">
             {{ icono('reloj', clases='w-6 h-6 text-texto-muted shrink-0') }}
-            <div class="min-w-0">
-                <h2 id="turno-titulo" class="text-base font-semibold text-texto">Turno</h2>
-                <p class="text-sm text-texto-muted">
-                    La apertura y el cierre de caja llegan con el módulo de Caja.
-                </p>
+            <span class="text-base font-semibold text-texto">Iniciar Turno</span>
+        </button>
+
+        {# Turno activo: info + acciones #}
+        <div x-show="turno && !cargando" x-cloak
+             class="flex items-center gap-3 p-4 rounded-input bg-surface-alt tarjeta">
+            {{ icono('reloj', clases='w-6 h-6 text-primary shrink-0') }}
+            <div class="flex-1 min-w-0">
+                <p class="text-base font-semibold text-texto">Turno iniciado</p>
+                <p class="text-sm text-texto-muted truncate"
+                   x-text="turno ? fecha(turno.fecha_apertura) : ''"></p>
+            </div>
+            {# Link a cerrar turno: solo si el turno existe #}
+            <a :href="turno ? '/caja/cerrar/' + turno.id : '#'"
+               class="text-sm font-semibold text-primary hover:underline shrink-0">
+                Cerrar
+            </a>
+        </div>
+
+        {# Overlay — iniciar turno (sin turno activo) #}
+        <div x-show="overlay === 'iniciar'" x-cloak
+             class="fixed inset-0 bg-black/40 z-40"
+             @click.self="cerrarOverlay()">
+            <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl px-5 py-8 shadow-xl">
+
+                {# Tirador de cierre #}
+                <button @click="cerrarOverlay()"
+                        class="w-full flex justify-center mb-6 min-h-toque">
+                    {{ icono('chevron', clases='w-6 h-6 text-texto-muted') }}
+                </button>
+
+                <p class="text-xl font-semibold text-texto text-center">Iniciar el Turno del día</p>
+                <p class="text-sm text-texto-muted text-center mt-1">{{ usuario_actual.nombre }}</p>
+                <p class="text-sm text-texto-muted text-center"
+                   x-text="fecha(new Date().toISOString())"></p>
+
+                <label class="block mt-6 mb-2 text-sm text-texto text-center">
+                    Efectivo inicial en caja
+                </label>
+                <input
+                    type="number"
+                    inputmode="decimal"
+                    x-model="efectivoApertura"
+                    placeholder="$0"
+                    class="w-full h-boton border border-borde rounded-input px-3 text-center text-base">
+
+                <button
+                    @click="confirmarApertura()"
+                    :disabled="enviando"
+                    class="mt-4 w-full h-boton bg-primary text-white font-semibold
+                           rounded-input disabled:opacity-60">
+                    <span x-show="!enviando">Confirmar</span>
+                    <span x-show="enviando" x-cloak>Abriendo…</span>
+                </button>
             </div>
         </div>
+
+        {# Overlay — sumarse al turno (hay turno de otra persona) #}
+        <div x-show="overlay === 'sumarse'" x-cloak
+             class="fixed inset-0 bg-black/40 z-40"
+             @click.self="cerrarOverlay()">
+            <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl px-5 py-8 shadow-xl">
+
+                {# Tirador de cierre #}
+                <button @click="cerrarOverlay()"
+                        class="w-full flex justify-center mb-6 min-h-toque">
+                    {{ icono('chevron', clases='w-6 h-6 text-texto-muted') }}
+                </button>
+
+                <p class="text-xl font-semibold text-texto text-center">Turno del día</p>
+                <p class="text-sm text-texto-muted text-center mt-1"
+                   x-text="turno ? 'Iniciado por: ' + (turno.usuario_apertura_nombre || '') : ''"></p>
+                <p class="text-sm text-texto-muted text-center"
+                   x-text="turno ? fecha(turno.fecha_apertura) : ''"></p>
+
+                <button
+                    @click="unirse()"
+                    :disabled="enviando"
+                    class="mt-8 w-full h-boton bg-primary text-white font-semibold
+                           rounded-input disabled:opacity-60">
+                    <span x-show="!enviando">Unirme al Turno</span>
+                    <span x-show="enviando" x-cloak>Uniéndome…</span>
+                </button>
+
+                <a :href="turno ? '/caja/cerrar/' + turno.id : '#'"
+                   class="mt-3 flex items-center justify-center w-full h-boton
+                          border border-borde rounded-input text-sm text-texto-muted
+                          hover:border-danger hover:text-danger">
+                    Cerrar Turno
+                </a>
+            </div>
+        </div>
+
     </section>
 
     {# ---------- Acción principal ---------- #}
@@ -126,4 +227,5 @@
 
 {% block scripts %}
 <script src="{{ estatico('/js/ventas_mobile.js') }}"></script>
+<script src="{{ estatico('/js/caja.js') }}"></script>
 {% endblock %}
