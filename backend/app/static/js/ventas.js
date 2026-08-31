@@ -11,6 +11,10 @@ const URL_VENTAS = '/api/v1/ventas';
 const URL_MEDIOS_CONFIG = '/api/v1/configuracion/medios-de-pago';
 
 function listadoVentas(puedeAnular = false) {
+    // 'en-CA' produce YYYY-MM-DD en timezone local (no UTC), que es lo que
+    // espera el input[type=date] y lo que coincide con la fecha del local.
+    const hoy = () => new Date().toLocaleDateString('en-CA');
+
     return {
         ventas: [],
         cargando: false,
@@ -25,7 +29,7 @@ function listadoVentas(puedeAnular = false) {
 
         filtros: {
             numero: '', estado: '',
-            fecha_desde: '', fecha_hasta: '',
+            fecha_desde: hoy(), fecha_hasta: hoy(),
             punto_de_venta_id: '',
         },
 
@@ -120,7 +124,7 @@ function listadoVentas(puedeAnular = false) {
         limpiar() {
             this.filtros = {
                 numero: '', estado: '',
-                fecha_desde: '', fecha_hasta: '',
+                fecha_desde: hoy(), fecha_hasta: hoy(),
                 punto_de_venta_id: '',
             };
             this.buscar();
