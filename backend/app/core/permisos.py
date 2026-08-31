@@ -36,6 +36,7 @@ class Modulo(str, Enum):
     AUDITORIA = "auditoria"
     USUARIOS = "usuarios"
     DISPOSITIVOS = "dispositivos"
+    CAJA = "caja"
 
 
 class Recurso(str, Enum):
@@ -116,6 +117,7 @@ LABEL_MODULO: dict[Modulo, str] = {
     Modulo.AUDITORIA: "Auditoría",
     Modulo.USUARIOS: "Usuarios",
     Modulo.DISPOSITIVOS: "Dispositivos",
+    Modulo.CAJA: "Caja",
 }
 
 LABEL_RECURSO: dict[Recurso, str] = {
