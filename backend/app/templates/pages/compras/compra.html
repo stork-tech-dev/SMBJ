@@ -1,0 +1,498 @@
+{# Flujo de carga de compra: una sola pantalla para todo el proceso.
+   Los datos salen de /api/v1/compras (Principio 1). #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/miniatura.html" import miniatura %}
+{% from "components/producto_form.html" import producto_form_modal %}
+
+{% block contenido %}
+
+<div x-data="flujoCompra({ compraId: {{ compra_id }}, estadoInicial: '{{ estado_compra }}' })"
+     x-init="init()">
+
+    {% call encabezado(titulo, volver_url='/compras',
+                       volver_texto='Carga de Compras') %}
+    {% endcall %}
+
+    {# ---------- Cabecera: proveedor, punto de venta, fecha ---------- #}
+    {# En borrador: campos editables. Cerrada: solo texto.
+       Se usa x-show (no x-if) porque los comboboxes tienen x-data propio
+       y destruirlos/recrearlos con x-if rompe la inicialización. #}
+    <div x-show="estado === 'borrador'" class="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+            {{ combobox('c-proveedor', 'proveedores', 'o.nombre',
+                        'proveedor_id',
+                        etiqueta='Proveedor', obligatorio=true,
+                        al_elegir='onProveedorCambiado()',
+                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                bg-surface text-texto border-[0.5px]
+                                border-texto-disabled rounded-input
+                                focus:outline-none focus:border-primary') }}
+        </div>
+        <div>
+            {{ combobox('c-punto', 'puntos', 'o.nombre',
+                        'punto_de_venta_id',
+                        etiqueta='Punto de venta', obligatorio=true,
+                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                bg-surface text-texto border-[0.5px]
+                                border-texto-disabled rounded-input
+                                focus:outline-none focus:border-primary') }}
+        </div>
+        <div class="flex flex-col gap-1">
+            <label for="c-fecha" class="text-sm font-semibold text-texto-header">
+                Fecha de compra
+            </label>
+            <input id="c-fecha" type="date" x-model="fecha_compra"
+                   class="campo-linea">
+        </div>
+        <div class="flex flex-col gap-1">
+            <label for="c-notas" class="text-sm font-semibold text-texto-header">
+                Notas
+            </label>
+            <input id="c-notas" x-model="notas" maxlength="200"
+                   placeholder="Factura, remito del proveedor…"
+                   class="campo-linea">
+        </div>
+    </div>
+
+    <div x-show="estado !== 'borrador'"
+         class="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold text-texto-header">Proveedor</span>
+            <span class="text-base" x-text="nombreProveedor()"></span>
+        </div>
+        <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold text-texto-header">Punto de venta</span>
+            <span class="text-base" x-text="nombrePunto()"></span>
+        </div>
+        <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold text-texto-header">Fecha de compra</span>
+            <span class="text-base"
+                  x-text="fecha_compra ? new Date(fecha_compra + 'T00:00').toLocaleDateString('es-AR') : '—'"></span>
+        </div>
+        <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold text-texto-header">Notas</span>
+            <span class="text-base" x-text="notas || '—'"></span>
+        </div>
+    </div>
+
+    {# ---------- Sin compra iniciada ---------- #}
+    <template x-if="!compraId && !compraIniciada">
+        <div class="mt-10 text-center">
+            <p class="text-texto-muted mb-4">Elegí un proveedor y un punto de venta para empezar.</p>
+            <button type="button" @click="iniciarCompra()"
+                    :disabled="!proveedor_id || !punto_de_venta_id || iniciando"
+                    class="h-boton px-8 rounded-input bg-primary text-white text-base
+                           font-medium hover:bg-primary-hover disabled:opacity-60"
+                    x-text="iniciando ? 'Iniciando…' : 'Registro de compra'"></button>
+        </div>
+    </template>
+
+    {# ---------- Compra activa: búsqueda + items ---------- #}
+    <template x-if="compraIniciada">
+        <div>
+            {# --- Búsqueda de productos (solo borrador) --- #}
+            <div x-show="estado === 'borrador'" class="mt-8 border-t border-borde pt-6">
+                <h3 class="text-base font-black text-welcome mb-4">Productos del pedido</h3>
+                <div class="flex flex-wrap items-end gap-4">
+                    <div class="flex-1 min-w-0">
+                        <label for="busq-texto" class="text-sm font-semibold text-texto-header">
+                            Buscar producto del proveedor
+                        </label>
+                        <input id="busq-texto" x-model="busqueda.texto"
+                               @input.debounce.400ms="buscarProductos()"
+                               placeholder="Código, descripción…"
+                               autocomplete="off" class="campo-linea w-full mt-1">
+                    </div>
+                    <button type="button" @click="abrirFormProducto = true"
+                            class="h-control px-5 inline-flex items-center gap-2 rounded-input
+                                   border border-primary text-primary text-sm font-semibold
+                                   hover:bg-primary hover:text-white">
+                        {{ icono('mas', clases='w-4 h-4') }} Nuevo producto
+                    </button>
+                </div>
+
+                {# Resultados de búsqueda #}
+                <template x-if="busqueda.resultados.length > 0">
+                    <div class="mt-4 border border-borde rounded-[10px] max-h-[16rem] overflow-y-auto">
+                        <template x-for="v in busqueda.resultados" :key="v.id">
+                            <div class="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-surface-alt/50
+                                        border-b border-borde last:border-b-0"
+                                 @click="agregarDesdeResultado(v)">
+                                {{ miniatura('v.foto_url') }}
+                                <span class="font-mono text-sm" x-text="v.codigo_completo"></span>
+                                <span class="flex-1 text-sm" x-text="v.producto?.descripcion + (v.descripcion_sufijo ? ' — ' + v.descripcion_sufijo : '')"></span>
+                                <span class="text-sm text-texto-muted" x-text="'$' + v.producto?.precio_usd + ' USD'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            {# --- Items cargados --- #}
+            <div class="mt-8">
+                <h3 class="text-base font-black text-welcome mb-4"
+                    x-text="'Productos cargados (' + items.length + ')'"></h3>
+
+                <template x-if="items.length === 0">
+                    <p class="text-texto-disabled text-sm">Todavía no se cargaron productos.</p>
+                </template>
+
+                <div class="flex flex-col gap-2">
+                    <template x-for="item in items" :key="item.id">
+                        <div class="border border-borde rounded-[10px] px-4 py-3
+                                    flex flex-wrap items-center gap-x-4 gap-y-2">
+                            {{ miniatura('item.variante?.foto_url', tamano='w-10 h-10') }}
+                            <span class="font-mono text-sm font-semibold"
+                                  x-text="item.variante?.codigo_completo"></span>
+                            <span class="flex-1 text-sm min-w-0 truncate"
+                                  x-text="item.variante?.producto?.descripcion + (item.variante?.descripcion_sufijo ? ' — ' + item.variante.descripcion_sufijo : '')"></span>
+                            <template x-if="item.es_producto_nuevo">
+                                <span class="px-2 py-0.5 text-xs font-semibold bg-success/15 text-success rounded-full">NUEVO</span>
+                            </template>
+                            <div class="flex items-center gap-1 text-sm">
+                                <span class="text-texto-muted">Ant:</span>
+                                <span class="font-mono"
+                                      x-text="item.precio_usd_anterior != null ? '$' + item.precio_usd_anterior : '—'"></span>
+                            </div>
+                            <div class="flex items-center gap-1 text-sm">
+                                <span class="text-texto-muted">USD:</span>
+                                <input type="number" step="0.01" min="0.01"
+                                       x-model="item.precio_usd_nuevo"
+                                       @change="actualizarItem(item)"
+                                       :disabled="estado !== 'borrador'"
+                                       class="campo-linea w-24 font-mono text-sm"
+                                       :class="estado !== 'borrador' && 'opacity-60 cursor-not-allowed'">
+                            </div>
+                            <div class="flex items-center gap-1 text-sm">
+                                <span class="text-texto-muted">Cant:</span>
+                                <input type="number" min="1" step="1"
+                                       x-model="item.cantidad"
+                                       @change="actualizarItem(item)"
+                                       :disabled="estado !== 'borrador'"
+                                       class="campo-linea w-16 text-sm"
+                                       :class="estado !== 'borrador' && 'opacity-60 cursor-not-allowed'">
+                            </div>
+                            <template x-if="item.precio_actualizado">
+                                <span class="text-xs text-primary font-semibold">Precio actualizado</span>
+                            </template>
+                            <template x-if="estado === 'borrador'">
+                                <button type="button" @click="quitarItem(item)"
+                                        class="text-danger hover:text-danger/80 ml-auto">
+                                    {{ icono('cerrar', clases='w-4 h-4') }}
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            {# --- Indicador de guardado + acciones (solo borrador) --- #}
+            <template x-if="estado === 'borrador'">
+                <div class="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-borde pt-6">
+                    <div class="flex items-center gap-4">
+                        <button type="button" @click="confirmarEliminarBorrador()"
+                                class="h-boton px-5 rounded-input border border-danger text-danger text-sm
+                                       font-semibold hover:bg-danger hover:text-white">
+                            Eliminar borrador
+                        </button>
+                        <span class="text-sm text-texto-disabled" x-show="ultimoGuardado"
+                              x-text="'Guardado ' + ultimoGuardado"></span>
+                    </div>
+                    <button type="button" @click="confirmarCierre()"
+                            :disabled="items.length === 0 || cerrando"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="cerrando ? 'Cerrando…' : 'Cerrar compra'">
+                    </button>
+                </div>
+            </template>
+
+            {# --- Post-cierre: imprimir etiquetas --- #}
+            <div x-show="compraCerradaExitosamente" x-cloak
+                 class="mt-8 p-6 bg-success/10 border border-success/30 rounded-[10px]">
+                <h3 class="text-lg font-black text-welcome mb-2">
+                    {{ icono('imprimir', clases='w-5 h-5 inline -mt-0.5 text-welcome') }}
+                    Imprimir etiquetas
+                </h3>
+                <p class="text-sm text-texto-muted mb-4">
+                    <span class="font-semibold text-texto" x-text="items.length"></span>
+                    producto(s) en
+                    <span class="font-semibold text-texto" x-text="nombrePunto()"></span>.
+                </p>
+                <div class="flex flex-wrap gap-3">
+                    <button type="button" @click="imprimirEtiquetasCompra('rectangular')"
+                            class="h-boton px-5 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover inline-flex items-center gap-2">
+                        {{ icono('imprimir', clases='w-4 h-4') }} Etiquetas rectangulares
+                    </button>
+                    <button type="button" @click="imprimirEtiquetasCompra('colita')"
+                            class="h-boton px-5 rounded-input border-2 border-primary text-primary
+                                   text-base font-medium hover:bg-primary hover:text-white
+                                   inline-flex items-center gap-2">
+                        {{ icono('imprimir', clases='w-4 h-4') }} Etiquetas con colita
+                    </button>
+                    <a href="/compras"
+                       class="h-boton px-5 rounded-input border border-borde text-base
+                              text-texto-muted hover:border-primary hover:text-primary
+                              inline-flex items-center">
+                        Ir al listado
+                    </a>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {# ---------- Modal: confirmación de cambio de precio >30% ---------- #}
+    <div x-show="confirmacionPrecio.abierto" x-cloak
+         @keydown.escape.window="confirmacionPrecio.abierto && resolverPrecio(false)"
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         role="dialog" aria-modal="true">
+        <div class="w-full max-w-[28rem] bg-surface rounded-[10px] p-8
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <h3 class="text-lg font-black text-warning mb-4">
+                {{ icono('alerta', clases='w-5 h-5 inline -mt-0.5') }}
+                Cambio de precio significativo
+            </h3>
+            <p class="text-sm text-texto-muted mb-2">
+                Producto: <span class="font-semibold text-texto" x-text="confirmacionPrecio.descripcion"></span>
+            </p>
+            <div class="flex gap-8 my-4">
+                <div>
+                    <span class="text-xs text-texto-muted block">Precio actual</span>
+                    <span class="font-mono font-semibold" x-text="'$' + confirmacionPrecio.anterior + ' USD'"></span>
+                </div>
+                <div>
+                    <span class="text-xs text-texto-muted block">Precio ingresado</span>
+                    <span class="font-mono font-semibold" x-text="'$' + confirmacionPrecio.nuevo + ' USD'"></span>
+                    <span class="text-sm text-danger ml-1" x-text="'(' + confirmacionPrecio.porcentaje + '%)'"></span>
+                </div>
+            </div>
+            <p class="text-sm text-texto-muted mb-6">
+                El precio nuevo supera en más del 30% al actual.
+                ¿Es correcto o fue un error de tipeo?
+            </p>
+            <div class="flex justify-end gap-3">
+                <button type="button" @click="resolverPrecio(false)"
+                        class="h-boton px-5 rounded-input border border-borde text-base
+                               hover:border-primary hover:text-primary">
+                    Corregir precio
+                </button>
+                <button type="button" @click="resolverPrecio(true)"
+                        class="h-boton px-6 rounded-input bg-warning text-white text-base
+                               font-medium hover:opacity-90">
+                    Sí, actualizar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Modal: confirmación de cierre ---------- #}
+    <div x-show="confirmacionCierre.abierto" x-cloak
+         @keydown.escape.window="confirmacionCierre.abierto = false"
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         role="dialog" aria-modal="true">
+        <div class="w-full max-w-[28rem] bg-surface rounded-[10px] p-8
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <h3 class="text-lg font-black text-welcome mb-4">Cerrar compra</h3>
+            <p class="text-sm text-texto-muted mb-6">
+                Vas a cerrar la compra de
+                <span class="font-semibold text-texto" x-text="nombreProveedor()"></span>
+                con <span class="font-semibold text-texto" x-text="items.length"></span> producto(s).
+                Se actualizará el stock en
+                <span class="font-semibold text-texto" x-text="nombrePunto()"></span>.
+            </p>
+            <div class="flex justify-end gap-3">
+                <button type="button" @click="confirmacionCierre.abierto = false"
+                        class="h-boton px-5 rounded-input border border-borde text-base
+                               hover:border-primary hover:text-primary">
+                    Cancelar
+                </button>
+                <button type="button" @click="cerrarCompra()"
+                        :disabled="cerrando"
+                        class="h-boton px-8 rounded-input bg-primary text-white text-base
+                               font-medium hover:bg-primary-hover disabled:opacity-60"
+                        x-text="cerrando ? 'Cerrando…' : 'Confirmar'">
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Modal: creación de producto nuevo (reutiliza el form compartido) ---------- #}
+    {# El componente anidado accede a `categorias` y `proveedores` del padre
+       vía la cadena de scope de Alpine. `proveedorFijo` bloquea el proveedor
+       al de la compra. `alGuardar` agrega la variante base como ítem. #}
+    <div x-data="productoForm({
+             alGuardar(producto, { alta, conVariantes }) {
+                 if (conVariantes) {
+                     // Abrir el modal de variantes: el producto se agregará
+                     // a la compra con cada variante que se cree.
+                     this.abrirVarianteCompra(producto);
+                     return;
+                 }
+                 // Agregar la variante base como ítem de la compra.
+                 const varianteBase = (producto.variantes || [])[0];
+                 if (varianteBase) {
+                     fetch('/api/v1/compras/' + this.compraId + '/items', {
+                         method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                         credentials: 'same-origin',
+                         body: JSON.stringify({
+                             variante_id: varianteBase.id,
+                             cantidad: 1,
+                             precio_usd: Number(producto.precio_usd),
+                             es_producto_nuevo: true,
+                         }),
+                     }).then(r => r.ok ? r.json() : Promise.reject())
+                       .then(item => {
+                           this._actualizarOAgregarItem(item);
+                           this._marcarGuardado();
+                       })
+                       .catch(() => window.toast('Producto creado, pero no se pudo agregar a la compra', 'error'));
+                 }
+             },
+         })"
+         x-effect="if (abrirFormProducto) {
+             abrirAlta();
+             form.proveedor_id = String(proveedor_id);
+             proveedorFijo = Number(proveedor_id);
+             abrirFormProducto = false;
+         }">
+        {{ producto_form_modal(es_maestra=es_maestra, nivel_maximo=nivel_maximo) }}
+    </div>
+
+    {# ---------- Modal: agregar variantes al producto recién creado ---------- #}
+    <div x-show="variante.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @keydown.escape.window="variante.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-variante-compra">
+
+        <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
+                <div>
+                    <h2 id="titulo-variante-compra" class="text-lg font-black text-welcome">
+                        Agregar variante
+                    </h2>
+                    <p class="mt-1 text-sm text-texto-muted font-mono"
+                       x-text="productoParaVariantes?.sku"></p>
+                    <p class="text-sm text-texto-muted"
+                       x-text="productoParaVariantes?.descripcion"></p>
+                </div>
+                <button type="button" @click="variante.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-2">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <form @submit.prevent="guardarVarianteCompra()" novalidate
+                  class="px-6 sm:px-10 pb-8 pt-4">
+
+                <p x-show="variante.reemplazaBase" x-cloak
+                   class="mb-6 p-4 rounded-input border border-danger/40 bg-danger/5
+                          text-sm text-texto-muted">
+                    Al crear la primera variante, el código
+                    <span class="font-mono font-medium text-texto"
+                          x-text="(productoParaVariantes?.variantes || [])
+                                  .find(v => v.es_base)?.codigo_completo"></span>
+                    deja de existir y se reemplaza por uno por variante.
+                </p>
+
+                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div class="flex flex-col gap-1">
+                        <label for="vc-sufijo" class="text-sm font-semibold text-texto-header">
+                            Sufijo<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="vc-sufijo" x-model="variante.sufijo"
+                               maxlength="1" pattern="[A-Za-z0-9]"
+                               title="Un carácter: letra o número"
+                               class="campo-linea uppercase font-mono">
+                        <span class="text-xs text-texto-disabled">
+                            Una letra o un número. Ej.: R de rojo, 1 de talle 1.
+                        </span>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="vc-nombre" class="text-sm font-semibold text-texto-header">
+                            Descripción del sufijo<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="vc-nombre" x-model="variante.descripcion_sufijo"
+                               maxlength="60" placeholder="Rojo"
+                               class="campo-linea">
+                    </div>
+
+                    <div class="sm:col-span-2 flex flex-col gap-1">
+                        <label for="vc-skuprov" class="text-sm font-semibold text-texto-header">
+                            SKU del proveedor
+                        </label>
+                        <input id="vc-skuprov" x-model="variante.sku_proveedor"
+                               maxlength="30" placeholder="Usa el del producto"
+                               class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Vacío = usa el del producto<template x-if="productoParaVariantes?.sku_proveedor"><span>
+                                (<span class="font-mono" x-text="productoParaVariantes.sku_proveedor"></span>)</span></template>.
+                        </span>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="vc-ubicacion" class="text-sm font-semibold text-texto-header">
+                            Ubicación en depósito
+                        </label>
+                        <input id="vc-ubicacion" x-model="variante.ubicacion_deposito"
+                               maxlength="100" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="vc-stock" class="text-sm font-semibold text-texto-header">
+                            Stock inicial
+                        </label>
+                        <input id="vc-stock" type="number" min="0" step="1"
+                               x-model="variante.stock_inicial"
+                               placeholder="0" class="campo-linea">
+                        <span class="text-xs text-texto-disabled">
+                            Se asigna al Centro de Distribución.
+                        </span>
+                    </div>
+                </div>
+
+                <p x-show="sufijosUsados().length" x-cloak
+                   class="mt-5 text-xs text-texto-muted">
+                    Ya usados en este producto:
+                    <span class="font-mono font-medium" x-text="sufijosUsados().join(', ')"></span>
+                </p>
+
+                <p x-show="codigoPrevisto()" x-cloak class="mt-2 text-xs text-texto-muted">
+                    Código que se va a generar:
+                    <span class="font-mono font-medium text-texto" x-text="codigoPrevisto()"></span>
+                    <span class="text-texto-disabled">+ dígito verificador</span>
+                </p>
+
+                <div class="flex justify-end gap-3 mt-8">
+                    <button type="button" @click="variante.abierto = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Listo</button>
+                    <button type="submit"
+                            :disabled="variante.guardando || !variante.sufijo || !variante.descripcion_sufijo"
+                            class="h-boton px-8 rounded-input bg-primary text-white text-base
+                                   font-medium hover:bg-primary-hover disabled:opacity-60"
+                            x-text="variante.guardando ? 'Guardando…' : 'Agregar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ---------- Modal: confirmación genérica (quitar item, eliminar borrador) ---------- #}
+    {{ modal_confirmacion() }}
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/producto_form.js') }}"></script>
+<script src="{{ estatico('/js/compra_flujo.js') }}"></script>
+{% endblock %}

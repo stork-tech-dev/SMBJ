@@ -21,6 +21,7 @@ from app.core.utils import ip_de_request
 from app.models.proveedor import Proveedor
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.productos import (
+    EtiquetasRequest,
     FotoResponse,
     PrecioPreview,
     ProductoCrear,
@@ -82,7 +83,7 @@ def listar(
         tamano=tamano,
     )
     return RespuestaPaginada[ProductoResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 
@@ -167,6 +168,7 @@ def listar_variantes(
     proveedor_id: int | None = Query(default=None),
     temporada: str | None = Query(default=None),
     activo: bool | None = Query(default=None),
+    stock_cero: bool | None = Query(default=None),
     precio_desde: Decimal | None = Query(default=None),
     precio_hasta: Decimal | None = Query(default=None),
     pagina: int = Query(default=1, ge=1),
@@ -189,13 +191,14 @@ def listar_variantes(
         proveedor_id=proveedor_id,
         temporada=temporada,
         activo=activo,
+        stock_cero=stock_cero,
         precio_desde=precio_desde,
         precio_hasta=precio_hasta,
         pagina=pagina,
         tamano=tamano,
     )
     return RespuestaPaginada[VarianteListadoResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 
@@ -234,6 +237,7 @@ def crear(
             peso_gramos=datos.peso_gramos,
             temporada=datos.temporada,
             stock_infinito=datos.stock_infinito,
+            stock_inicial=datos.stock_inicial,
             ip_origen=ip_de_request(request),
         )
     except servicio.SinPermiso as exc:
@@ -325,6 +329,7 @@ def agregar_variante(
             descripcion_sufijo=datos.descripcion_sufijo,
             sku_proveedor=datos.sku_proveedor,
             ubicacion_deposito=datos.ubicacion_deposito,
+            stock_inicial=datos.stock_inicial,
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:
@@ -421,11 +426,17 @@ async def subir_foto(
     producto_id: int,
     request: Request,
     archivo: UploadFile = File(..., description="JPG, PNG, GIF o WebP, hasta 5 MB"),
+    variante_id: int | None = Query(
+        default=None,
+        description="Si se pasa, la foto es exclusiva de esa variante; "
+        "si no, es compartida por todas.",
+    ),
     db: Session = Depends(get_db),
     autor=Depends(requiere_permiso(Modulo.PRODUCTOS, "editar")),
 ):
     """
-    Máximo 5 por producto. La primera queda como principal.
+    Máximo 5 por producto (compartidas) y 5 por variante (propias).
+    La primera de cada pool queda como principal.
 
     El tipo se valida por los bytes del archivo, no por su extensión ni por
     el Content-Type: los dos los manda el cliente.
@@ -433,7 +444,9 @@ async def subir_foto(
     contenido = await archivo.read()
     try:
         foto = servicio_fotos.subir_foto(
-            db, autor, producto_id, contenido, ip_origen=ip_de_request(request)
+            db, autor, producto_id, contenido,
+            variante_id=variante_id,
+            ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:
         raise _404(exc) from exc
@@ -483,3 +496,41 @@ def eliminar_foto(
         raise _404(exc) from exc
 
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Etiquetas de código de barras
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/etiquetas",
+    response_class=Response,
+    summary="PDF de etiquetas de código de barras",
+)
+def etiquetas_pdf(
+    payload: EtiquetasRequest,
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.PRODUCTOS, "ver")),
+):
+    """
+    Genera un PDF con etiquetas para la impresora Zebra GC420t. El PDF se
+    abre en el navegador y el usuario lo imprime desde el diálogo del SO,
+    eligiendo la impresora que tenga cargado el tipo de etiqueta pedido.
+    """
+    from app.reports.etiquetas_pdf import generar_etiquetas
+
+    try:
+        pdf = generar_etiquetas(
+            db,
+            items=[(i.variante_id, i.cantidad) for i in payload.items],
+            tipo=payload.tipo,
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="etiquetas.pdf"'},
+    )

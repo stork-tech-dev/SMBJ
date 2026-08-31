@@ -1,0 +1,42 @@
+{# ===========================================================================
+   Macro: switch "Estado" (Activo / Inactivo) para filtros de listado.
+
+   Alterna entre mostrar registros activos o inactivos. A diferencia del
+   switch_activos (booleano sí/no), este siempre filtra por un estado
+   concreto: no hay opción "todos".
+
+   El valor es `'true'` (activo) o `'false'` (inactivo) —strings— para que
+   entre sin cambios en el bucle que arma los query params.
+
+   Parámetros:
+     modelo     expresión Alpine con el filtro (ej. `filtros.activo`).
+     al_cambiar sentencia a ejecutar después de togglear. Por defecto
+                `cargar()`, que es como se llama en todos los listados.
+     id         sufijo para los ids, por si hubiera dos en una pantalla.
+
+   Uso:
+     {% from "components/switch_estado.html" import switch_estado %}
+     {{ switch_estado('filtros.activo') }}
+   =========================================================================== #}
+
+{% macro switch_estado(modelo, al_cambiar='cargar()', id='estado') %}
+<div class="ml-auto flex items-center gap-3">
+    <span id="{{ id }}-label" class="text-sm font-semibold text-texto-muted">Estado</span>
+
+    <button type="button" role="switch" id="{{ id }}"
+            aria-labelledby="{{ id }}-label"
+            :aria-checked="{{ modelo }} === 'true' ? 'true' : 'false'"
+            @click="{{ modelo }} = {{ modelo }} === 'true' ? 'false' : 'true'; {{ al_cambiar }}"
+            class="inline-flex items-center min-h-toque focus:outline-none
+                   focus-visible:ring-2 focus-visible:ring-primary rounded-input">
+        <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
+              :class="{{ modelo }} === 'true' ? 'bg-primary' : 'bg-borde'">
+            <span class="inline-block w-4 h-4 rounded-full bg-white shadow transition-transform"
+                  :class="{{ modelo }} === 'true' ? 'translate-x-6' : 'translate-x-1'"></span>
+        </span>
+    </button>
+
+    <span class="text-sm font-semibold text-texto w-16"
+          x-text="{{ modelo }} === 'true' ? 'Activo' : 'Inactivo'"></span>
+</div>
+{% endmacro %}

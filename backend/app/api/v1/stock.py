@@ -85,7 +85,7 @@ def listar(
         tamano=tamano,
     )
     return RespuestaPaginada[StockResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 
@@ -189,7 +189,7 @@ def movimientos(
         tamano=tamano,
     )
     return RespuestaPaginada[MovimientoResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 

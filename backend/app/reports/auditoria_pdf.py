@@ -14,6 +14,8 @@ El remito es distinto porque es el papel que VIAJÓ con la mercadería: ese sí
 es un documento de un momento, y se reimprime tal cual salió.
 """
 
+from io import BytesIO
+
 from sqlalchemy.orm import Session
 
 from app.core.utils import ahora_db
@@ -33,3 +35,84 @@ def generar_pdf_auditoria(db: Session, auditoria) -> bytes:
         # de la misma auditoría, que es lo único que las distingue.
         emitido=ahora_db(),
     )
+
+
+ETIQUETAS_ESTADO = {
+    "en_curso": "En curso",
+    "cerrada": "Cerrada",
+}
+
+
+def generar_xls_auditoria(auditoria) -> bytes:
+    """Excel con el detalle de la auditoría, mismo contenido que el PDF."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = Workbook()
+    hoja = wb.active
+    hoja.title = f"Auditoría #{auditoria.id}"
+
+    negrita = Font(bold=True)
+    rojo = Font(bold=True, color="CC0000")
+    fondo_diff = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+
+    # --- Encabezado ---
+    estado = auditoria.estado.value if hasattr(auditoria.estado, "value") else auditoria.estado
+    hoja.append([f"Auditoría de inventario #{auditoria.id}"])
+    hoja["A1"].font = Font(bold=True, size=14)
+    hoja.append(["Estado", ETIQUETAS_ESTADO.get(estado, estado)])
+    hoja.append(["Ubicación", auditoria.punto_de_venta.nombre])
+    hoja.append(["Contó", auditoria.usuario.nombre,
+                 auditoria.fecha_inicio.strftime("%d/%m/%Y %H:%M") if auditoria.fecha_inicio else ""])
+    if auditoria.fecha_fin:
+        hoja.append(["Cerrada", auditoria.fecha_fin.strftime("%d/%m/%Y %H:%M")])
+    if auditoria.notas:
+        hoja.append(["Notas", auditoria.notas])
+    hoja.append([])
+
+    # --- Cabecera de tabla ---
+    fila_header = ["Código", "Descripción", "Sistema", "Contado", "Diferencia"]
+    hoja.append(fila_header)
+    for cell in hoja[hoja.max_row]:
+        cell.font = negrita
+
+    # --- Items ---
+    items = sorted(auditoria.items, key=lambda i: i.variante.codigo_completo)
+    for item in items:
+        codigo = item.variante.codigo_completo + (item.variante.verificador or "")
+        desc = item.variante.producto.descripcion
+        if not item.variante.es_base and item.variante.descripcion_sufijo:
+            desc += f" · {item.variante.descripcion_sufijo}"
+        diff = item.diferencia
+        fila = [codigo, desc, item.cantidad_sistema, item.cantidad_contada, diff]
+        hoja.append(fila)
+        if diff != 0:
+            for cell in hoja[hoja.max_row]:
+                cell.fill = fondo_diff
+            hoja[hoja.max_row][4].font = rojo
+
+    # --- Resumen ---
+    hoja.append([])
+    con_diff = [i for i in items if i.diferencia != 0]
+    hoja.append([f"{len(items)} código(s) contado(s) · {len(con_diff)} con diferencia"])
+    if con_diff:
+        faltantes = sum(abs(i.diferencia) for i in con_diff if i.diferencia < 0)
+        sobrantes = sum(i.diferencia for i in con_diff if i.diferencia > 0)
+        hoja.append([f"Faltantes: {faltantes} unidades · Sobrantes: {sobrantes} unidades"])
+
+    # --- Anchos de columna ---
+    hoja.column_dimensions["A"].width = 16
+    hoja.column_dimensions["B"].width = 40
+    hoja.column_dimensions["C"].width = 10
+    hoja.column_dimensions["D"].width = 10
+    hoja.column_dimensions["E"].width = 12
+
+    # Alinear columnas numéricas a la derecha.
+    for row in hoja.iter_rows(min_row=1, max_row=hoja.max_row, min_col=3, max_col=5):
+        for cell in row:
+            cell.alignment = Alignment(horizontal="right")
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    wb.close()
+    return buffer.getvalue()

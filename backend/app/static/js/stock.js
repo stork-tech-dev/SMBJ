@@ -18,6 +18,8 @@ function abmStock({ puntoFijo = null } = {}) {
     return {
         filas: [],
         total: 0,
+        pagina: 1,
+        tamano: 10,
         cargando: false,
 
         // Catálogos de los desplegables.
@@ -36,11 +38,6 @@ function abmStock({ puntoFijo = null } = {}) {
             // String y no booleano para que entre sin cambios en el bucle que
             // arma los query params, igual que en los otros listados.
             solo_bajo_minimo: '',
-        },
-
-        ingreso: {
-            abierto: false, guardando: false, codigo: '', variante: null,
-            punto_de_venta_id: '', cantidad: 1, notas: '',
         },
 
         minimos: {
@@ -97,6 +94,8 @@ function abmStock({ puntoFijo = null } = {}) {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
 
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
                 const resp = await fetch('/api/v1/stock?' + params, {
                     credentials: 'same-origin',
                 });
@@ -165,47 +164,6 @@ function abmStock({ puntoFijo = null } = {}) {
             } catch {
                 // Silencioso: es una ayuda para completar el formulario y no
                 // puede trabar la carga.
-            }
-        },
-
-        /* --- Ingreso de mercadería --- */
-
-        abrirIngreso() {
-            this.ingreso = {
-                abierto: true, guardando: false, codigo: '', variante: null,
-                // Con una sola ubicación posible se elige sola: no hay nada
-                // que decidir y obligar a tocarla es fricción sin sentido.
-                punto_de_venta_id: this.puntoFijo || '',
-                cantidad: 1, notas: '',
-            };
-        },
-
-        async guardarIngreso() {
-            const i = this.ingreso;
-            i.guardando = true;
-            try {
-                const resp = await fetch('/api/v1/stock/ingresos', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        variante_id: i.variante.id,
-                        punto_de_venta_id: Number(i.punto_de_venta_id),
-                        cantidad: Number(i.cantidad),
-                        notas: i.notas || null,
-                    }),
-                });
-                if (!resp.ok) {
-                    const error = await resp.json().catch(() => ({}));
-                    throw new Error(error.detail || 'No se pudo registrar el ingreso');
-                }
-                window.toast(`Ingresaron ${i.cantidad} unidades`, 'exito');
-                i.abierto = false;
-                this.cargar();
-            } catch (e) {
-                window.toast(e.message, 'error');
-            } finally {
-                i.guardando = false;
             }
         },
 

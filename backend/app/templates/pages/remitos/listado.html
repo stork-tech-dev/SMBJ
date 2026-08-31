@@ -6,6 +6,8 @@
 {% from "components/combobox.html" import combobox %}
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/miniatura.html" import miniatura %}
+{% from "components/paginacion.html" import paginacion %}
 
 {% block contenido %}
 
@@ -42,7 +44,7 @@
                         etiqueta='Estado', label_oculto=true,
                         placeholder='Estado',
                         vacio='Todos los estados',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -56,7 +58,7 @@
                         etiqueta='Origen', label_oculto=true,
                         placeholder='Origen',
                         vacio='Cualquier origen',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -69,7 +71,7 @@
                         etiqueta='Destino', label_oculto=true,
                         placeholder='Destino',
                         vacio='Cualquier destino',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -161,6 +163,7 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
     {% if puede_remitir %}
@@ -237,6 +240,7 @@
                     <table class="w-full border-collapse text-sm">
                         <thead>
                             <tr class="bg-surface-alt">
+                                <th class="px-4 py-3"><span class="sr-only">Foto</span></th>
                                 <th class="px-4 py-3 text-left font-semibold text-texto-header">Código</th>
                                 <th class="px-4 py-3 text-left font-semibold text-texto-header">Descripción</th>
                                 <th class="px-4 py-3 text-right font-semibold text-texto-header">Hay</th>
@@ -247,6 +251,9 @@
                         <tbody>
                             <template x-for="(item, indice) in alta.items" :key="item.variante_id">
                                 <tr class="border-t border-borde">
+                                    <td class="px-4 py-3">
+                                        {{ miniatura('item.foto_url') }}
+                                    </td>
                                     <td class="px-4 py-3 font-mono" x-text="item.codigo"></td>
                                     <td class="px-4 py-3" x-text="item.descripcion"></td>
                                     <td class="px-4 py-3 text-right text-texto-muted"
@@ -341,6 +348,7 @@
                 <table class="w-full border-collapse text-sm mt-6">
                     <thead>
                         <tr class="bg-surface-alt">
+                            <th class="px-4 py-3"><span class="sr-only">Foto</span></th>
                             <th class="px-4 py-3 text-left font-semibold text-texto-header">Código</th>
                             <th class="px-4 py-3 text-left font-semibold text-texto-header">Descripción</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Enviado</th>
@@ -350,6 +358,9 @@
                     <tbody>
                         <template x-for="item in (detalle.remito?.items || [])" :key="item.id">
                             <tr class="border-t border-borde">
+                                <td class="px-4 py-3">
+                                    {{ miniatura('item.variante.foto_url') }}
+                                </td>
                                 <td class="px-4 py-3 font-mono"
                                     x-text="item.variante.codigo_completo + item.variante.verificador"></td>
                                 <td class="px-4 py-3" x-text="item.variante.producto.descripcion"></td>
@@ -432,6 +443,7 @@
                 <table class="w-full border-collapse text-sm mt-6">
                     <thead>
                         <tr class="bg-surface-alt">
+                            <th class="px-4 py-3"><span class="sr-only">Foto</span></th>
                             <th class="px-4 py-3 text-left font-semibold text-texto-header">Código</th>
                             <th class="px-4 py-3 text-left font-semibold text-texto-header">Descripción</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Enviado</th>
@@ -441,6 +453,9 @@
                     <tbody>
                         <template x-for="item in recepcion.items" :key="item.variante_id">
                             <tr class="border-t border-borde">
+                                <td class="px-4 py-3">
+                                    {{ miniatura('item.foto_url') }}
+                                </td>
                                 <td class="px-4 py-3 font-mono" x-text="item.codigo"></td>
                                 <td class="px-4 py-3" x-text="item.descripcion"></td>
                                 <td class="px-4 py-3 text-right" x-text="item.enviada"></td>

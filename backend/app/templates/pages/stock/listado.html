@@ -6,6 +6,7 @@
 {% from "components/combobox.html" import combobox %}
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
+{% from "components/paginacion.html" import paginacion %}
 
 {% block contenido %}
 
@@ -41,20 +42,13 @@
         </a>
         {% endif %}
 
-        {% if puede_ingresar %}
-        <button type="button" @click="abrirIngreso()"
-                class="h-control px-6 inline-flex items-center gap-2 rounded-input
-                       bg-accent text-white text-sm font-semibold hover:opacity-90">
-            {{ icono('mas', clases='w-4 h-4') }} Ingreso de mercadería
-        </button>
-        {% endif %}
     {% endcall %}
 
     {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
         <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
         <input id="f-texto" type="text" x-model="filtros.busqueda"
-               @input.debounce.400ms="cargar()" placeholder="Código, SKU o descripción"
+               @input.debounce.400ms="pagina = 1; cargar()" placeholder="Código, SKU o descripción"
                class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
                       border-2 border-borde rounded-input text-texto
                       placeholder:text-texto-disabled focus:outline-none focus:border-primary">
@@ -68,7 +62,7 @@
                         etiqueta='Ubicación', label_oculto=true,
                         placeholder='Ubicación',
                         vacio='Todas las ubicaciones',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -82,7 +76,7 @@
                         etiqueta='Categoría', label_oculto=true,
                         placeholder='Categoría',
                         vacio='Todas las categorías',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -95,7 +89,7 @@
                         etiqueta='Proveedor', label_oculto=true,
                         placeholder='Proveedor',
                         vacio='Todos los proveedores',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -121,7 +115,7 @@
                     aria-labelledby="bajo-minimo-label"
                     :aria-checked="filtros.solo_bajo_minimo === 'true' ? 'true' : 'false'"
                     @click="filtros.solo_bajo_minimo =
-                            filtros.solo_bajo_minimo === 'true' ? '' : 'true'; cargar()"
+                            filtros.solo_bajo_minimo === 'true' ? '' : 'true'; pagina = 1; cargar()"
                     class="inline-flex items-center min-h-toque focus:outline-none
                            focus-visible:ring-2 focus-visible:ring-primary rounded-input">
                 <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
@@ -216,93 +210,11 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
-    {% if puede_ingresar %}
-    {# ---------- Modal: ingreso de mercadería ---------- #}
-    <div x-show="ingreso.abierto" x-cloak
-         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @keydown.escape.window="ingreso.abierto = false"
-         role="dialog" aria-modal="true" aria-labelledby="titulo-ingreso">
-        <div class="w-full max-w-[32rem] my-8 bg-surface rounded-[10px]
-                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
-            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
-                <div>
-                    <h2 id="titulo-ingreso" class="text-lg font-black text-welcome">
-                        Ingreso de mercadería
-                    </h2>
-                    <p class="mt-1 text-sm text-texto-muted">
-                        Lo que entra del proveedor. Queda registrado como movimiento.
-                    </p>
-                </div>
-                <button type="button" @click="ingreso.abierto = false" aria-label="Cerrar"
-                        class="text-texto-muted hover:text-texto -mt-2">
-                    {{ icono('cerrar', clases='w-6 h-6') }}
-                </button>
-            </div>
-
-            <form @submit.prevent="guardarIngreso()" class="px-6 sm:px-10 pb-8 pt-4">
-                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    <div class="sm:col-span-2 flex flex-col gap-1">
-                        <label for="in-codigo" class="text-sm font-semibold text-texto-header">
-                            Código<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        {# Se escanea o se tipea: es el mismo campo. El lector
-                           entrega el código con su dígito verificador y el
-                           backend lo resuelve a una sola variante. #}
-                        <input id="in-codigo" x-model="ingreso.codigo"
-                               @input.debounce.300ms="buscarVariante('ingreso')"
-                               placeholder="Escaneá o tipeá el código"
-                               autocomplete="off" class="campo-linea font-mono">
-                        <span class="text-xs" :class="ingreso.variante ? 'text-primary' : 'text-texto-disabled'"
-                              x-text="ingreso.variante
-                                      ? ingreso.variante.producto.descripcion
-                                      : 'Todavía sin identificar'"></span>
-                    </div>
-
-                    <div class="sm:col-span-2">
-                        {{ combobox('in-punto', 'puntosDestino()', 'o.nombre',
-                                    'ingreso.punto_de_venta_id',
-                                    etiqueta='Ubicación', obligatorio=true,
-                                    clases='w-full h-control pl-3 pr-9 text-base font-light
-                                            bg-surface text-texto border-[0.5px]
-                                            border-texto-disabled rounded-input
-                                            focus:outline-none focus:border-primary') }}
-                    </div>
-
-                    <div class="flex flex-col gap-1">
-                        <label for="in-cantidad" class="text-sm font-semibold text-texto-header">
-                            Cantidad<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        <input id="in-cantidad" type="number" min="1" step="1" required
-                               x-model="ingreso.cantidad" class="campo-linea">
-                    </div>
-
-                    <div class="flex flex-col gap-1">
-                        <label for="in-notas" class="text-sm font-semibold text-texto-header">
-                            Notas
-                        </label>
-                        <input id="in-notas" x-model="ingreso.notas" maxlength="200"
-                               placeholder="Remito del proveedor, factura…"
-                               class="campo-linea">
-                    </div>
-                </div>
-
-                <div class="flex justify-end gap-3 mt-8">
-                    <button type="button" @click="ingreso.abierto = false"
-                            class="h-boton px-5 rounded-input border border-borde text-base
-                                   hover:border-primary hover:text-primary">Cancelar</button>
-                    <button type="submit"
-                            :disabled="ingreso.guardando || !ingreso.variante
-                                       || !ingreso.punto_de_venta_id"
-                            class="h-boton px-8 rounded-input bg-primary text-white text-base
-                                   font-medium hover:bg-primary-hover disabled:opacity-60"
-                            x-text="ingreso.guardando ? 'Guardando…' : 'Registrar'"></button>
-                </div>
-            </form>
-        </div>
-    </div>
-    {% endif %}
+    {# El modal de "Ingreso de mercadería" se eliminó: esa funcionalidad
+       la reemplaza la página de Carga de Compras (/compras). #}
 
     {% if puede_minimos %}
     {# ---------- Modal: mínimos de reposición ---------- #}

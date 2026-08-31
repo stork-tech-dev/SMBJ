@@ -47,5 +47,5 @@ def listar(
         tamano=tamano,
     )
     return RespuestaPaginada[AuditoriaResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )

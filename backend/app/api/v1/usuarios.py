@@ -77,7 +77,7 @@ def listar(
         tamano=tamano,
     )
     return RespuestaPaginada[UsuarioResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=resultados
+        total=total, pagina=pagina, tamano=tamano, resultados=resultados  # type: ignore[arg-type]
     )
 
 
@@ -369,7 +369,7 @@ def historial(
         raise _404(exc) from exc
 
     return RespuestaPaginada[HistorialAccesoResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 

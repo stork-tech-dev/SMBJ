@@ -153,6 +153,12 @@ CONFIGURACION_SECCIONES = [
 # pantalla al módulo es una línea acá.
 SECCIONES_STOCK = [
     {
+        "nombre": "Carga de Compras",
+        "descripcion": "Registro de compras a proveedores con carga de productos",
+        "url": "/compras",
+        "modulo": Modulo.COMPRAS,
+    },
+    {
         "nombre": "Movimientos de Stock",
         "descripcion": "Lo que hay en cada ubicación, ingresos y bajas",
         "url": "/stock",
@@ -229,7 +235,7 @@ def _visible(db: Session, usuario, item: dict, es_maestra: bool) -> bool:
     # Hub de Configuraciones: visible si alguna de sus secciones lo es.
     if item.get("hub_configuracion"):
         return any(
-            _visible(db, usuario, s, es_maestra) for s in CONFIGURACION_SECCIONES
+            _visible(db, usuario, s, es_maestra) for s in CONFIGURACION_SECCIONES  # type: ignore[arg-type]
         )
     if item.get("modulo") is None:
         return True
@@ -248,15 +254,15 @@ def menu_visible(db: Session, usuario) -> tuple[list, list]:
     """
     es_maestra = _es_maestra(usuario)
     return (
-        [i for i in MENU_SIDEBAR if _visible(db, usuario, i, es_maestra)],
-        [i for i in MENU_SIDEBAR_PIE if _visible(db, usuario, i, es_maestra)],
+        [i for i in MENU_SIDEBAR if _visible(db, usuario, i, es_maestra)],  # type: ignore[arg-type]
+        [i for i in MENU_SIDEBAR_PIE if _visible(db, usuario, i, es_maestra)],  # type: ignore[arg-type]
     )
 
 
 def secciones_configuracion(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Configuraciones visibles para el usuario."""
     es_maestra = _es_maestra(usuario)
-    return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]
+    return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]  # type: ignore[arg-type, misc]
 
 
 def secciones_stock(db: Session, usuario) -> list[dict]:
@@ -678,7 +684,6 @@ def _contexto_stock(request, db, usuario, titulo, ruta):
         # Con un solo local a la vista, los filtros por punto de venta sobran:
         # la pantalla ya está acotada a ese local.
         punto_fijo=scope.punto_de_venta_id if scope.restringido else None,
-        puede_ingresar=puede("crear"),
         puede_minimos=puede("editar"),
         puede_baja=puede("crear", Recurso.STOCK_BAJA),
         # Abre la puerta al catálogo de motivos. Es el mismo permiso que exige
@@ -688,9 +693,73 @@ def _contexto_stock(request, db, usuario, titulo, ruta):
         puede_remitir=puede("crear"),
         puede_recibir=puede("editar", Recurso.STOCK_REMITO_RECEPCION),
         puede_auditar=puede("crear", Recurso.STOCK_AUDITORIA),
-        puede_aprobar=puede("editar", Recurso.STOCK_AUDITORIA_APROBAR),
     )
 
+
+# ---- Compras a proveedores -------------------------------------------------
+
+@router.get("/compras", response_class=HTMLResponse)
+async def compras(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    puede_crear = resolver_permiso(db, usuario.id, Modulo.COMPRAS, "crear")
+    return templates.TemplateResponse(
+        request,
+        "pages/compras/listado.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Carga de Compras",
+            ruta_activa=RUTA_HUB_STOCK,
+            puede_crear=puede_crear,
+        ),
+    )
+
+
+@router.get("/compras/nueva", response_class=HTMLResponse)
+async def compra_nueva(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/compras/compra.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Nuevo Ingreso de Mercadería",
+            ruta_activa=RUTA_HUB_STOCK,
+            compra_id="null",
+            estado_compra="borrador",
+            nivel_maximo=NIVEL_MAXIMO,
+        ),
+    )
+
+
+@router.get("/compras/{compra_id}", response_class=HTMLResponse)
+async def compra_detalle_pagina(
+    compra_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    from app.models.compra import Compra
+
+    compra = db.query(Compra).filter_by(id=compra_id).first()
+    if not compra:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "pages/compras/compra.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Ingreso de Mercadería",
+            ruta_activa=RUTA_HUB_STOCK,
+            compra_id=compra_id,
+            estado_compra=compra.estado.value,
+            nivel_maximo=NIVEL_MAXIMO,
+        ),
+    )
+
+
+# ---- Stock -----------------------------------------------------------------
 
 @router.get("/stock", response_class=HTMLResponse)
 async def stock(

@@ -14,6 +14,7 @@ Los dos caminos son:
 """
 
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -39,13 +40,48 @@ from app.models.categoria import Categoria
 from app.models.configuracion import ConfiguracionSistema
 from app.models.producto import Producto, Temporada, Variante
 from app.models.proveedor import EstadoProveedor, Proveedor
-from app.models.stock import Stock
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
+from app.models.stock import Stock, TipoMovimiento
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
 
 class SinPermiso(Exception):
     """El autor no puede tocar este campo del producto (403)."""
+
+
+def _ingresar_stock_inicial(
+    db: Session, autor: Usuario, variante: Variante,
+    cantidad: int, ip_origen: str | None,
+) -> None:
+    """
+    Registra un ingreso de proveedor al CD con la cantidad indicada.
+
+    Se llama después de crear un producto o variante si el usuario cargó
+    stock inicial. Usa el mismo `aplicar_movimiento` que el resto del
+    sistema: la mercadería queda en el CD con su movimiento y auditoría.
+    """
+    if cantidad <= 0:
+        return
+
+    from app.services.stock import aplicar_movimiento
+
+    cd = db.execute(
+        select(PuntoDeVenta).where(PuntoDeVenta.tipo == TipoPuntoVenta.CD)
+    ).scalars().first()
+    if cd is None:
+        raise ReglaDeNegocio(
+            "No hay un Centro de Distribución configurado para cargar stock"
+        )
+
+    aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id,
+        cantidad=cantidad,
+        punto_venta_destino_id=cd.id,
+        ip_origen=ip_origen,
+    )
 
 
 def _validar_stock_infinito(autor: Usuario, pedido: bool | None, actual: bool) -> None:
@@ -154,6 +190,7 @@ def recalcular_precios_de_proveedor(db: Session, proveedor_id: int) -> int:
     )
 
     for variante in variantes:
+        assert variante.precio_usd is not None  # filtrado por is_not(None) en la query
         variante.precio_venta = calcular_precio_venta(
             db, variante.precio_usd, proveedor.dolar_actual
         )
@@ -368,6 +405,7 @@ def agregar_variante(
     descripcion_sufijo: str,
     sku_proveedor: str | None = None,
     ubicacion_deposito: str | None = None,
+    stock_inicial: int | None = None,
     ip_origen: str | None = None,
 ) -> Variante:
     """
@@ -432,6 +470,10 @@ def agregar_variante(
         estado_nuevo=variante,
         ip_origen=ip_origen,
     )
+
+    if stock_inicial:
+        _ingresar_stock_inicial(db, autor, variante, stock_inicial, ip_origen)
+
     return variante
 
 
@@ -665,6 +707,7 @@ def listar_variantes(
     proveedor_id: int | None = None,
     temporada: str | None = None,
     activo: bool | None = None,
+    stock_cero: bool | None = None,
     precio_desde: Decimal | None = None,
     precio_hasta: Decimal | None = None,
     pagina: int = 1,
@@ -704,7 +747,7 @@ def listar_variantes(
         # ahí el buscador lo leía como etiqueta, le sacaba el último carácter
         # y comparaba contra un código que no existe. Tipear `AA009` no
         # devolvía nada, sin ninguna señal de por qué.
-        condiciones = [
+        condiciones: list[Any] = [
             Variante.codigo_completo.ilike(patron),
             Producto.sku.ilike(patron),
             Producto.descripcion.ilike(patron),
@@ -733,6 +776,18 @@ def listar_variantes(
         consulta = consulta.where(Producto.temporada == temporada)
     if activo is not None:
         consulta = consulta.where(Producto.activo.is_(activo))
+    if stock_cero:
+        # Variantes con stock total = 0, excluyendo productos con stock
+        # infinito (esos nunca están "sin stock").
+        from app.models.stock import Stock
+
+        subq_stock = (
+            select(func.coalesce(func.sum(Stock.cantidad), 0))
+            .where(Stock.variante_id == Variante.id)
+            .correlate(Variante)
+            .scalar_subquery()
+        )
+        consulta = consulta.where(subq_stock == 0, Producto.stock_infinito.is_(False))
 
     # Sobre el precio EFECTIVO: filtrar por `Producto.precio_venta` dejaría
     # afuera justamente a las variantes que tienen precio propio, que son
@@ -783,6 +838,7 @@ def crear_producto(
     peso_gramos: Decimal | None = None,
     temporada: str = Temporada.ATEMPORAL.value,
     stock_infinito: bool = False,
+    stock_inicial: int | None = None,
     ip_origen: str | None = None,
 ) -> Producto:
     """
@@ -831,7 +887,7 @@ def crear_producto(
 
     # Todo producto arranca con su BASE: así el stock siempre cuelga de una
     # variante, con o sin variantes reales.
-    _crear_variante(db, producto, sufijo=None, es_base=True)
+    base = _crear_variante(db, producto, sufijo=None, es_base=True)
 
     registrar_auditoria(
         db,
@@ -842,6 +898,10 @@ def crear_producto(
         estado_nuevo=producto,
         ip_origen=ip_origen,
     )
+
+    if stock_inicial:
+        _ingresar_stock_inicial(db, autor, base, stock_inicial, ip_origen)
+
     return producto
 
 
@@ -968,6 +1028,55 @@ def cambiar_estado_producto(
 # ============================================================================
 # CÓDIGO DE BARRAS
 # ============================================================================
+
+
+def barcode_svg_para_etiqueta(db: Session, variante_id: int) -> tuple[str, str]:
+    """
+    SVG compacto + texto del código, para incrustar en el PDF de etiquetas.
+
+    El SVG se genera sin texto (lo pone la plantilla HTML con tipografía
+    controlada) y con módulos más finos para que quepa en 3,5 cm de ancho.
+
+    WeasyPrint respeta los atributos ``width``/``height`` del SVG en lugar del
+    CSS, así que se fuerzan a dimensiones fijas que dejan espacio para el texto
+    del código debajo (5.5mm de barcode + ~3.5mm de texto = ~9mm en 1cm).
+    """
+    import io
+    import re
+
+    from barcode import Code128
+    from barcode.writer import SVGWriter
+
+    variante = obtener_variante(db, variante_id)
+    codigo = variante.codigo_con_verificador
+
+    buffer = io.BytesIO()
+    Code128(codigo, writer=SVGWriter()).write(
+        buffer,
+        options={
+            "module_width": 0.2,
+            "module_height": 4.0,
+            "write_text": False,
+            "quiet_zone": 1.0,
+        },
+    )
+    svg = buffer.getvalue().decode("utf-8")
+    # Quitar la declaración XML para incrustar directo en HTML.
+    svg = svg.replace('<?xml version="1.0" encoding="UTF-8"?>\n', "")
+
+    # Quitar DOCTYPE (WeasyPrint no lo necesita y puede causar problemas).
+    svg = re.sub(r"<!DOCTYPE[^>]+>", "", svg)
+
+    # Forzar dimensiones del SVG para que ocupe ~50% del ancho de la
+    # etiqueta (33mm) y deje espacio al código de texto debajo.
+    # WeasyPrint respeta los atributos width/height del tag SVG, no el CSS.
+    svg = re.sub(
+        r'width="[\d.]+mm"\s+height="[\d.]+mm"',
+        'width="16mm" height="4.5mm"',
+        svg,
+        count=1,
+    )
+    return svg, codigo
 
 
 def barcode_svg(db: Session, variante_id: int) -> str:

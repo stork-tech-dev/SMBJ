@@ -1,0 +1,129 @@
+{# Carga de Compras: listado de compras cerradas + banner de borrador activo.
+   Los datos salen de /api/v1/compras (Principio 1). #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/paginacion.html" import paginacion %}
+
+{% block contenido %}
+
+<div x-data="abmCompras()"
+     x-init="cargar()">
+
+    {% call encabezado('Carga de Compras', volver_url='/gestion-de-stock',
+                       volver_texto='Gestión de Stock') %}
+        {% if puede_crear %}
+        <a href="/compras/nueva"
+           class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                  bg-accent text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Nuevo ingreso
+        </a>
+        {% endif %}
+    {% endcall %}
+
+    {# ---------- Banner de borrador activo ---------- #}
+    <template x-if="borrador">
+        <div class="mt-6 rounded-[10px] border-2 border-warning bg-warning/5 p-5
+                    flex flex-col sm:flex-row sm:items-center gap-4">
+            <div class="flex-1">
+                <p class="text-base font-semibold text-texto">
+                    {{ icono('alerta', clases='w-5 h-5 inline -mt-0.5 text-warning') }}
+                    Tenés una compra sin cerrar
+                </p>
+                <p class="mt-1 text-sm text-texto-muted">
+                    Proveedor: <span x-text="borrador.proveedor?.nombre" class="font-semibold"></span>
+                    &mdash; Iniciada: <span x-text="new Date(borrador.fecha_carga).toLocaleString('es-AR')" class="font-semibold"></span>
+                </p>
+            </div>
+            <div class="flex gap-3">
+                <button type="button" @click="eliminarBorrador()"
+                        class="h-boton px-5 rounded-input border border-danger text-danger text-sm
+                               font-semibold hover:bg-danger hover:text-white">
+                    Eliminar borrador
+                </button>
+                <a :href="'/compras/' + borrador.id"
+                   class="h-boton px-6 inline-flex items-center rounded-input bg-primary text-white
+                          text-sm font-semibold hover:opacity-90">
+                    Continuar compra
+                </a>
+            </div>
+        </div>
+    </template>
+
+    {# ---------- Filtros ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <div class="w-full sm:w-[15rem]">
+            {{ combobox('f-proveedor', 'proveedores', 'o.nombre',
+                        'filtros.proveedor_id',
+                        etiqueta='Proveedor', label_oculto=true,
+                        placeholder='Proveedor',
+                        vacio='Todos',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <button type="button" @click="limpiarFiltros()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <span class="ml-auto text-sm text-texto-muted" x-show="total > 0"
+              x-text="total + ' compra' + (total !== 1 ? 's' : '')"></span>
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-base">
+            <thead>
+                <tr>
+                    <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">#</th>
+                    <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Proveedor</th>
+                    <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Fecha compra</th>
+                    <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Fecha carga</th>
+                    <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Usuario</th>
+                    <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Items</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="c in filas" :key="c.id">
+                    <tr class="border-t border-borde transition-shadow
+                               hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)] cursor-pointer"
+                        @click="window.location = '/compras/' + c.id">
+                        <td class="px-8 py-3 align-middle font-mono font-medium"
+                            x-text="String(c.id).padStart(5, '0')"></td>
+                        <td class="px-4 py-3 align-middle font-medium"
+                            x-text="c.proveedor?.nombre"></td>
+                        <td class="px-4 py-3 align-middle"
+                            x-text="c.fecha_compra ? new Date(c.fecha_compra + 'T00:00').toLocaleDateString('es-AR') : '—'"></td>
+                        <td class="px-4 py-3 align-middle"
+                            x-text="new Date(c.fecha_carga).toLocaleDateString('es-AR')"></td>
+                        <td class="px-4 py-3 align-middle"
+                            x-text="c.usuario_carga?.nombre"></td>
+                        <td class="px-4 py-3 align-middle text-right font-medium"
+                            x-text="c.total_items"></td>
+                    </tr>
+                </template>
+                <tr x-show="!filas.length && !cargando">
+                    <td colspan="6" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {{ paginacion() }}
+    </div>
+
+    {{ modal_confirmacion() }}
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/compras.js"></script>
+{% endblock %}

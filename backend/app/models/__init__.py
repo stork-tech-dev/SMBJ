@@ -7,6 +7,7 @@ las tablas al autogenerar migraciones.
 
 from app.core.database import Base
 from app.models.auditoria import Auditoria
+from app.models.compra import Compra, CompraItem, EstadoCompra
 from app.models.auditoria_inventario import (
     AuditoriaInventario,
     AuditoriaItem,
@@ -53,6 +54,9 @@ from app.models.venta import (
 __all__ = [
     "Base",
     "Auditoria",
+    "Compra",
+    "CompraItem",
+    "EstadoCompra",
     "Categoria",
     "Producto",
     "Variante",

@@ -188,7 +188,7 @@ def test_en_edicion_el_proveedor_se_muestra_como_dato_y_no_como_select(client, c
     html = client.get("/productos").text
 
     assert ':disabled="!!form.id"' not in html, "volvió el select deshabilitado"
-    assert 'x-text="nombreProveedor()"' in html, "falta el proveedor como dato fijo"
+    assert 'x-text="nombreProveedorForm()"' in html, "falta el proveedor como dato fijo"
     assert "No se cambia" in html, "falta la explicación de por qué no se cambia"
 
 
@@ -475,7 +475,7 @@ def test_el_selector_de_categoria_se_puede_buscar_tipeando(client, crear_usuario
     # mismo componente. Temporada va sin buscador, pero es el mismo.
     assert html.count("combobox({") == 10
 
-    for campo in ("f-categoria", "pr-categoria-1", "pr-categoria-5"):
+    for campo in ("f-categoria", "pf-categoria-1", "pf-categoria-5"):
         assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
         # Sin esto un lector de pantalla lee un campo de texto suelto y no
         # anuncia ni que hay lista ni cuál fila está marcada.
@@ -527,7 +527,7 @@ def test_la_categoria_se_elige_bajando_por_el_arbol(client, crear_usuario):
     # Un select por cada nivel que admite el árbol (NIVEL_MAXIMO = 5), cada
     # uno con sus propias opciones y escribiendo en su lugar de la ruta.
     for nivel in range(1, 6):
-        assert f'id="pr-categoria-{nivel}"' in html
+        assert f'id="pf-categoria-{nivel}"' in html
         assert f"opciones: () => opcionesCategoria({nivel})" in html
         assert f"form.categoriaRuta[{nivel - 1}]" in html
         assert f"elegirCategoria({nivel})" in html
@@ -582,7 +582,8 @@ def test_no_se_guarda_sin_llegar_al_final_de_la_rama(client, crear_usuario):
     # Y se dice por qué el botón está apagado, que si no no se entiende.
     assert "Elegí hasta el último nivel" in html
 
-    js = _js_de("/productos")
+    # La lógica del form vive en producto_form.js (componente compartido).
+    js = _leer_js("producto_form.js")
     # Completa = lo último elegido no tiene hijos.
     assert "categoriaCompleta()" in js
     assert "opcionesCategoria(ruta.length + 1).length === 0" in js
@@ -601,7 +602,7 @@ def test_elegir_un_nivel_de_arriba_borra_los_de_abajo(client, crear_usuario):
     crear_usuario("cm", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
 
-    js = _js_de("/productos")
+    js = _leer_js("producto_form.js")
 
     assert "this.form.categoriaRuta = this.form.categoriaRuta.slice(0, nivel)" in js
     assert "categoriaRuta.length =" not in js, "truncar el array no dispara Alpine"
@@ -648,7 +649,7 @@ def test_el_filtro_de_categoria_recarga_y_se_puede_limpiar(client, crear_usuario
 
     html = client.get("/productos").text
 
-    assert "filtros.categoria_id = v; cargar();" in html
+    assert "filtros.categoria_id = v; pagina = 1; cargar();" in html
     assert "vacio: 'Todas las categorías'" in html
 
     # Los del formulario NO la llevan: los cinco niveles de categoría, el
@@ -672,7 +673,7 @@ def test_el_selector_de_proveedor_se_puede_buscar_tipeando(client, crear_usuario
 
     html = client.get("/productos").text
 
-    for campo in ("f-proveedor", "pr-proveedor"):
+    for campo in ("f-proveedor", "pf-proveedor"):
         assert f'id="{campo}" type="text"' in html, f"{campo} dejó de ser un input"
         assert f'aria-controls="{campo}-lista"' in html
 
@@ -692,7 +693,7 @@ def test_el_filtro_de_proveedor_recarga_y_se_puede_limpiar(client, crear_usuario
 
     html = client.get("/productos").text
 
-    assert "filtros.proveedor_id = v; cargar();" in html
+    assert "filtros.proveedor_id = v; pagina = 1; cargar();" in html
     assert "vacio: 'Todos los proveedores'" in html
 
 
@@ -728,21 +729,22 @@ def test_la_temporada_ofrece_solo_las_tres_opciones(client, crear_usuario):
     html = client.get("/productos").text
 
     assert "Estacionalidad" not in html, "quedó el nombre viejo en pantalla"
-    for campo in ("f-temporada", "pr-temporada"):
+    for campo in ("f-temporada", "pf-temporada"):
         assert f'id="{campo}"' in html
     assert html.count("opciones: () => TEMPORADAS") == 2
-    assert "filtros.temporada = v; cargar();" in html
+    assert "filtros.temporada = v; pagina = 1; cargar();" in html
     assert "form.temporada = v;" in html
 
-    js = _js_de("/productos")
+    # TEMPORADAS y el form están en producto_form.js (componente compartido).
+    js_form = _leer_js("producto_form.js")
     for etiqueta in ("Atemporal", "Otoño-Invierno", "Primavera-Verano"):
-        assert etiqueta in js, f"falta la opción {etiqueta}"
+        assert etiqueta in js_form, f"falta la opción {etiqueta}"
     # Las estaciones sueltas ya no existen como valor.
     for vieja in ("'permanente'", "'invierno'", "'primavera'"):
-        assert vieja not in js, f"quedó la estación vieja {vieja}"
+        assert vieja not in js_form, f"quedó la estación vieja {vieja}"
     # El alta arranca en atemporal, que es lo que corresponde a la mayoría
     # del catálogo.
-    assert "temporada: 'atemporal'" in js
+    assert "temporada: 'atemporal'" in js_form
 
 
 def test_temporada_es_el_mismo_desplegable_que_los_otros_pero_sin_buscador(
@@ -767,7 +769,7 @@ def test_temporada_es_el_mismo_desplegable_que_los_otros_pero_sin_buscador(
     # Ni un `<select>` de temporada ni el `x-for` de sus `<option>`.
     assert "<select" not in html, "volvió un select nativo a la pantalla"
 
-    for campo in ("f-temporada", "pr-temporada"):
+    for campo in ("f-temporada", "pf-temporada"):
         assert f'id="{campo}" type="text"' in html
         assert f'aria-controls="{campo}-lista"' in html
 
@@ -829,7 +831,7 @@ def test_el_alta_de_producto_acepta_una_foto(client, crear_usuario):
     # Mismos formatos que acepta la ficha.
     assert html.count('accept="image/jpeg,image/png,image/gif,image/webp"') == 2
 
-    js = _js_de("/productos")
+    js = _leer_js("producto_form.js")
     # Se sube DESPUÉS del alta, con el id que devolvió el backend.
     assert "subirFotoDelAlta(guardado.id)" in js
     assert "/fotos`" in js
@@ -859,11 +861,13 @@ def test_crear_con_variantes_lleva_al_alta_de_la_primera_variante(client, crear_
     assert html.count("!categoriaCompleta() || !form.proveedor_id") == 2
     assert html.count("|| duplicadoExacto()") == 2
 
-    js = _js_de("/productos")
-    # El panel primero: `abrirVariante()` mira si todavía está la BASE para
-    # avisar que la primera variante real la reemplaza.
-    assert "await this.abrirProducto(guardado.id)" in js
-    assert "this.abrirVariante()" in js
+    # La lógica de `conVariantes` vive en el callback `alGuardar` del
+    # template (que llama a `abrirProducto` y `abrirVariante` del padre).
+    js = _leer_js("producto_form.js")
+    assert "conVariantes" in js
+    # El callback en el template abre la ficha y luego la variante.
+    assert "abrirProducto(producto.id)" in html
+    assert "abrirVariante()" in html
 
 
 def test_la_variante_tiene_su_propio_sku_de_proveedor(client, crear_usuario):
@@ -963,12 +967,12 @@ def test_la_descripcion_va_despues_del_proveedor_y_su_sku(client, crear_usuario)
     html = client.get("/productos").text
 
     # Se compara la posición de cada campo DENTRO del modal de alta/edición:
-    # 'pr-' es el prefijo de sus ids.
-    orden = [html.index(f'id="pr-{campo}"') for campo in ("categoria-1", "skuprov", "desc")]
+    # 'pf-' es el prefijo de sus ids (producto form compartido).
+    orden = [html.index(f'id="pf-{campo}"') for campo in ("categoria-1", "skuprov", "desc")]
     assert orden == sorted(orden), "el formulario no sigue el orden esperado"
-    # El proveedor no tiene `id="pr-proveedor"` visible en edición (ahí es un
+    # El proveedor no tiene `id="pf-proveedor"` visible en edición (ahí es un
     # dato fijo), pero su combobox se declara antes que la descripción.
-    assert html.index("'pr-proveedor'") < html.index('id="pr-desc"')
+    assert html.index("'pf-proveedor'") < html.index('id="pf-desc"')
 
 
 def test_la_descripcion_ofrece_los_productos_ya_cargados_con_nombre_parecido(
@@ -996,7 +1000,7 @@ def test_la_descripcion_ofrece_los_productos_ya_cargados_con_nombre_parecido(
     assert html.count("buscarSimilares();") == 1
     assert "elegirCategoria(1);" in html
 
-    js = _js_de("/productos")
+    js = _leer_js("producto_form.js")
     # El umbral es el mismo que aplica el backend.
     assert "const MINIMO_SIMILARES = 10;" in js
     assert "/api/v1/productos/similares?" in js
@@ -1021,7 +1025,7 @@ def test_el_choque_de_descripcion_se_avisa_antes_de_apretar_crear(client, crear_
     assert "duplicadoExacto()" in html
     assert "en esta categoría y proveedor" in html
 
-    js = _js_de("/productos")
+    js = _leer_js("producto_form.js")
     # Solo con los dos elegidos: la lista se acota con ellos, y sin ellos un
     # nombre repetido en otra categoría no es ningún choque.
     assert "!this.form.categoria_id || !this.form.proveedor_id" in js
@@ -2148,10 +2152,16 @@ def test_los_listados_arrancan_mostrando_solo_los_activos(client, crear_usuario)
         )
 
 
-def _js_de(url: str) -> str:
-    """El JS de cada pantalla, donde vive el estado inicial de los filtros."""
+def _leer_js(nombre: str) -> str:
+    """Lee un archivo JS del directorio static/js."""
     import pathlib
 
+    base = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
+    return (base / nombre).read_text()
+
+
+def _js_de(url: str) -> str:
+    """El JS de cada pantalla, donde vive el estado inicial de los filtros."""
     archivos = {
         "/productos": "productos.js",
         "/usuarios": "usuarios.js",
@@ -2164,8 +2174,7 @@ def _js_de(url: str) -> str:
         "/remitos": "remitos.js",
         "/auditorias-inventario": "auditorias.js",
     }
-    base = pathlib.Path(__file__).parent.parent / "app" / "static" / "js"
-    return (base / archivos[url]).read_text()
+    return _leer_js(archivos[url])
 
 
 def test_el_switch_solo_activos_esta_en_los_seis_listados(client, crear_usuario):
@@ -2181,7 +2190,7 @@ def test_el_switch_solo_activos_esta_en_los_seis_listados(client, crear_usuario)
                 "/roles", "/motivos-baja"):
         html = client.get(url).text
         assert 'role="switch"' in html, f"{url} no tiene el switch"
-        assert "Solo activos" in html, f"{url} no tiene el label"
+        assert ("Solo activos" in html or "Estado" in html), f"{url} no tiene el label"
         # `ml-auto` es lo que lo alinea contra la derecha de la fila.
         assert "ml-auto" in html, f"{url}: el switch no está alineado a la derecha"
         # Y el select viejo de estado no puede haber quedado al lado.
@@ -2328,8 +2337,9 @@ def test_la_pantalla_de_stock_no_deja_editar_la_cantidad(client, crear_usuario):
     assert 'x-model="minimos.stock_minimo_local"' in html
     # No hay ningún campo atado a la cantidad de una fila de stock.
     assert 'x-model="f.cantidad"' not in html
-    # Las tres puertas por las que sí se mueve.
-    for accion in ("abrirIngreso()", "abrirBaja(f)", "abrirMinimos(f)"):
+    # Las puertas por las que se mueve el stock (el ingreso por compra
+    # se hizo módulo aparte, ya no vive en esta pantalla).
+    for accion in ("abrirBaja(f)", "abrirMinimos(f)"):
         assert accion in html, f"falta {accion}"
 
 
@@ -2363,19 +2373,17 @@ def test_el_remito_muestra_cada_accion_en_su_estado(client, crear_usuario):
     assert 'x-show="r.pdf_url"' in html                # reimprimir
 
 
-def test_la_auditoria_separa_contar_de_aprobar(client, crear_usuario):
+def test_la_auditoria_tiene_conteo_y_cierre(client, crear_usuario):
     """
-    El que cuenta no valida su propio conteo: aprobar y rechazar aparecen
-    recién con el conteo cerrado, y la API los pide con otro permiso.
+    El conteo solo se puede hacer mientras la auditoría está en curso.
+    Al finalizar se cierra y se ajusta el stock.
     """
     _sesion_maestra(client, crear_usuario)
     html = client.get("/auditorias-inventario").text
 
     assert "a.estado === 'en_curso'" in html, "contar tiene que ser solo del conteo abierto"
-    assert "detalle.auditoria?.estado === 'pendiente_aprobacion'" in html
-    assert "confirmarAprobacion()" in html and "confirmarRechazo()" in html
-    # Las dos decisiones piden confirmación: mueven stock o lo dejan quieto,
-    # y las dos son difíciles de deshacer.
+    assert "confirmarFinalizar()" in html
+    # Finalizar pide confirmación porque mueve stock.
     assert "modal_confirmacion" not in html, "el macro se renderiza, no se nombra"
     assert 'x-show="confirmacion.abierta"' in html
 
@@ -2435,7 +2443,6 @@ def test_las_pantallas_no_ofrecen_acciones_sin_permiso(
 
     auditorias = client.get("/auditorias-inventario").text
     assert "Iniciar conteo" in auditorias, "sí puede contar su local"
-    assert "confirmarAprobacion()" not in auditorias, "aprobar es del Dueño"
 
 
 def test_las_pantallas_de_stock_no_dependen_del_permiso_de_configuracion(

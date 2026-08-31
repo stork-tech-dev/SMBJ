@@ -27,6 +27,8 @@ function abmRemitos({ puntoFijo = null } = {}) {
 
         remitos: [],
         total: 0,
+        pagina: 1,
+        tamano: 10,
         cargando: false,
         puntos: [],
         puntoFijo,
@@ -103,6 +105,8 @@ function abmRemitos({ puntoFijo = null } = {}) {
                 for (const [clave, valor] of Object.entries(this.filtros)) {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
                 const resp = await fetch('/api/v1/remitos?' + params, {
                     credentials: 'same-origin',
                 });
@@ -196,6 +200,7 @@ function abmRemitos({ puntoFijo = null } = {}) {
                     variante_id: variante.id,
                     codigo: variante.codigo_completo + variante.verificador,
                     descripcion: variante.producto.descripcion,
+                    foto_url: variante.foto_url || null,
                     disponible,
                     cantidad: 1,
                 });
@@ -336,6 +341,7 @@ function abmRemitos({ puntoFijo = null } = {}) {
                         variante_id: i.variante.id,
                         codigo: i.variante.codigo_completo + i.variante.verificador,
                         descripcion: i.variante.producto.descripcion,
+                        foto_url: i.variante.foto_url || null,
                         enviada: i.cantidad_enviada,
                         recibida: i.cantidad_enviada,
                     })),

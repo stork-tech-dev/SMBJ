@@ -24,10 +24,8 @@ class ItemsCargar(BaseModel):
     items: list[ItemContado] = Field(min_length=1)
 
 
-class AuditoriaRechazar(BaseModel):
-    """El motivo del rechazo queda con el conteo, no lo reemplaza."""
-
-    notas: str | None = None
+class ItemEditar(BaseModel):
+    cantidad_contada: int = Field(ge=0)
 
 
 class AuditoriaItemResponse(BaseModel):
@@ -51,10 +49,8 @@ class AuditoriaResumen(BaseModel):
     estado: str
     fecha_inicio: datetime
     fecha_fin: datetime | None
-    fecha_aprobacion: datetime | None
     punto_de_venta: PuntoResumen
     usuario_id: int
-    aprobada_por: int | None
 
 
 class AuditoriaResponse(AuditoriaResumen):

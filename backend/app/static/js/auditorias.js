@@ -11,9 +11,7 @@
 
 const ESTADOS = [
     { id: 'en_curso', etiqueta: 'En curso' },
-    { id: 'pendiente_aprobacion', etiqueta: 'Pendiente de aprobación' },
-    { id: 'aprobada', etiqueta: 'Aprobada' },
-    { id: 'rechazada', etiqueta: 'Rechazada' },
+    { id: 'cerrada', etiqueta: 'Cerrada' },
 ];
 
 function abmAuditorias({ puntoFijo = null } = {}) {
@@ -22,6 +20,8 @@ function abmAuditorias({ puntoFijo = null } = {}) {
 
         auditorias: [],
         total: 0,
+        pagina: 1,
+        tamano: 10,
         cargando: false,
         puntos: [],
         categorias: [],
@@ -42,6 +42,9 @@ function abmAuditorias({ puntoFijo = null } = {}) {
             codigo: '', variante: null, cantidad: 0,
         },
 
+        // Edición inline de un ítem ya cargado.
+        edicion: { item_id: null, cantidad: 0, guardando: false },
+
         detalle: { abierto: false, auditoria: null },
 
         /* --- Formato --- */
@@ -61,9 +64,7 @@ function abmAuditorias({ puntoFijo = null } = {}) {
         colorEstado(estado) {
             return {
                 en_curso: 'text-primary',
-                pendiente_aprobacion: 'text-accent',
-                aprobada: 'text-success',
-                rechazada: 'text-danger',
+                cerrada: 'text-success',
             }[estado] || 'text-texto-muted';
         },
 
@@ -77,6 +78,10 @@ function abmAuditorias({ puntoFijo = null } = {}) {
          */
         descargarPdf(auditoria) {
             window.open(`/api/v1/auditorias-inventario/${auditoria.id}/pdf`, '_blank');
+        },
+
+        descargarXls(auditoria) {
+            window.open(`/api/v1/auditorias-inventario/${auditoria.id}/xls`, '_blank');
         },
 
         /** Cuántos códigos no coinciden: es lo único que va a generar ajuste. */
@@ -111,6 +116,8 @@ function abmAuditorias({ puntoFijo = null } = {}) {
                 for (const [clave, valor] of Object.entries(this.filtros)) {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
                 const resp = await fetch('/api/v1/auditorias-inventario?' + params, {
                     credentials: 'same-origin',
                 });
@@ -272,15 +279,79 @@ function abmAuditorias({ puntoFijo = null } = {}) {
             }
         },
 
+        /* --- Edición y eliminación de ítems --- */
+
+        editarItem(item) {
+            this.edicion = { item_id: item.id, cantidad: item.cantidad_contada, guardando: false };
+        },
+
+        cancelarEdicion() {
+            this.edicion = { item_id: null, cantidad: 0, guardando: false };
+        },
+
+        async guardarEdicion(item) {
+            this.edicion.guardando = true;
+            try {
+                const resp = await fetch(
+                    `/api/v1/auditorias-inventario/${this.conteo.auditoria.id}/items/${item.id}`,
+                    {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ cantidad_contada: Number(this.edicion.cantidad) || 0 }),
+                    }
+                );
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo editar el ítem');
+                }
+                this.conteo.auditoria = await resp.json();
+                this.cancelarEdicion();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.edicion.guardando = false;
+            }
+        },
+
+        async eliminarItem(item) {
+            this.confirmacion = {
+                abierta: true,
+                titulo: 'Eliminar ítem del conteo',
+                mensaje:
+                    `Se va a quitar "${item.variante.codigo_completo}${item.variante.verificador || ''}" `
+                    + 'del conteo. Si fue un error de carga, eliminalo; si querés corregir '
+                    + 'la cantidad, usá el lápiz.',
+                accion: () => this._ejecutarEliminarItem(item),
+            };
+        },
+
+        async _ejecutarEliminarItem(item) {
+            this.confirmacion.abierta = false;
+            try {
+                const resp = await fetch(
+                    `/api/v1/auditorias-inventario/${this.conteo.auditoria.id}/items/${item.id}`,
+                    { method: 'DELETE', credentials: 'same-origin' }
+                );
+                if (!resp.ok) {
+                    const error = await resp.json().catch(() => ({}));
+                    throw new Error(error.detail || 'No se pudo eliminar el ítem');
+                }
+                this.conteo.auditoria = await resp.json();
+                window.toast('Ítem eliminado del conteo', 'exito');
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
+
         confirmarFinalizar() {
             const diferencias = this.conDiferencia(this.conteo.auditoria);
             this.confirmacion = {
                 abierta: true,
                 titulo: 'Finalizar el conteo',
                 mensaje:
-                    `Se cierra el conteo con ${diferencias} código(s) con diferencia y `
-                    + 'queda esperando la aprobación del Dueño. El stock no cambia todavía, '
-                    + 'y después de cerrar no se pueden cargar más códigos.',
+                    `Se cierra el conteo con ${diferencias} código(s) con diferencia. `
+                    + 'El stock se va a ajustar a lo contado y no se pueden cargar más códigos.',
                 accion: () => this.finalizar(),
             };
         },
@@ -296,7 +367,7 @@ function abmAuditorias({ puntoFijo = null } = {}) {
                     const error = await resp.json().catch(() => ({}));
                     throw new Error(error.detail || 'No se pudo finalizar');
                 }
-                window.toast('Conteo finalizado: espera aprobación', 'exito');
+                window.toast('Conteo cerrado: el stock quedó ajustado', 'exito');
                 this.conteo.abierto = false;
                 this.cargar();
             } catch (e) {
@@ -304,65 +375,11 @@ function abmAuditorias({ puntoFijo = null } = {}) {
             }
         },
 
-        /* --- Detalle y aprobación --- */
+        /* --- Detalle --- */
 
         async abrirDetalle(auditoriaId) {
             const auditoria = await this.traer(auditoriaId);
             if (auditoria) this.detalle = { abierto: true, auditoria };
-        },
-
-        confirmarAprobacion() {
-            const diferencias = this.conDiferencia(this.detalle.auditoria);
-            this.confirmacion = {
-                abierta: true,
-                titulo: 'Aprobar la auditoría',
-                mensaje:
-                    `Se van a generar ${diferencias} ajuste(s) de stock y las cantidades `
-                    + 'quedan iguales a lo contado. Los movimientos quedan registrados y '
-                    + 'no se deshacen.',
-                accion: () => this.resolver('aprobar'),
-            };
-        },
-
-        confirmarRechazo() {
-            this.confirmacion = {
-                abierta: true,
-                titulo: 'Rechazar la auditoría',
-                mensaje:
-                    'El stock queda como está. El conteo no se borra: queda registrado '
-                    + 'con sus diferencias para poder revisarlo después.',
-                accion: () => this.resolver('rechazar'),
-            };
-        },
-
-        async resolver(decision) {
-            this.confirmacion.abierta = false;
-            try {
-                const resp = await fetch(
-                    `/api/v1/auditorias-inventario/${this.detalle.auditoria.id}/${decision}`,
-                    {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'same-origin',
-                        // `rechazar` acepta notas; `aprobar` ignora el cuerpo.
-                        body: JSON.stringify({}),
-                    }
-                );
-                if (!resp.ok) {
-                    const error = await resp.json().catch(() => ({}));
-                    throw new Error(error.detail || `No se pudo ${decision} la auditoría`);
-                }
-                window.toast(
-                    decision === 'aprobar'
-                        ? 'Auditoría aprobada: el stock quedó ajustado'
-                        : 'Auditoría rechazada: el stock no cambió',
-                    'exito'
-                );
-                this.detalle.abierto = false;
-                this.cargar();
-            } catch (e) {
-                window.toast(e.message, 'error');
-            }
         },
     };
 }

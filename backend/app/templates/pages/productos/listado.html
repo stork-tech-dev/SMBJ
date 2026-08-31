@@ -7,7 +7,10 @@
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
-{% from "components/switch_activos.html" import switch_activos %}
+{% from "components/switch_estado.html" import switch_estado %}
+{% from "components/paginacion.html" import paginacion %}
+{% from "components/miniatura.html" import miniatura %}
+{% from "components/producto_form.html" import producto_form_modal %}
 
 {% block contenido %}
 <div x-data="abmProductos()" x-init="cargar(); cargarCatalogos()">
@@ -19,7 +22,7 @@
                   hover:border-primary hover:text-primary">
             {{ icono('list', clases='w-4 h-4') }} Categorías
         </a>
-        <button type="button" @click="abrirAlta()"
+        <button type="button" @click="_abrirFormAlta = true"
                 class="h-control px-6 inline-flex items-center gap-2 rounded-input
                        bg-accent text-white text-sm font-semibold hover:opacity-90">
             {{ icono('mas', clases='w-4 h-4') }} Crear nuevo
@@ -35,7 +38,7 @@
            el SKU encontraban nada. Lo desambigua `listar_variantes`. #}
         <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
         <input id="f-texto" type="text" x-model="filtros.busqueda"
-               @input.debounce.400ms="cargar()" placeholder="Código, SKU o descripción"
+               @input.debounce.400ms="pagina = 1; cargar()" placeholder="Código, SKU o descripción"
                class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
                       border-2 border-borde rounded-input text-texto
                       placeholder:text-texto-disabled focus:outline-none focus:border-primary">
@@ -50,7 +53,7 @@
                         etiqueta='Categoría', label_oculto=true,
                         placeholder='Categoría',
                         vacio='Todas las categorías',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -67,7 +70,7 @@
                         etiqueta='Proveedor', label_oculto=true,
                         placeholder='Proveedor',
                         vacio='Todos los proveedores',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -84,7 +87,7 @@
                         etiqueta='Temporada', label_oculto=true,
                         placeholder='Temporada',
                         vacio='Todas las temporadas',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -102,7 +105,34 @@
                haría que el número no coincidiera con lo que se ve. #}
             <span x-text="total === 1 ? 'código encontrado' : 'códigos encontrados'"></span>
         </p>
-        {{ switch_activos('filtros.activo') }}
+        {{ switch_estado('filtros.activo', al_cambiar='pagina = 1; cargar()') }}
+
+        {# Switch "Stock 0": filtra variantes sin stock y habilita selección masiva #}
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold text-texto-muted">Stock 0</span>
+            <button type="button" role="switch"
+                    :aria-checked="stockCero ? 'true' : 'false'"
+                    @click="stockCero = !stockCero; pagina = 1; cargar()"
+                    class="inline-flex items-center min-h-toque focus:outline-none
+                           focus-visible:ring-2 focus-visible:ring-primary rounded-input">
+                <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
+                      :class="stockCero ? 'bg-primary' : 'bg-borde'">
+                    <span class="inline-block w-4 h-4 rounded-full bg-white shadow transition-transform"
+                          :class="stockCero ? 'translate-x-6' : 'translate-x-1'"></span>
+                </span>
+            </button>
+            <span class="text-sm font-semibold text-texto w-6"
+                  x-text="stockCero ? 'Sí' : 'No'"></span>
+        </div>
+
+        {# Botón desactivar masivo: solo cuando hay selección #}
+        <button type="button" x-show="stockCero && seleccion.length > 0" x-cloak
+                @click="desactivarMasivo()"
+                class="h-boton px-5 rounded-input bg-danger text-white text-sm font-semibold
+                       hover:bg-danger/80 inline-flex items-center gap-2">
+            Desactivar seleccionados
+            (<span x-text="seleccion.length"></span>)
+        </button>
 
     </div>
 
@@ -119,12 +149,19 @@
                    en el detalle y sirve para buscar. #}
                 <thead>
                     <tr>
-                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Código</th>
+                        <th x-show="stockCero" x-cloak class="pl-8 pr-2 pt-8 pb-4 w-10">
+                            <input type="checkbox"
+                                   :checked="todosSeleccionados()"
+                                   @change="toggleTodos()"
+                                   class="w-4 h-4 accent-primary cursor-pointer">
+                        </th>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled"
+                            :class="stockCero && '!pl-2'">Código</th>
+                        <th class="pl-0 pr-4 pt-8 pb-4"><span class="sr-only">Foto</span></th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Descripción</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Categoría</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Proveedor</th>
                         <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Stock</th>
-                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">USD</th>
                         <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Precio</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
@@ -135,14 +172,27 @@
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!v.producto.activo && 'opacity-60'">
 
+                            {# Checkbox de selección (solo en modo Stock 0) #}
+                            <td x-show="stockCero" x-cloak class="pl-8 pr-2 py-3 align-middle w-10">
+                                <input type="checkbox"
+                                       :checked="estaSeleccionado(v.producto_id)"
+                                       @change="toggleSeleccion(v.producto_id)"
+                                       class="w-4 h-4 accent-primary cursor-pointer">
+                            </td>
+
                             {# Con el dígito verificador: es exactamente lo que
                                está impreso en la etiqueta, así que se puede
                                comparar carácter por carácter. #}
-                            <td class="px-8 py-3 align-middle whitespace-nowrap">
+                            <td class="py-3 align-middle whitespace-nowrap"
+                                :class="stockCero ? 'pl-2 pr-8' : 'px-8'">
                                 <span class="font-mono font-medium"
                                       x-text="v.codigo_completo + v.verificador"></span>
                                 <span x-show="!v.producto.activo" x-cloak
                                       class="ml-2 text-xs font-medium text-danger">Inactivo</span>
+                            </td>
+
+                            <td class="pl-0 pr-4 py-3 align-middle">
+                                {{ miniatura('v.foto_url') }}
                             </td>
 
                             <td class="px-4 py-3 align-middle font-medium">
@@ -188,15 +238,12 @@
                                El asterisco marca las filas con precio propio:
                                sin él, cambiar el precio del producto y ver que
                                algunas no se movieron parece un error. #}
-                            <td class="px-4 py-3 align-middle text-right whitespace-nowrap"
+                            <td class="px-4 py-3 align-middle text-right font-medium whitespace-nowrap"
                                 :class="v.tiene_precio_propio && 'text-accent'">
-                                <span x-text="usd(v.precio_usd_efectivo)"></span>
+                                <span x-text="pesos(v.precio_venta_efectivo)"></span>
                                 <span x-show="v.tiene_precio_propio" x-cloak
                                       title="Precio propio de esta variante">*</span>
                             </td>
-                            <td class="px-4 py-3 align-middle text-right font-medium whitespace-nowrap"
-                                :class="v.tiene_precio_propio && 'text-accent'"
-                                x-text="pesos(v.precio_venta_efectivo)"></td>
 
                             {# Las acciones son del PRODUCTO, no de la variante:
                                precio, categoría y descripción son compartidos
@@ -238,6 +285,7 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
     {# ---------- Panel de detalle: variantes y códigos ---------- #}
@@ -270,26 +318,34 @@
                     <p class="text-sm font-semibold text-texto-header">
                         Fotos
                         <span class="font-light text-texto-disabled"
-                              x-text="'(' + (detalle.producto?.fotos.length || 0) + ' de 5)'"></span>
+                              x-text="'(' + (fotosVisibles().length || 0) + ' de 5)'"></span>
                     </p>
 
                     {# El input va oculto y lo dispara el label: el control
                        nativo de archivo no se puede estilar. #}
-                    <label class="h-boton px-4 inline-flex items-center gap-2 rounded-input
-                                  border border-borde text-sm font-semibold cursor-pointer
-                                  hover:border-primary hover:text-primary"
-                           :class="(detalle.producto?.fotos.length || 0) >= 5
-                                   && 'opacity-50 pointer-events-none'">
-                        {{ icono('mas', clases='w-4 h-4') }} Subir foto
-                        <input type="file" class="sr-only"
-                               accept="image/jpeg,image/png,image/gif,image/webp"
-                               @change="subirFoto($event)">
-                    </label>
+                    <div class="flex items-center gap-2"
+                         :class="(fotosVisibles().length || 0) >= 5
+                                 && 'opacity-50 pointer-events-none'">
+                        <label class="h-boton px-4 inline-flex items-center gap-2 rounded-input
+                                      border border-borde text-sm font-semibold cursor-pointer
+                                      hover:border-primary hover:text-primary">
+                            {{ icono('mas', clases='w-4 h-4') }} Subir foto
+                            <input type="file" class="sr-only"
+                                   accept="image/jpeg,image/png,image/gif,image/webp"
+                                   @change="subirFoto($event)">
+                        </label>
+                        <button type="button" @click="tomarFotoDetalle()"
+                                class="h-boton px-4 inline-flex items-center gap-2 rounded-input
+                                       border border-borde text-sm font-semibold
+                                       hover:border-primary hover:text-primary">
+                            {{ icono('camara', clases='w-4 h-4') }} Tomar foto
+                        </button>
+                    </div>
                 </div>
 
-                <div x-show="detalle.producto?.fotos.length" x-cloak
+                <div x-show="fotosVisibles().length" x-cloak
                      class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <template x-for="f in (detalle.producto?.fotos || [])" :key="f.id">
+                    <template x-for="f in (fotosVisibles() || [])" :key="f.id">
                         <div class="relative border rounded-input overflow-hidden"
                              :class="f.es_principal ? 'border-primary' : 'border-borde'">
                             <img :src="f.url" alt="" class="w-full aspect-square object-cover">
@@ -314,7 +370,7 @@
                     </template>
                 </div>
 
-                <p x-show="!detalle.producto?.fotos.length" x-cloak
+                <p x-show="!fotosVisibles().length" x-cloak
                    class="mt-3 text-sm text-texto-muted">Sin fotos cargadas.</p>
 
                 {# ---------- Variantes ---------- #}
@@ -401,6 +457,38 @@
                                103 de Code128 lo agrega la librería al codificar. #}
                             <img class="mt-3 max-w-full" alt=""
                                  :src="'/api/v1/productos/variantes/' + v.id + '/barcode'">
+
+                            {# --- Imprimir etiquetas --- #}
+                            <div class="mt-2 flex flex-wrap items-center gap-2">
+                                <label class="text-xs text-texto-muted">Cant:</label>
+                                <input type="number" min="1" step="1"
+                                       :value="v.stock_total || 1"
+                                       :id="'etq-cant-' + v.id"
+                                       class="w-16 h-boton text-sm text-center border border-borde
+                                              rounded-input">
+                                <button type="button"
+                                        @click="imprimirEtiquetas(
+                                            v.id,
+                                            document.getElementById('etq-cant-' + v.id).value,
+                                            'rectangular'
+                                        )"
+                                        class="h-boton px-3 text-sm rounded-input border border-borde
+                                               hover:border-primary hover:text-primary
+                                               inline-flex items-center gap-1">
+                                    {{ icono('imprimir', clases='w-3.5 h-3.5') }} Rectangular
+                                </button>
+                                <button type="button"
+                                        @click="imprimirEtiquetas(
+                                            v.id,
+                                            document.getElementById('etq-cant-' + v.id).value,
+                                            'colita'
+                                        )"
+                                        class="h-boton px-3 text-sm rounded-input border border-borde
+                                               hover:border-primary hover:text-primary
+                                               inline-flex items-center gap-1">
+                                    {{ icono('imprimir', clases='w-3.5 h-3.5') }} Con colita
+                                </button>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -517,6 +605,20 @@
                         </label>
                         <input id="va-ubicacion" x-model="variante.ubicacion_deposito"
                                maxlength="100" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="va-stock" class="text-sm font-semibold text-texto-header">
+                            Stock inicial
+                        </label>
+                        <input id="va-stock" type="number" min="0" step="1"
+                               x-model="variante.stock_inicial"
+                               placeholder="0"
+                               class="h-control w-full rounded-input border border-borde-campo
+                                      px-3 text-base bg-surface">
+                        <span class="text-xs text-texto-disabled">
+                            Se asigna al Centro de Distribución.
+                        </span>
                     </div>
                 </div>
 
@@ -659,484 +761,24 @@
         </div>
     </div>
 
-    {# ---------- Modal de alta / edición ---------- #}
-    <div x-show="form.abierto" x-cloak
-         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
-         @keydown.escape.window="form.abierto = false"
-         role="dialog" aria-modal="true" aria-labelledby="titulo-form-producto">
-
-        {# El modal se ensancha a medida que la cascada de categorías suma
-           selects, para que no terminen apretados en dos renglones.
-
-           El ancho de arranque ya es el que entra los TRES primeros niveles
-           (hasta "Subcategoría 1"): así elegir Tipo y Material —que es el
-           camino de casi todo el catálogo— no mueve el modal. Recién del
-           cuarto en adelante se ve que crece, que es cuando de verdad hace
-           falta.
-
-           Las clases van escritas acá y no armadas en un helper de JS: el
-           CDN de Tailwind genera las que encuentra en el HTML, y una clase
-           que solo existiera dentro de un `.js` no se generaría nunca.
-
-           El `w-full` sigue mandando en pantallas chicas: el `max-w` es un
-           techo, no un ancho. #}
-        <div class="w-full my-8 bg-surface rounded-[10px]
-                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]"
-             :class="{
-                 'max-w-[44rem]': nivelesCategoriaVisibles() <= 3,
-                 'max-w-[52rem]': nivelesCategoriaVisibles() === 4,
-                 'max-w-[60rem]': nivelesCategoriaVisibles() >= 5,
-             }">
-            <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
-                <div>
-                    <h2 id="titulo-form-producto" class="text-lg font-black text-welcome"
-                        x-text="form.id ? 'Editar producto' : 'Nuevo producto'"></h2>
-                    <p x-show="form.id" x-cloak class="mt-1 text-sm text-texto-muted font-mono"
-                       x-text="form.sku"></p>
-                </div>
-                <button type="button" @click="form.abierto = false" aria-label="Cerrar"
-                        class="text-texto-muted hover:text-texto -mt-2">
-                    {{ icono('cerrar', clases='w-6 h-6') }}
-                </button>
-            </div>
-
-            <form @submit.prevent="guardar()" class="px-6 sm:px-10 pb-8 pt-4">
-                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    {# ---------- Categoría: un select por nivel ----------
-
-                       Se baja por el árbol en vez de elegir de una lista
-                       plana con el camino completo en cada fila ("Joyas -
-                       Anillos - Plata"): en cada paso se ve nada más que lo
-                       que cuelga de lo ya elegido, y el resultado es siempre
-                       una hoja, que antes nada garantizaba.
-
-                       Los selects se dibujan todos y se muestran los que
-                       correspondan (`x-show`), en vez de generarlos con un
-                       `x-for`: el macro `combobox` fija un `id` que usan el
-                       `<label for>` y el `aria-controls`, y clonarlo lo
-                       repetiría en el DOM. #}
-                    <div class="sm:col-span-2 flex flex-col gap-1">
-                        {# Un solo título para el grupo: cada campo ya se
-                           nombra con su leyenda gris ("Tipo", "Material",
-                           "Subcategoría 1"…), así que repetir "Categoría"
-                           encima de cada uno sería decirlo dos veces.
-                           Es un `<span>` y no un `<label>` porque no apunta a
-                           un campo: apunta a varios. #}
-                        <span class="text-sm font-semibold text-texto-header">
-                            Categoría<span class="text-danger ml-0.5">*</span>
-                        </span>
-
-                        {# `flex-wrap` con un mínimo por campo: entran en una
-                           fila mientras el modal dé —que se ensancha solo— y
-                           envuelven cuando no. En el teléfono quedan uno
-                           abajo del otro. #}
-                        <div class="flex flex-wrap gap-x-4 gap-y-4 mt-1">
-                            {% for nivel in range(1, nivel_maximo + 1) %}
-                            {# Los dos primeros niveles tienen nombre propio;
-                               del tercero en adelante son subcategorías
-                               numeradas. #}
-                            {% set nombre_nivel = ['Tipo', 'Material'][nivel - 1]
-                                                  if nivel <= 2
-                                                  else 'Subcategoría ' ~ (nivel - 2) %}
-                            {# En el teléfono cada uno ocupa su renglón; desde
-                               sm comparten fila y envuelven cuando no entran. #}
-                            <div class="w-full sm:w-auto sm:flex-1 sm:min-w-[9rem]"
-                                 x-show="nivelCategoriaVisible({{ nivel }})"
-                                 {# El primero se muestra siempre, así que no
-                                    parpadea; los demás sí hasta que Alpine
-                                    arranca. #}
-                                 {% if nivel > 1 %}x-cloak{% endif %}>
-                                {# `o.nombre` y no el camino completo: el
-                                   camino lo dicen los selects anteriores.
-
-                                   Sin opción para vaciar: la categoría es
-                                   obligatoria, y lo que la exige es el botón
-                                   Guardar deshabilitado —el `required` era
-                                   del `<select>` que ya no está—.
-
-                                   `al_elegir` corta lo que colgaba de la
-                                   rama anterior y rebusca los parecidos, que
-                                   están acotados a la categoría. #}
-                                {{ combobox('pr-categoria-' ~ nivel,
-                                            'opcionesCategoria(' ~ nivel ~ ')',
-                                            'o.nombre',
-                                            'form.categoriaRuta[' ~ (nivel - 1) ~ ']',
-                                            etiqueta=nombre_nivel, label_oculto=true,
-                                            placeholder=nombre_nivel,
-                                            al_elegir='elegirCategoria(' ~ nivel ~ ');',
-                                            clases='w-full h-control pl-3 pr-9 text-base font-light
-                                                    bg-surface text-texto border-[0.5px]
-                                                    border-texto-disabled rounded-input
-                                                    focus:outline-none focus:border-primary') }}
-                            </div>
-                            {% endfor %}
-                        </div>
-
-                        {# Mientras quede un select a la vista sin elegir, la
-                           categoría no está definida y Guardar sigue
-                           deshabilitado: sin este texto, el botón apagado no
-                           dice qué falta. #}
-                        <span x-show="!categoriaCompleta()" x-cloak
-                              class="text-xs text-texto-disabled">
-                            Elegí hasta el último nivel: la categoría del producto es
-                            la del final de la rama.
-                        </span>
-                    </div>
-
-                    <div class="flex flex-col gap-1">
-                        {# En ALTA es un desplegable con buscador; en EDICIÓN,
-                           un dato fijo. Cada rama pone su propio título: el
-                           combobox trae el suyo y el dato fijo no tiene campo
-                           al que apuntar, así que ahí no va un `<label>`.
-
-                           El proveedor no se cambia, y no es una restricción de
-                           la pantalla: `ProductoActualizar` no tiene el campo y
-                           `actualizar_producto()` tampoco lo recibe. Antes esto
-                           se resolvía con el campo deshabilitado, que se veía
-                           igual que uno roto —no se desplegaba y nada explicaba
-                           por qué—. Mostrarlo como valor con su motivo dice lo
-                           mismo sin parecer una falla. #}
-                        <template x-if="!form.id">
-                            {# Sin opción para vaciar: el proveedor es
-                               obligatorio, y lo exige el botón Guardar
-                               deshabilitado igual que la categoría.
-                               Al elegir cambia la cotización, así que los
-                               valores informativos se recalculan, y cambia
-                               también el conjunto donde se buscan las
-                               descripciones parecidas. #}
-                            {{ combobox('pr-proveedor', 'proveedores', 'o.nombre',
-                                        'form.proveedor_id',
-                                        etiqueta='Proveedor', obligatorio=true,
-                                        al_elegir='calcularPreview(); buscarSimilares();',
-                                        clases='w-full h-control pl-3 pr-9 text-base font-light
-                                                bg-surface text-texto border-[0.5px]
-                                                border-texto-disabled rounded-input
-                                                focus:outline-none focus:border-primary') }}
-                        </template>
-
-                        <template x-if="form.id">
-                            <div>
-                                <span class="block mb-1 text-sm font-semibold text-texto-header">
-                                    Proveedor
-                                </span>
-                                <p class="h-control flex items-center text-base font-light text-texto"
-                                   x-text="nombreProveedor()"></p>
-                                <span class="text-xs text-texto-disabled">
-                                    No se cambia: el precio en pesos se calcula con su cotización.
-                                </span>
-                            </div>
-                        </template>
-                    </div>
-
-                    <div class="flex flex-col gap-1">
-                        <label for="pr-skuprov" class="text-sm font-semibold text-texto-header">
-                            SKU del proveedor
-                        </label>
-                        <input id="pr-skuprov" x-model="form.sku_proveedor" maxlength="30"
-                               class="campo-linea">
-                    </div>
-
-                    {# Descripción va DESPUÉS de categoría, proveedor y su
-                       SKU, y no primero: su buscador de parecidos ofrece
-                       solo lo que ya está cargado en esa categoría y ese
-                       proveedor, así que los dos tienen que estar elegidos
-                       antes para que lo que ofrezca sirva de algo. #}
-                    <div class="sm:col-span-2 flex flex-col gap-1">
-                        <label for="pr-desc" class="text-sm font-semibold text-texto-header">
-                            Descripción<span class="text-danger ml-0.5">*</span>
-                        </label>
-
-                        {# El input y la lista van juntos en un `relative`
-                           propio: así el desplegable se ubica debajo del
-                           CAMPO y no del label. Mismo armado que el
-                           combobox, que no se reutiliza acá porque aquel
-                           elige entre opciones fijas y este es texto libre
-                           con sugerencias que llegan del backend. #}
-                        <div class="relative" @click.outside="similares.abierto = false">
-                            {# Obligatoria: es por donde se lee y se ordena el
-                               catálogo, y la columna es NOT NULL desde 0012. #}
-                            <input id="pr-desc" x-model="form.descripcion" required
-                                   {# El autocompletado del navegador tapa la
-                                      lista con su propio desplegable. #}
-                                   autocomplete="off" role="combobox"
-                                   aria-autocomplete="list" aria-controls="pr-desc-lista"
-                                   :aria-expanded="similares.abierto ? 'true' : 'false'"
-                                   {# La lista aparece al escribir y no al
-                                      enfocar: después de elegir una sugerencia
-                                      sigue cargada —es lo que detecta el
-                                      choque— y reabrirla al volver al campo
-                                      taparía justamente ese aviso. #}
-                                   @input.debounce.300ms="buscarSimilares()"
-                                   @keydown.arrow-down.prevent="moverSimilar(1)"
-                                   @keydown.arrow-up.prevent="moverSimilar(-1)"
-                                   {# Enter elige la fila marcada; sin el
-                                      `preventDefault` además enviaría el
-                                      formulario. Sin ninguna marcada no se
-                                      toca: ahí Enter guarda, como siempre. #}
-                                   @keydown.enter="if (similares.abierto && similares.resaltado >= 0) {
-                                                       $event.preventDefault();
-                                                       elegirSimilar(similares.lista[similares.resaltado]);
-                                                   }"
-                                   {# Escape cierra la lista y NO el modal: el
-                                      `stopPropagation` frena el
-                                      `@keydown.escape.window` del diálogo, que
-                                      si no cerraría todo el formulario. Con la
-                                      lista cerrada se deja pasar. #}
-                                   @keydown.escape="if (similares.abierto) {
-                                                        $event.stopPropagation();
-                                                        similares.abierto = false;
-                                                    }"
-                                   class="campo-linea">
-
-                            <ul id="pr-desc-lista" x-show="similares.abierto" x-cloak
-                                role="listbox"
-                                class="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-y-auto
-                                       bg-surface border border-borde rounded-input
-                                       shadow-[0_4px_12px_0_rgba(0,0,0,0.15)]">
-
-                                <li class="px-3 py-2 text-xs text-texto-muted border-b border-borde">
-                                    Ya cargados con nombre parecido. Elegí uno para copiar
-                                    su descripción y completarla.
-                                </li>
-
-                                <template x-for="(p, indice) in similares.lista" :key="p.id">
-                                    {# `min-h-toque`: blanco táctil mínimo del
-                                       Principio 6, y acá importa más porque las
-                                       filas están pegadas una a la otra. #}
-                                    <li role="option"
-                                        :aria-selected="indice === similares.resaltado ? 'true' : 'false'"
-                                        @click="elegirSimilar(p)"
-                                        @mouseenter="similares.resaltado = indice"
-                                        class="flex flex-wrap items-center gap-x-3 min-h-toque
-                                               px-3 py-2 text-base cursor-pointer"
-                                        :class="indice === similares.resaltado
-                                                ? 'bg-primary/10 text-texto' : 'text-texto'">
-                                        <span class="font-mono text-sm text-texto-muted"
-                                              x-text="p.sku"></span>
-                                        <span x-text="p.descripcion"></span>
-                                        <span x-show="!p.activo" x-cloak
-                                              class="text-xs font-medium text-danger">Inactivo</span>
-                                    </li>
-                                </template>
-                            </ul>
-                        </div>
-
-                        {# El choque se avisa acá y no al apretar Crear: el
-                           alta lo rechaza igual —lo controla el service y lo
-                           garantiza un índice único— y enterarse recién con
-                           el error obliga a volver a un campo que quedó
-                           arriba de todo. #}
-                        <template x-if="duplicadoExacto()">
-                            <p class="text-xs text-danger">
-                                Ese nombre ya lo tiene
-                                <span class="font-mono font-medium"
-                                      x-text="duplicadoExacto().sku"></span>
-                                en esta categoría y proveedor. Si es el mismo artículo en
-                                otro color o talle, agregale una variante desde su ficha.
-                            </p>
-                        </template>
-
-                        <span x-show="!form.id && !duplicadoExacto()"
-                              class="text-xs text-texto-disabled">
-                            Desde el décimo carácter se ofrecen los productos ya cargados
-                            con nombre parecido.
-                        </span>
-                    </div>
-
-                    {# El precio ocupa la fila entera: el campo editable a la
-                       izquierda y a la derecha los dos valores que resultan.
-                       Los calcula el backend (ver `precio-preview`), no el
-                       frontend: el redondeo sale de la configuración. #}
-                    <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-3 items-end">
-                        <div class="flex flex-col gap-1">
-                            <label for="pr-usd" class="text-sm font-semibold text-texto-header">
-                                Precio USD<span class="text-danger ml-0.5">*</span>
-                            </label>
-                            <input id="pr-usd" type="number" step="0.01" min="0.01" required
-                                   x-model="form.precio_usd"
-                                   @input.debounce.400ms="calcularPreview()"
-                                   class="campo-linea">
-                        </div>
-
-                        <div class="flex flex-col gap-1">
-                            <span class="text-sm font-semibold text-texto-header">
-                                Dólar Proveedor
-                            </span>
-                            <p class="h-control flex items-center text-base font-light
-                                      text-texto-muted"
-                               x-text="preview.dolar_proveedor !== null
-                                       ? pesos(preview.dolar_proveedor) : '—'"></p>
-                        </div>
-
-                        <div class="flex flex-col gap-1">
-                            <span class="text-sm font-semibold text-texto-header">
-                                Precio Pesos
-                            </span>
-                            <p class="h-control flex items-center text-base font-medium text-texto"
-                               x-text="preview.precio_venta !== null
-                                       ? pesos(preview.precio_venta) : '—'"></p>
-                        </div>
-
-                        <p class="sm:col-span-3 -mt-3 text-xs text-texto-disabled">
-                            El precio en pesos lo calcula el sistema con el dólar del proveedor
-                            y el redondeo configurado.
-                        </p>
-                    </div>
-
-                    {# Peso, descuento y temporada comparten fila: los tres
-                       son valores chicos y ninguno necesita media pantalla.
-
-                       En cuatro columnas y no en tres iguales: los dos números
-                       ocupan una cada uno y la temporada dos, porque es lo
-                       único con texto —a un tercio de fila "Primavera-Verano"
-                       se cortaba—. `items-end` alinea los controles por abajo
-                       aunque algún label ocupe dos líneas. #}
-                    <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-4 items-end">
-                        <div class="flex flex-col gap-1">
-                            <label for="pr-peso" class="text-sm font-semibold text-texto-header">
-                                Peso (gramos)
-                            </label>
-                            <input id="pr-peso" type="number" step="0.01" min="0.01"
-                                   x-model="form.peso_gramos" class="campo-linea">
-                        </div>
-
-                        <div class="flex flex-col gap-1">
-                            <label for="pr-desc-pct" class="text-sm font-semibold text-texto-header">
-                                Descuento %
-                            </label>
-                            {# Dos dígitos enteros: es un porcentaje que se tipea
-                               a mano y el tope del sistema (`descuento_maximo`)
-                               está muy por debajo de 99. El backend igual admite
-                               decimales, así que la restricción es de la pantalla. #}
-                            <input id="pr-desc-pct" type="number" step="1" min="0" max="99"
-                                   inputmode="numeric" placeholder="00"
-                                   x-model="form.descuento_producto" class="campo-linea">
-                        </div>
-
-                        <div class="sm:col-span-2">
-                            {# Mismo componente que Categoría, sin buscador y
-                               sin opción para vaciar: la temporada siempre
-                               tiene valor y arranca en "Atemporal", que es lo
-                               que corresponde a la mayoría del catálogo. #}
-                            {{ combobox('pr-temporada', 'TEMPORADAS', 'o.etiqueta',
-                                        'form.temporada', buscable=false,
-                                        etiqueta='Temporada',
-                                        clases='w-full h-control pl-3 pr-9 text-base font-light
-                                                bg-surface text-texto border-[0.5px]
-                                                border-texto-disabled rounded-input
-                                                focus:outline-none focus:border-primary') }}
-                        </div>
-                    </div>
-
-                    {# Solo la Cuenta Maestra. Es el interruptor que hace que
-                       el producto NO descuente stock al vender: prendido por
-                       error, el sistema deja de saber cuánto hay y nada avisa.
-
-                       Esconderlo no es la barrera —la API se puede llamar sin
-                       la pantalla—: eso lo cierra `_validar_stock_infinito()`
-                       en el service. Acá lo que se evita es ofrecerle a un
-                       vendedor una decisión que no es suya.
-
-                       Sacarlo del formulario no pisa el valor guardado:
-                       `editar()` lo carga del producto y `guardar()` lo
-                       reenvía igual, así que un producto con stock infinito
-                       lo sigue teniendo después de que lo edite un vendedor. #}
-                    {% if es_maestra %}
-                    <label class="sm:col-span-2 flex items-center gap-2 min-h-toque text-sm
-                                  font-semibold text-texto-header cursor-pointer">
-                        <input type="checkbox" x-model="form.stock_infinito" class="acceso-check">
-                        <span>Stock infinito (no descuenta al vender)</span>
-                    </label>
-                    {% endif %}
-
-                    {# Foto, solo en el ALTA: deja el producto identificable
-                       de un vistazo sin tener que volver a buscarlo en el
-                       listado y abrir la ficha. En EDICIÓN no va, porque la
-                       ficha ya tiene la grilla de las cinco con "principal"
-                       y "borrar", y dos lugares para lo mismo se contradicen.
-
-                       No se sube al elegirla: el endpoint cuelga de
-                       `/productos/{id}/fotos` y ese id todavía no existe.
-                       Espera acá y la sube `guardar()`. #}
-                    <template x-if="!form.id">
-                        <div class="sm:col-span-2 flex flex-col gap-1">
-                            <span class="text-sm font-semibold text-texto-header">Foto</span>
-
-                            <div class="flex items-center gap-3">
-                                {# El input va oculto y lo dispara el label:
-                                   el control nativo de archivo no se puede
-                                   estilar. Mismo patrón que la ficha. #}
-                                <label class="h-boton px-4 inline-flex items-center gap-2
-                                              rounded-input border border-borde text-sm
-                                              font-semibold cursor-pointer
-                                              hover:border-primary hover:text-primary">
-                                    {{ icono('mas', clases='w-4 h-4') }}
-                                    <span x-text="form.foto.archivo ? 'Cambiar foto' : 'Elegir foto'"></span>
-                                    <input type="file" class="sr-only"
-                                           accept="image/jpeg,image/png,image/gif,image/webp"
-                                           @change="elegirFoto($event)">
-                                </label>
-
-                                <template x-if="form.foto.archivo">
-                                    <div class="flex items-center gap-3">
-                                        <img :src="form.foto.previo" alt=""
-                                             class="w-14 h-14 rounded-input object-cover
-                                                    border border-borde">
-                                        <button type="button" @click="quitarFoto()"
-                                                class="min-h-toque text-sm font-semibold
-                                                       text-danger hover:opacity-80">
-                                            Quitar
-                                        </button>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <span x-show="!form.foto.archivo"
-                                  class="text-xs text-texto-disabled">
-                                Opcional. Las otras cuatro se cargan desde la ficha.
-                            </span>
-                        </div>
-                    </template>
-                </div>
-
-                <div class="flex justify-end gap-3 mt-8">
-                    <button type="button" @click="form.abierto = false"
-                            class="h-boton px-5 rounded-input border border-borde text-base
-                                   hover:border-primary hover:text-primary">Cancelar</button>
-                    {# Sin categoría ni proveedor no se puede guardar. Lo exigía
-                       el `required` de los `<select>`; el combobox es un input
-                       de texto libre, así que la restricción pasa acá, como en
-                       los dos modales de variante. En edición no bloquea nada:
-                       `editar()` carga el proveedor del producto. #}
-                    {# Segunda salida del alta: crea el producto y sigue
-                       derecho al alta de su primera variante, en vez de
-                       obligar a buscarlo en el listado y abrir la ficha.
-                       Es para quien ya sabe que el producto viene en colores
-                       o talles.
-
-                       `type="button"`: los dos botones envían el mismo
-                       formulario, y si este fuera submit el Enter dentro de
-                       un campo abriría el modal de variante sin haberlo
-                       pedido. Comparte la misma guarda que "Crear". #}
-                    <button type="button" x-show="!form.id" x-cloak
-                            @click="guardar({ conVariantes: true })"
-                            :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
-                                       || duplicadoExacto()"
-                            class="h-boton px-5 rounded-input border-2 border-primary
-                                   text-primary text-base font-medium
-                                   hover:bg-primary hover:text-white disabled:opacity-60">
-                        Crear con variantes
-                    </button>
-                    <button type="submit"
-                            :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
-                                       || duplicadoExacto()"
-                            class="h-boton px-8 rounded-input bg-primary text-white text-base
-                                   font-medium hover:bg-primary-hover disabled:opacity-60"
-                            x-text="form.guardando ? 'Guardando…'
-                                                   : (form.id ? 'Finalizar' : 'Crear')"></button>
-                </div>
-            </form>
-        </div>
+    {# ---------- Modal de alta / edición (componente compartido) ---------- #}
+    {# Componente anidado: `productoForm()` accede a `categorias` y
+       `proveedores` del padre (`abmProductos`) vía la cadena de scope
+       de Alpine. El callback `alGuardar` recarga el listado y, si se
+       pidió "con variantes", abre la ficha del producto recién creado. #}
+    <div x-data="productoForm({
+             alGuardar(producto, { alta, conVariantes }) {
+                 this.cargar();
+                 if (alta && conVariantes) {
+                     this.abrirProducto(producto.id).then(() => {
+                         if (this.detalle.abierto) this.abrirVariante();
+                     });
+                 }
+             },
+         })"
+         x-effect="if (_abrirFormAlta) { abrirAlta(); _abrirFormAlta = false; }
+                   if (_productoEditar) { abrirEdicion(_productoEditar); _productoEditar = null; }">
+        {{ producto_form_modal(es_maestra=es_maestra, nivel_maximo=nivel_maximo) }}
     </div>
 
     {{ modal_confirmacion() }}
@@ -1144,5 +786,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ estatico('/js/producto_form.js') }}"></script>
 <script src="{{ estatico('/js/productos.js') }}"></script>
 {% endblock %}

@@ -267,7 +267,7 @@ def test_las_fotos_viajan_en_la_respuesta_del_producto(client, db, autor, produc
     assert resp.status_code == 200
     fotos = resp.json()["fotos"]
     assert len(fotos) == 1
-    assert set(fotos[0]) == {"id", "url", "es_principal", "orden"}
+    assert set(fotos[0]) == {"id", "url", "es_principal", "orden", "variante_id"}
 
 
 def test_sin_permiso_de_editar_no_se_suben_fotos(client, db, crear_usuario, producto, login):

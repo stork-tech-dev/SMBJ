@@ -10,6 +10,7 @@ mercadería llegó a destino.
 
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -26,6 +27,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.producto import Variante
+    from app.models.punto_de_venta import PuntoDeVenta
+    from app.models.usuario import Usuario
 
 
 class EstadoRemito(str, enum.Enum):
@@ -109,16 +115,16 @@ class Remito(Base):
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
 
-    origen: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821
+    origen: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821  # type: ignore[name-defined]
         foreign_keys=[punto_venta_origen_id]
     )
-    destino: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821
+    destino: Mapped["PuntoDeVenta"] = relationship(  # noqa: F821  # type: ignore[name-defined]
         foreign_keys=[punto_venta_destino_id]
     )
-    usuario_envio: Mapped["Usuario"] = relationship(  # noqa: F821
+    usuario_envio: Mapped["Usuario"] = relationship(  # noqa: F821  # type: ignore[name-defined]
         foreign_keys=[usuario_envio_id]
     )
-    usuario_recepcion: Mapped["Usuario"] = relationship(  # noqa: F821
+    usuario_recepcion: Mapped["Usuario"] = relationship(  # noqa: F821  # type: ignore[name-defined]
         foreign_keys=[usuario_recepcion_id]
     )
     items: Mapped[list["RemitoItem"]] = relationship(
@@ -167,7 +173,7 @@ class RemitoItem(Base):
     cantidad_recibida: Mapped[int | None] = mapped_column(Integer)
 
     remito: Mapped["Remito"] = relationship(back_populates="items")
-    variante: Mapped["Variante"] = relationship()  # noqa: F821
+    variante: Mapped["Variante"] = relationship()  # noqa: F821  # type: ignore[name-defined]
 
     __table_args__ = (
         # La misma variante dos veces en un remito serían dos respuestas a

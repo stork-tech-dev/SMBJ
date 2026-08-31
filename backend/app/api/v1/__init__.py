@@ -15,6 +15,7 @@ from app.api.v1 import (
     auth,
     categorias,
     clientes,
+    compras,
     configuracion_ventas,
     dispositivos,
     health,
@@ -40,6 +41,7 @@ api_router.include_router(categorias.router)
 api_router.include_router(productos.router)
 api_router.include_router(stock.router)
 api_router.include_router(remitos.router)
+api_router.include_router(compras.router)
 api_router.include_router(auditoria_inventario.router)
 api_router.include_router(puntos_de_venta.router)
 api_router.include_router(dispositivos.router)

@@ -1,9 +1,12 @@
 """
 Modelo de `producto_fotos`.
 
-Hasta 5 fotos por producto, una de ellas marcada como principal (la que se
-muestra en el listado y en el punto de venta). El tope y la unicidad de la
+Hasta 5 fotos por producto (compartidas) y hasta 5 por variante (propias).
+Una de cada pool marcada como principal. El tope y la unicidad de la
 principal se validan en `/services`: son reglas de negocio, no de forma.
+
+Fallback de visualización: si la variante tiene fotos propias se muestran
+esas; si no, se muestran las del producto.
 """
 
 from datetime import datetime
@@ -26,10 +29,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.producto import Producto
+    from app.models.producto import Producto, Variante
 
-# Tope por producto. Vive acá para que modelo, service y tests hablen del mismo.
+# Tope por pool. Vive acá para que modelo, service y tests hablen del mismo.
 MAX_FOTOS_POR_PRODUCTO = 5
+MAX_FOTOS_POR_VARIANTE = 5
 
 
 class ProductoFoto(Base):
@@ -39,6 +43,14 @@ class ProductoFoto(Base):
 
     producto_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("productos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # NULL = foto compartida del producto. Con valor = foto exclusiva de esa
+    # variante. El fallback (mostrar las del producto si la variante no tiene
+    # propias) lo resuelve el frontend, no el modelo.
+    variante_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("producto_variantes.id", ondelete="CASCADE"),
+        nullable=True, index=True,
     )
 
     # Ruta relativa servida por StaticFiles (ej. "/static/productos/ab12.jpg").
@@ -55,20 +67,26 @@ class ProductoFoto(Base):
     )
 
     producto: Mapped["Producto"] = relationship(back_populates="fotos")
+    variante: Mapped["Variante | None"] = relationship(back_populates="fotos")
 
     __table_args__ = (
         CheckConstraint("orden >= 0", name="ck_producto_fotos_orden_no_negativo"),
-        # Una sola principal por producto, garantizado por la base y no solo
-        # por el service. El índice es PARCIAL: solo alcanza a las filas con
-        # es_principal = true, así las secundarias no compiten entre sí (si
-        # no fuera parcial, un producto no podría tener dos fotos comunes).
+        # Una sola principal por producto (fotos compartidas, variante_id NULL).
         Index(
-            "uq_producto_fotos_una_principal",
+            "uq_producto_fotos_principal_producto",
             "producto_id",
             unique=True,
-            postgresql_where=text("es_principal"),
+            postgresql_where=text("es_principal AND variante_id IS NULL"),
+        ),
+        # Una sola principal por variante (fotos propias).
+        Index(
+            "uq_producto_fotos_principal_variante",
+            "variante_id",
+            unique=True,
+            postgresql_where=text("es_principal AND variante_id IS NOT NULL"),
         ),
     )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
-        return f"<ProductoFoto {self.id} p={self.producto_id}{' principal' if self.es_principal else ''}>"
+        v = f" v={self.variante_id}" if self.variante_id else ""
+        return f"<ProductoFoto {self.id} p={self.producto_id}{v}{' principal' if self.es_principal else ''}>"

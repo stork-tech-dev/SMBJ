@@ -21,6 +21,8 @@ function abmUsuarios() {
         // Puntos de venta activos, de cualquier tipo, para el selector.
         puntosDeVentaAsignables: [],
         total: 0,
+        pagina: 1,
+        tamano: 10,
         cargando: false,
 
         // Los tres filtros del diseño de Figma. El backend acepta además
@@ -61,6 +63,9 @@ function abmUsuarios() {
                 for (const [clave, valor] of Object.entries(this.filtros)) {
                     if (valor !== '' && valor !== null) params.set(clave, valor);
                 }
+
+                params.set('pagina', this.pagina);
+                params.set('tamano', this.tamano);
 
                 const resp = await fetch('/api/v1/usuarios?' + params, {
                     credentials: 'same-origin',

@@ -1,0 +1,358 @@
+{# ===========================================================================
+   Macro: modal de alta y edición de producto.
+
+   Componente Alpine anidado que usa `productoForm()` de producto_form.js.
+   Accede a `categorias` y `proveedores` del componente padre.
+
+   Parámetros:
+     es_maestra        mostrar checkbox de stock infinito
+     nivel_maximo      niveles de categoría (default 5)
+     mostrar_variantes mostrar botón "Crear con variantes" (default true)
+
+   Uso:
+     {% from "components/producto_form.html" import producto_form_modal %}
+     {{ producto_form_modal(es_maestra=es_maestra) }}
+   =========================================================================== #}
+
+{% from "components/icons.html" import icono %}
+{% from "components/combobox.html" import combobox %}
+
+{% macro producto_form_modal(es_maestra=false, nivel_maximo=5, mostrar_variantes=true) %}
+<div x-show="form.abierto" x-cloak
+     @keydown.escape.window="form.abierto && (similares.abierto ? null : (form.abierto = false))"
+     class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+     role="dialog" aria-modal="true" aria-labelledby="titulo-form-producto">
+
+    <div class="w-full my-8 bg-surface rounded-[10px]
+                shadow-[0_0_15px_0_rgba(0,0,0,0.25)]"
+         :class="{
+             'max-w-[44rem]': nivelesCategoriaVisibles() <= 3,
+             'max-w-[52rem]': nivelesCategoriaVisibles() === 4,
+             'max-w-[60rem]': nivelesCategoriaVisibles() >= 5,
+         }">
+        <div class="flex items-start justify-between px-6 sm:px-10 pt-8 pb-2">
+            <div>
+                <h2 id="titulo-form-producto" class="text-lg font-black text-welcome"
+                    x-text="form.id ? 'Editar producto' : 'Nuevo producto'"></h2>
+                <p x-show="form.id" x-cloak class="mt-1 text-sm text-texto-muted font-mono"
+                   x-text="form.sku"></p>
+            </div>
+            <button type="button" @click="form.abierto = false" aria-label="Cerrar"
+                    class="text-texto-muted hover:text-texto -mt-2">
+                {{ icono('cerrar', clases='w-6 h-6') }}
+            </button>
+        </div>
+
+        <form @submit.prevent="guardar()" novalidate class="px-6 sm:px-10 pb-8 pt-4">
+            <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                {# ---------- Categoría: un select por nivel ---------- #}
+                <div class="sm:col-span-2 flex flex-col gap-1">
+                    <span class="text-sm font-semibold text-texto-header">
+                        Categoría<span class="text-danger ml-0.5">*</span>
+                    </span>
+
+                    <div class="flex flex-wrap gap-x-4 gap-y-4 mt-1">
+                        {% for nivel in range(1, nivel_maximo + 1) %}
+                        {% set nombre_nivel = ['Tipo', 'Material'][nivel - 1]
+                                              if nivel <= 2
+                                              else 'Subcategoría ' ~ (nivel - 2) %}
+                        <div class="w-full sm:w-auto sm:flex-1 sm:min-w-[9rem]"
+                             x-show="nivelCategoriaVisible({{ nivel }})"
+                             {% if nivel > 1 %}x-cloak{% endif %}>
+                            {{ combobox('pf-categoria-' ~ nivel,
+                                        'opcionesCategoria(' ~ nivel ~ ')',
+                                        'o.nombre',
+                                        'form.categoriaRuta[' ~ (nivel - 1) ~ ']',
+                                        etiqueta=nombre_nivel, label_oculto=true,
+                                        placeholder=nombre_nivel,
+                                        al_elegir='elegirCategoria(' ~ nivel ~ ');',
+                                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                bg-surface text-texto border-[0.5px]
+                                                border-texto-disabled rounded-input
+                                                focus:outline-none focus:border-primary') }}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <span x-show="!categoriaCompleta()" x-cloak
+                          class="text-xs text-texto-disabled">
+                        Elegí hasta el último nivel: la categoría del producto es
+                        la del final de la rama.
+                    </span>
+                </div>
+
+                {# ---------- Proveedor ---------- #}
+                <div class="flex flex-col gap-1">
+                    {# En alta sin proveedor fijo: combobox editable #}
+                    <template x-if="!form.id && !proveedorFijo">
+                        {{ combobox('pf-proveedor', 'proveedores', 'o.nombre',
+                                    'form.proveedor_id',
+                                    etiqueta='Proveedor', obligatorio=true,
+                                    al_elegir='calcularPreview(); buscarSimilares();',
+                                    clases='w-full h-control pl-3 pr-9 text-base font-light
+                                            bg-surface text-texto border-[0.5px]
+                                            border-texto-disabled rounded-input
+                                            focus:outline-none focus:border-primary') }}
+                    </template>
+
+                    {# En edición o con proveedor fijo: solo texto #}
+                    <template x-if="form.id || proveedorFijo">
+                        <div>
+                            <span class="block mb-1 text-sm font-semibold text-texto-header">
+                                Proveedor
+                            </span>
+                            <p class="h-control flex items-center text-base font-light text-texto"
+                               x-text="nombreProveedorForm()"></p>
+                            <span x-show="form.id" x-cloak class="text-xs text-texto-disabled">
+                                No se cambia: el precio en pesos se calcula con su cotización.
+                            </span>
+                        </div>
+                    </template>
+                </div>
+
+                {# ---------- SKU del proveedor ---------- #}
+                <div class="flex flex-col gap-1">
+                    <label for="pf-skuprov" class="text-sm font-semibold text-texto-header">
+                        SKU del proveedor
+                    </label>
+                    <input id="pf-skuprov" x-model="form.sku_proveedor" maxlength="30"
+                           class="campo-linea">
+                </div>
+
+                {# ---------- Descripción con autocompletado ---------- #}
+                <div class="sm:col-span-2 flex flex-col gap-1">
+                    <label for="pf-desc" class="text-sm font-semibold text-texto-header">
+                        Descripción<span class="text-danger ml-0.5">*</span>
+                    </label>
+
+                    <div class="relative" @click.outside="similares.abierto = false">
+                        <input id="pf-desc" x-model="form.descripcion" required
+                               autocomplete="off" role="combobox"
+                               aria-autocomplete="list" aria-controls="pf-desc-lista"
+                               :aria-expanded="similares.abierto ? 'true' : 'false'"
+                               @input.debounce.300ms="buscarSimilares()"
+                               @keydown.arrow-down.prevent="moverSimilar(1)"
+                               @keydown.arrow-up.prevent="moverSimilar(-1)"
+                               @keydown.enter="if (similares.abierto && similares.resaltado >= 0) {
+                                                   $event.preventDefault();
+                                                   elegirSimilar(similares.lista[similares.resaltado]);
+                                               }"
+                               @keydown.escape="if (similares.abierto) {
+                                                    $event.stopPropagation();
+                                                    similares.abierto = false;
+                                                }"
+                               class="campo-linea">
+
+                        <ul id="pf-desc-lista" x-show="similares.abierto" x-cloak
+                            role="listbox"
+                            class="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-y-auto
+                                   bg-surface border border-borde rounded-input
+                                   shadow-[0_4px_12px_0_rgba(0,0,0,0.15)]">
+
+                            <li class="px-3 py-2 text-xs text-texto-muted border-b border-borde">
+                                Ya cargados con nombre parecido. Elegí uno para copiar
+                                su descripción y completarla.
+                            </li>
+
+                            <template x-for="(p, indice) in similares.lista" :key="p.id">
+                                <li role="option"
+                                    :aria-selected="indice === similares.resaltado ? 'true' : 'false'"
+                                    @click="elegirSimilar(p)"
+                                    @mouseenter="similares.resaltado = indice"
+                                    class="flex flex-wrap items-center gap-x-3 min-h-toque
+                                           px-3 py-2 text-base cursor-pointer"
+                                    :class="indice === similares.resaltado
+                                            ? 'bg-primary/10 text-texto' : 'text-texto'">
+                                    <span class="font-mono text-sm text-texto-muted"
+                                          x-text="p.sku"></span>
+                                    <span x-text="p.descripcion"></span>
+                                    <span x-show="!p.activo" x-cloak
+                                          class="text-xs font-medium text-danger">Inactivo</span>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+
+                    <template x-if="duplicadoExacto()">
+                        <p class="text-xs text-danger">
+                            Ese nombre ya lo tiene
+                            <span class="font-mono font-medium"
+                                  x-text="duplicadoExacto().sku"></span>
+                            en esta categoría y proveedor. Si es el mismo artículo en
+                            otro color o talle, agregale una variante desde su ficha.
+                        </p>
+                    </template>
+
+                    <span x-show="!form.id && !duplicadoExacto()"
+                          class="text-xs text-texto-disabled">
+                        Desde el décimo carácter se ofrecen los productos ya cargados
+                        con nombre parecido.
+                    </span>
+                </div>
+
+                {# ---------- Precio USD + preview ---------- #}
+                <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-3 items-end">
+                    <div class="flex flex-col gap-1">
+                        <label for="pf-usd" class="text-sm font-semibold text-texto-header">
+                            Precio USD<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="pf-usd" type="number" step="0.01" min="0.01" required
+                               x-model="form.precio_usd"
+                               @input.debounce.400ms="calcularPreview()"
+                               class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <span class="text-sm font-semibold text-texto-header">
+                            Dólar Proveedor
+                        </span>
+                        <p class="h-control flex items-center text-base font-light
+                                  text-texto-muted"
+                           x-text="preview.dolar_proveedor !== null
+                                   ? pesos(preview.dolar_proveedor) : '—'"></p>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <span class="text-sm font-semibold text-texto-header">
+                            Precio Pesos
+                        </span>
+                        <p class="h-control flex items-center text-base font-medium text-texto"
+                           x-text="preview.precio_venta !== null
+                                   ? pesos(preview.precio_venta) : '—'"></p>
+                    </div>
+
+                    <p class="sm:col-span-3 -mt-3 text-xs text-texto-disabled">
+                        El precio en pesos lo calcula el sistema con el dólar del proveedor
+                        y el redondeo configurado.
+                    </p>
+                </div>
+
+                {# ---------- Peso, descuento, temporada ---------- #}
+                <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-4 items-end">
+                    <div class="flex flex-col gap-1">
+                        <label for="pf-peso" class="text-sm font-semibold text-texto-header">
+                            Peso (gramos)
+                        </label>
+                        <input id="pf-peso" type="number" step="0.01" min="0.01"
+                               x-model="form.peso_gramos" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="pf-desc-pct" class="text-sm font-semibold text-texto-header">
+                            Descuento %
+                        </label>
+                        <input id="pf-desc-pct" type="number" step="1" min="0" max="99"
+                               inputmode="numeric" placeholder="00"
+                               x-model="form.descuento_producto" class="campo-linea">
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        {{ combobox('pf-temporada', 'TEMPORADAS', 'o.etiqueta',
+                                    'form.temporada', buscable=false,
+                                    etiqueta='Temporada',
+                                    clases='w-full h-control pl-3 pr-9 text-base font-light
+                                            bg-surface text-texto border-[0.5px]
+                                            border-texto-disabled rounded-input
+                                            focus:outline-none focus:border-primary') }}
+                    </div>
+                </div>
+
+                {# ---------- Stock infinito (solo Cuenta Maestra) ---------- #}
+                {% if es_maestra %}
+                <label class="sm:col-span-2 flex items-center gap-2 min-h-toque text-sm
+                              font-semibold text-texto-header cursor-pointer">
+                    <input type="checkbox" x-model="form.stock_infinito" class="acceso-check">
+                    <span>Stock infinito (no descuenta al vender)</span>
+                </label>
+                {% endif %}
+
+                {# ---------- Foto y stock inicial (solo alta) ---------- #}
+                <template x-if="!form.id">
+                    <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="flex flex-col gap-1">
+                            <span class="text-sm font-semibold text-texto-header">Foto</span>
+
+                            <div class="flex flex-wrap items-center gap-3">
+                                <label class="h-boton px-4 inline-flex items-center gap-2
+                                              rounded-input border border-borde text-sm
+                                              font-semibold cursor-pointer
+                                              hover:border-primary hover:text-primary">
+                                    {{ icono('mas', clases='w-4 h-4') }}
+                                    <span x-text="form.foto.archivo ? 'Cambiar foto' : 'Elegir foto'"></span>
+                                    <input type="file" class="sr-only"
+                                           accept="image/jpeg,image/png,image/gif,image/webp"
+                                           @change="elegirFoto($event)">
+                                </label>
+                                <button type="button" @click="tomarFoto()"
+                                        class="h-boton px-4 inline-flex items-center gap-2
+                                               rounded-input border border-borde text-sm
+                                               font-semibold
+                                               hover:border-primary hover:text-primary">
+                                    {{ icono('camara', clases='w-4 h-4') }} Tomar foto
+                                </button>
+
+                                <template x-if="form.foto.archivo">
+                                    <div class="flex items-center gap-3">
+                                        <img :src="form.foto.previo" alt=""
+                                             class="w-14 h-14 rounded-input object-cover
+                                                    border border-borde">
+                                        <button type="button" @click="quitarFoto()"
+                                                class="min-h-toque text-sm font-semibold
+                                                       text-danger hover:opacity-80">
+                                            Quitar
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <span x-show="!form.foto.archivo"
+                                  class="text-xs text-texto-disabled">
+                                Opcional. Las otras cuatro se cargan desde la ficha.
+                            </span>
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label for="pf-stock-ini" class="text-sm font-semibold text-texto-header">
+                                Stock inicial
+                            </label>
+                            <input id="pf-stock-ini" type="number" min="0" step="1"
+                                   x-model="form.stock_inicial"
+                                   placeholder="0"
+                                   class="h-control w-full rounded-input border border-borde-campo
+                                          px-3 text-base bg-surface">
+                            <span class="text-xs text-texto-disabled">
+                                Se asigna al Centro de Distribución.
+                            </span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            {# ---------- Botones ---------- #}
+            <div class="flex justify-end gap-3 mt-8">
+                <button type="button" @click="form.abierto = false"
+                        class="h-boton px-5 rounded-input border border-borde text-base
+                               hover:border-primary hover:text-primary">Cancelar</button>
+                {% if mostrar_variantes %}
+                <button type="button" x-show="!form.id" x-cloak
+                        @click="guardar({ conVariantes: true })"
+                        :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
+                                   || duplicadoExacto()"
+                        class="h-boton px-5 rounded-input border-2 border-primary
+                               text-primary text-base font-medium
+                               hover:bg-primary hover:text-white disabled:opacity-60">
+                    Crear con variantes
+                </button>
+                {% endif %}
+                <button type="submit"
+                        :disabled="form.guardando || !categoriaCompleta() || !form.proveedor_id
+                                   || duplicadoExacto()"
+                        class="h-boton px-8 rounded-input bg-primary text-white text-base
+                               font-medium hover:bg-primary-hover disabled:opacity-60"
+                        x-text="form.guardando ? 'Guardando…'
+                                               : (form.id ? 'Finalizar' : 'Crear')"></button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endmacro %}

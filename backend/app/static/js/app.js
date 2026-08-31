@@ -265,6 +265,111 @@ window.cerrarSesion = async function () {
 };
 
 /* --------------------------------------------------------------------------
+   Captura de foto desde webcam
+   --------------------------------------------------------------------------
+
+   Abre un overlay con el video de la cámara y devuelve un Blob JPEG al
+   capturar. Si el usuario cancela devuelve null. Si la cámara no está
+   disponible la promesa se rechaza.
+
+   Uso:
+     const blob = await window.webcamCapture();
+     if (blob) { ... }
+   -------------------------------------------------------------------------- */
+
+window.webcamCapture = function () {
+    return new Promise((resolve, reject) => {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            reject(new Error('El navegador no soporta acceso a la cámara'));
+            return;
+        }
+
+        // Crear overlay.
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+
+        const card = document.createElement('div');
+        card.className = 'w-full max-w-[36rem] bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)] overflow-hidden';
+        overlay.appendChild(card);
+
+        // Video.
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.className = 'w-full aspect-[4/3] object-cover bg-black';
+        card.appendChild(video);
+
+        // Botones.
+        const barra = document.createElement('div');
+        barra.className = 'flex justify-center gap-4 px-6 py-4';
+        card.appendChild(barra);
+
+        const btnCancelar = document.createElement('button');
+        btnCancelar.type = 'button';
+        btnCancelar.textContent = 'Cancelar';
+        btnCancelar.className = 'h-boton px-5 rounded-input border border-borde text-base hover:border-primary hover:text-primary';
+        barra.appendChild(btnCancelar);
+
+        const btnCapturar = document.createElement('button');
+        btnCapturar.type = 'button';
+        btnCapturar.textContent = 'Capturar';
+        btnCapturar.className = 'h-boton px-8 rounded-input bg-primary text-white text-base font-medium hover:bg-primary-hover';
+        barra.appendChild(btnCapturar);
+
+        document.body.appendChild(overlay);
+
+        let stream = null;
+
+        function limpiar() {
+            if (stream) stream.getTracks().forEach((t) => t.stop());
+            overlay.remove();
+        }
+
+        // Iniciar cámara.
+        navigator.mediaDevices
+            .getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 } },
+            })
+            .then((s) => {
+                stream = s;
+                video.srcObject = stream;
+            })
+            .catch((err) => {
+                limpiar();
+                reject(new Error('No se pudo acceder a la cámara: ' + err.message));
+            });
+
+        btnCapturar.addEventListener('click', () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 1280;
+            canvas.height = video.videoHeight || 960;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(
+                (blob) => { limpiar(); resolve(blob); },
+                'image/jpeg', 0.85
+            );
+        });
+
+        btnCancelar.addEventListener('click', () => {
+            limpiar();
+            resolve(null);
+        });
+
+        // Escape cierra.
+        function onEscape(e) {
+            if (e.key === 'Escape') {
+                document.removeEventListener('keydown', onEscape);
+                limpiar();
+                resolve(null);
+            }
+        }
+        document.addEventListener('keydown', onEscape);
+    });
+};
+
+/* --------------------------------------------------------------------------
    Integración con HTMX
    -------------------------------------------------------------------------- */
 

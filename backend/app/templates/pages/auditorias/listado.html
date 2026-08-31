@@ -7,6 +7,8 @@
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/paginacion.html" import paginacion %}
+{% from "components/miniatura.html" import miniatura %}
 
 {% block contenido %}
 
@@ -43,7 +45,7 @@
                         etiqueta='Estado', label_oculto=true,
                         placeholder='Estado',
                         vacio='Todos los estados',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -57,7 +59,7 @@
                         etiqueta='Ubicación', label_oculto=true,
                         placeholder='Ubicación',
                         vacio='Todas las ubicaciones',
-                        al_elegir='cargar();',
+                        al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input
                                 placeholder:text-texto-disabled placeholder:font-semibold
@@ -125,6 +127,7 @@
                 </tbody>
             </table>
         </div>
+        {{ paginacion() }}
     </div>
 
     {% if puede_auditar %}
@@ -234,11 +237,13 @@
                                @input.debounce.300ms="identificar()"
                                placeholder="Escaneá o tipeá el código"
                                autocomplete="off" class="campo-linea font-mono">
-                        <span class="text-xs"
-                              :class="conteo.variante ? 'text-primary' : 'text-texto-disabled'"
-                              x-text="conteo.variante
-                                      ? conteo.variante.producto.descripcion
-                                      : 'Todavía sin identificar'"></span>
+                        <div class="flex items-center gap-2 text-xs min-h-[2rem]"
+                             :class="conteo.variante ? 'text-primary' : 'text-texto-disabled'">
+                            {{ miniatura(src='conteo.variante?.foto_url', tamano='w-8 h-8') }}
+                            <span x-text="conteo.variante
+                                          ? conteo.variante.producto.descripcion
+                                          : 'Todavía sin identificar'"></span>
+                        </div>
                     </div>
 
                     <div class="flex flex-col gap-1">
@@ -268,25 +273,72 @@
                        x-show="conteo.auditoria?.items.length" x-cloak>
                     <thead>
                         <tr class="bg-surface-alt">
+                            <th class="w-10"></th>
                             <th class="px-4 py-3 text-left font-semibold text-texto-header">Código</th>
-                            <th class="px-4 py-3 text-left font-semibold text-texto-header">Descripción</th>
+                            <th class="px-4 py-3 text-left font-semibold text-texto-header hidden sm:table-cell">Descripción</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Sistema</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Contado</th>
                             <th class="px-4 py-3 text-right font-semibold text-texto-header">Dif.</th>
+                            <th class="px-4 py-3 text-right font-semibold text-texto-header
+                                       w-[5.5rem]"></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="item in (conteo.auditoria?.items || [])" :key="item.id">
+                        <template x-for="item in (conteo.auditoria?.items || []).slice().reverse()" :key="item.id">
                             <tr class="border-t border-borde">
+                                <td class="px-2 py-3 text-center">
+                                    {{ miniatura(src='item.variante.foto_url', tamano='w-7 h-7') }}
+                                </td>
                                 <td class="px-4 py-3 font-mono"
-                                    x-text="item.variante.codigo_completo + item.variante.verificador"></td>
-                                <td class="px-4 py-3" x-text="item.variante.producto.descripcion"></td>
+                                    x-text="item.variante.codigo_completo + (item.variante.verificador || '')"></td>
+                                <td class="px-4 py-3 hidden sm:table-cell" x-text="item.variante.producto.descripcion"></td>
                                 <td class="px-4 py-3 text-right text-texto-muted"
                                     x-text="item.cantidad_sistema"></td>
-                                <td class="px-4 py-3 text-right" x-text="item.cantidad_contada"></td>
+                                {# Celda contado: muestra el número o un input de edición #}
+                                <td class="px-4 py-3 text-right">
+                                    <span x-show="edicion.item_id !== item.id"
+                                          x-text="item.cantidad_contada"></span>
+                                    <input x-show="edicion.item_id === item.id" x-cloak
+                                           type="number" min="0" step="1"
+                                           x-model="edicion.cantidad"
+                                           @keydown.enter.prevent="guardarEdicion(item)"
+                                           @keydown.escape.prevent="cancelarEdicion()"
+                                           class="campo-linea w-20 text-right text-sm">
+                                </td>
                                 <td class="px-4 py-3 text-right font-medium"
                                     :class="item.diferencia && 'text-danger'"
                                     x-text="item.diferencia > 0 ? '+' + item.diferencia : item.diferencia"></td>
+                                <td class="px-4 py-3 text-right">
+                                    {# Modo lectura: lápiz y papelera #}
+                                    <div x-show="edicion.item_id !== item.id"
+                                         class="inline-flex items-center gap-2">
+                                        <button type="button" @click="editarItem(item)"
+                                                title="Editar cantidad"
+                                                class="text-texto-muted hover:text-primary">
+                                            {{ icono('lapiz', clases='w-4 h-4') }}
+                                        </button>
+                                        <button type="button" @click="eliminarItem(item)"
+                                                title="Eliminar del conteo"
+                                                class="text-texto-muted hover:text-danger">
+                                            {{ icono('papelera', clases='w-4 h-4') }}
+                                        </button>
+                                    </div>
+                                    {# Modo edición: guardar y cancelar #}
+                                    <div x-show="edicion.item_id === item.id" x-cloak
+                                         class="inline-flex items-center gap-2">
+                                        <button type="button" @click="guardarEdicion(item)"
+                                                :disabled="edicion.guardando"
+                                                title="Guardar"
+                                                class="text-success hover:text-success/80">
+                                            {{ icono('check', clases='w-4 h-4') }}
+                                        </button>
+                                        <button type="button" @click="cancelarEdicion()"
+                                                title="Cancelar"
+                                                class="text-texto-muted hover:text-danger">
+                                            {{ icono('cerrar', clases='w-4 h-4') }}
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         </template>
                     </tbody>
@@ -374,40 +426,21 @@
                 {# La planilla en papel: para firmarla o archivarla. Disponible
                    en cualquier estado —un conteo en curso también se imprime
                    para seguir contando sobre el papel—. #}
-                <div class="flex justify-end mt-6">
+                <div class="flex justify-end gap-3 mt-6">
                     <button type="button" @click="descargarPdf(detalle.auditoria)"
                             class="h-boton px-4 inline-flex items-center gap-2 rounded-input
                                    border border-borde text-base text-texto-muted
                                    hover:border-primary hover:text-primary">
                         {{ icono('remito', clases='w-4 h-4') }} Descargar PDF
                     </button>
+                    <button type="button" @click="descargarXls(detalle.auditoria)"
+                            class="h-boton px-4 inline-flex items-center gap-2 rounded-input
+                                   border border-borde text-base text-texto-muted
+                                   hover:border-primary hover:text-primary">
+                        {{ icono('remito', clases='w-4 h-4') }} Descargar XLS
+                    </button>
                 </div>
 
-                {# Aprobar y rechazar solo aparecen en el estado en el que
-                   tienen sentido. Quien no tenga el permiso recibe 403 de la
-                   API: esconder el botón es comodidad, no la barrera. #}
-                {% if puede_aprobar %}
-                <div x-show="detalle.auditoria?.estado === 'pendiente_aprobacion'" x-cloak
-                     class="mt-6 p-4 rounded-input border border-borde">
-                    <p class="text-sm text-texto-muted">
-                        Al aprobar, el stock queda igual a lo contado: se genera un ajuste
-                        por cada código con diferencia. Al rechazar no cambia nada, y el
-                        conteo queda registrado igual.
-                    </p>
-                    <div class="flex flex-wrap justify-end gap-3 mt-4">
-                        <button type="button" @click="confirmarRechazo()"
-                                class="h-boton px-5 rounded-input border border-danger
-                                       text-danger text-base font-medium hover:bg-danger/10">
-                            Rechazar
-                        </button>
-                        <button type="button" @click="confirmarAprobacion()"
-                                class="h-boton px-8 rounded-input bg-primary text-white text-base
-                                       font-medium hover:bg-primary-hover">
-                            Aprobar y ajustar
-                        </button>
-                    </div>
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>

@@ -1,0 +1,129 @@
+{# ===========================================================================
+   Etiquetas de código de barras para la impresora Zebra GC420t.
+
+   No extiende base.html: es un documento PDF autónomo, como el remito.
+   WeasyPrint lo convierte desde `reports/etiquetas_pdf.py`.
+
+   Dimensiones físicas reales:
+     - Rectangular: 33mm × 10mm, tres por fila, separadas 3mm entre sí
+       Plancha: 105mm × 10mm (33 + 3 + 33 + 3 + 33)
+     - Con colita:  66mm × 11mm, cola izquierda (33mm) + impresión derecha (33mm)
+
+   Contenido: código de barras Code128 + número del código debajo,
+   ocupando ~50% del área imprimible, alineado a la izquierda.
+   =========================================================================== #}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Etiquetas</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* --- Rectangular: plancha de 105mm × 10mm (3 etiquetas + 2 gaps) --- */
+        @page rectangular { size: 105mm 10mm; margin: 0; }
+
+        .fila-rect {
+            page: rectangular;
+            width: 105mm;
+            height: 10mm;
+            display: flex;
+            page-break-after: always;
+        }
+
+        .etiqueta-rect {
+            width: 33mm;
+            height: 10mm;
+            padding: 0.8mm 1mm;
+        }
+
+        /* Gap de 3mm entre etiquetas (entre la 1ra-2da y 2da-3ra) */
+        .etiqueta-rect + .etiqueta-rect {
+            margin-left: 3mm;
+        }
+
+        .etiqueta-rect svg {
+            display: block;
+        }
+
+        .etiqueta-rect .codigo {
+            font-family: monospace;
+            font-size: 7pt;
+            font-weight: bold;
+            line-height: 1;
+            margin-top: 0.3mm;
+            width: 16mm;
+            text-align: center;
+        }
+
+        /* --- Con colita: 66mm × 11mm, cola izq + impresión der --- */
+        @page colita { size: 66mm 11mm; margin: 0; }
+
+        .etiqueta-colita {
+            page: colita;
+            width: 66mm;
+            height: 11mm;
+            display: flex;
+            page-break-after: always;
+        }
+
+        .colita-cola {
+            width: 33mm;
+            height: 11mm;
+        }
+
+        .colita-impresion {
+            width: 33mm;
+            height: 11mm;
+            padding: 0.8mm 1mm;
+        }
+
+        .colita-contenido {
+            width: 16mm;
+            margin-left: auto;
+            padding-top: 1.5mm;
+        }
+
+        .colita-contenido svg {
+            display: block;
+        }
+
+        .colita-contenido .codigo {
+            font-family: monospace;
+            font-size: 7pt;
+            font-weight: bold;
+            line-height: 1;
+            margin-top: 0.3mm;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+{% if tipo == 'rectangular' %}
+    {% for fila in filas %}
+    <div class="fila-rect">
+        {% for et in fila %}
+        <div class="etiqueta-rect">
+            {{ et.svg | safe }}
+            <div class="codigo">{{ et.codigo }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+{% else %}
+    {% for et in etiquetas %}
+    <div class="etiqueta-colita">
+        <div class="colita-cola"></div>
+        <div class="colita-impresion">
+            <div class="colita-contenido">
+                {{ et.svg | safe }}
+                <div class="codigo">{{ et.codigo }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% endif %}
+
+</body>
+</html>

@@ -1,0 +1,47 @@
+{# ===========================================================================
+   Macro: paginación para listados Alpine.js
+
+   Botones "Anterior" / "Siguiente" + indicador de página, reactivos con
+   Alpine. El componente padre debe tener las propiedades `pagina`, `total`
+   y `tamano`, y un método `cargar()` que use esos valores para pedir la
+   página correspondiente al backend.
+
+   Parámetros:
+     pagina   expresión Alpine con la página actual (default 'pagina')
+     total    expresión Alpine con el total de registros (default 'total')
+     tamano   expresión Alpine con el tamaño de página (default 'tamano')
+
+   Uso:
+     {% from "components/paginacion.html" import paginacion %}
+     {{ paginacion() }}
+   =========================================================================== #}
+
+{% macro paginacion(pagina='pagina', total='total', tamano='tamano') %}
+<nav x-show="Math.ceil({{ total }} / {{ tamano }}) > 1" x-cloak
+     class="flex items-center justify-end gap-2 mt-4 px-4 pb-4"
+     aria-label="Paginación">
+
+    <button type="button"
+            :disabled="{{ pagina }} <= 1"
+            @click="{{ pagina }}--; cargar()"
+            class="h-boton px-3 grid place-items-center rounded-input border border-borde
+                   text-sm hover:border-primary hover:text-primary
+                   disabled:opacity-40 disabled:pointer-events-none">
+        Anterior
+    </button>
+
+    <span class="text-sm text-texto-muted">
+        Página <span x-text="{{ pagina }}"></span>
+        de <span x-text="Math.ceil({{ total }} / {{ tamano }})"></span>
+    </span>
+
+    <button type="button"
+            :disabled="{{ pagina }} >= Math.ceil({{ total }} / {{ tamano }})"
+            @click="{{ pagina }}++; cargar()"
+            class="h-boton px-3 grid place-items-center rounded-input border border-borde
+                   text-sm hover:border-primary hover:text-primary
+                   disabled:opacity-40 disabled:pointer-events-none">
+        Siguiente
+    </button>
+</nav>
+{% endmacro %}

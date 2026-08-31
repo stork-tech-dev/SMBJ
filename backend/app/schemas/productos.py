@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 _TEMPORADA = "^(atemporal|otoño_invierno|primavera_verano)$"
+_TIPO_ETIQUETA = "^(rectangular|colita)$"
 
 
 class ProductoCrear(BaseModel):
@@ -28,6 +29,9 @@ class ProductoCrear(BaseModel):
     peso_gramos: Decimal | None = Field(default=None, gt=0)
     temporada: str = Field(default="atemporal", pattern=_TEMPORADA)
     stock_infinito: bool = False
+    # Stock inicial en el Centro de Distribución. Opcional: si no se manda o
+    # es 0, el producto se crea sin stock (como antes).
+    stock_inicial: int | None = Field(default=None, ge=0)
 
 
 class ProductoEditar(BaseModel):
@@ -76,6 +80,8 @@ class VarianteCrear(BaseModel):
     # siempre.
     sku_proveedor: str | None = Field(default=None, max_length=30)
     ubicacion_deposito: str | None = Field(default=None, max_length=100)
+    # Stock inicial en el Centro de Distribución.
+    stock_inicial: int | None = Field(default=None, ge=0)
 
 
 class VarianteEditar(BaseModel):
@@ -96,6 +102,18 @@ class VarianteEditar(BaseModel):
     # Código propio en el catálogo del proveedor, con la misma mecánica que
     # el precio: NULL vuelve al del producto, no mandarlo no lo toca.
     sku_proveedor: str | None = Field(default=None, max_length=30)
+
+
+class FotoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    # Ruta relativa: el frontend la usa tal cual como src.
+    url: str
+    es_principal: bool
+    orden: int
+    # NULL = foto compartida del producto; con valor = exclusiva de la variante.
+    variante_id: int | None
 
 
 class VarianteResponse(BaseModel):
@@ -132,16 +150,9 @@ class VarianteResponse(BaseModel):
     tiene_precio_propio: bool
     sku_proveedor_efectivo: str | None
     tiene_sku_proveedor_propio: bool
-
-
-class FotoResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    # Ruta relativa: el frontend la usa tal cual como src.
-    url: str
-    es_principal: bool
-    orden: int
+    # Fotos propias de esta variante (puede ser lista vacía: el frontend
+    # resuelve el fallback mostrando las del producto).
+    fotos: list[FotoResponse]
 
 
 class CategoriaResumen(BaseModel):
@@ -275,4 +286,21 @@ class VarianteListadoResponse(BaseModel):
     tiene_precio_propio: bool
     sku_proveedor_efectivo: str | None
     tiene_sku_proveedor_propio: bool
+    foto_url: str | None = None
     producto: ProductoResumen
+
+
+# ---------------------------------------------------------------------------
+# Etiquetas de código de barras
+# ---------------------------------------------------------------------------
+
+class EtiquetaItem(BaseModel):
+    variante_id: int
+    cantidad: int = Field(gt=0)
+
+
+class EtiquetasRequest(BaseModel):
+    """Solicitud de PDF de etiquetas para la impresora Zebra."""
+
+    tipo: str = Field(pattern=_TIPO_ETIQUETA)
+    items: list[EtiquetaItem] = Field(min_length=1)
