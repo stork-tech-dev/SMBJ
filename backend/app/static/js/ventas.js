@@ -19,15 +19,14 @@ function listadoVentas(puedeAnular = false) {
         tamano: 50,
         puedeAnular,
 
-        // Nombres de los medios de pago, para no mostrar un id en el detalle.
-        // Se piden una sola vez: el catálogo no cambia mientras la pantalla
-        // está abierta.
+        // Catálogos cargados una sola vez al abrir la pantalla.
+        puntos: [],
         medios: {},
 
         filtros: {
             numero: '', estado: '',
             fecha_desde: '', fecha_hasta: '',
-            total_desde: '', total_hasta: '',
+            punto_de_venta_id: '',
         },
 
         detalle: { abierto: false, venta: null },
@@ -60,6 +59,11 @@ function listadoVentas(puedeAnular = false) {
 
         nombreMedio(id) {
             return this.medios[id] || `Medio #${id}`;
+        },
+
+        async cargarCatalogos() {
+            const resp = await fetch('/api/v1/stock/ubicaciones', { credentials: 'same-origin' });
+            if (resp.ok) this.puntos = await resp.json();
         },
 
         async cargar() {
@@ -117,7 +121,7 @@ function listadoVentas(puedeAnular = false) {
             this.filtros = {
                 numero: '', estado: '',
                 fecha_desde: '', fecha_hasta: '',
-                total_desde: '', total_hasta: '',
+                punto_de_venta_id: '',
             };
             this.buscar();
         },

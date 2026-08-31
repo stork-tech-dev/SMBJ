@@ -918,6 +918,8 @@ def _contexto_ventas(request, db, usuario, titulo, **extra):
         ruta_activa="/ventas",
         sin_asignacion=scope.sin_asignacion,
         mensaje_sin_asignacion=MENSAJE_SIN_ASIGNACION,
+        # Con un solo local a la vista el combobox de punto de venta sobra.
+        punto_fijo=scope.punto_de_venta_id if scope.restringido else None,
         local_nombre=(
             dispositivo.punto_de_venta.nombre
             if _es_dispositivo_de_local(dispositivo)

@@ -11,10 +11,11 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/botones.html" import accion, acciones %}
+{% from "components/combobox.html" import combobox %}
 {% from "components/encabezado.html" import encabezado %}
 
 {% block contenido %}
-<div x-data="listadoVentas({{ 'true' if puede_anular else 'false' }})" x-init="cargar()">
+<div x-data="listadoVentas({{ 'true' if puede_anular else 'false' }})" x-init="cargarCatalogos(); cargar()">
 
     {% call encabezado('Ventas') %}
         {% if puede_ver_clientes %}
@@ -69,16 +70,16 @@
             </div>
         </div>
 
+        {% if not punto_fijo %}
         <div class="flex flex-col gap-1">
-            <span class="text-sm font-semibold text-texto-header">Total</span>
-            <div class="flex items-center gap-2">
-                <input x-model="filtros.total_desde" type="number" min="0" placeholder="Desde"
-                       aria-label="Total desde" class="campo-linea w-full sm:w-[8rem]">
-                <span class="text-texto-disabled" aria-hidden="true">–</span>
-                <input x-model="filtros.total_hasta" type="number" min="0" placeholder="Hasta"
-                       aria-label="Total hasta" class="campo-linea w-full sm:w-[8rem]">
-            </div>
+            {{ combobox('f-punto', 'puntos', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Local',
+                        placeholder='Todos los locales',
+                        vacio='Todos los locales',
+                        al_elegir='') }}
         </div>
+        {% endif %}
 
         <button type="submit"
                 class="h-boton px-6 rounded-input bg-primary text-white text-base font-medium
