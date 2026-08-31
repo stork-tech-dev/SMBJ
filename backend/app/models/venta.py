@@ -17,6 +17,7 @@ barata de cada grupo, y con un contador esa unidad no existiría como fila.
 import enum
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -34,6 +35,15 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.cliente import Cliente
+    from app.models.medio_pago import MedioDePago, PlanCuotas
+    from app.models.producto import Variante
+    from app.models.promocion import Promocion
+    from app.models.punto_de_venta import PuntoDeVenta
+    from app.models.sena import Sena
+    from app.models.usuario import Usuario
 
 
 class EstadoVenta(str, enum.Enum):

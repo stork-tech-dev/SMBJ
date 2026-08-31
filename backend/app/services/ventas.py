@@ -370,6 +370,7 @@ def agregar_item(
     if variante_id is not None:
         variante = servicio_stock.obtener_variante(db, variante_id)
     else:
+        assert codigo is not None, "Se requiere variante_id o codigo"
         variante = buscar_variante(db, codigo)
 
     producto = variante.producto

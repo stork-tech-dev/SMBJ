@@ -127,7 +127,7 @@ def listar(
         tamano=tamano,
     )
     return RespuestaPaginada[VentaResumen](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas
+        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
 
 
@@ -150,7 +150,7 @@ def en_curso(
     Va antes de `/{venta_id}` para que `en-curso` no se lea como un id.
     """
     abierta = servicio.venta_en_curso(db, autor.id, dispositivo.punto_de_venta_id)
-    return VentaEnCursoResponse(venta=abierta)
+    return VentaEnCursoResponse(venta=abierta)  # type: ignore[arg-type]
 
 
 @router.get(

@@ -16,6 +16,7 @@ detalle de en qué se usó igual queda: cada uso deja su fila en
 
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -30,6 +31,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.cliente import Cliente
+    from app.models.usuario import Usuario
 
 
 class Sena(Base):
