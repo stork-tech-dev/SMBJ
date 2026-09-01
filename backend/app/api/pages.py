@@ -133,7 +133,7 @@ SECCIONES_STOCK = [
     },
     {
         "nombre": "Movimientos de Stock",
-        "descripcion": "Lo que hay en cada ubicación, ingresos y bajas",
+        "descripcion": "Lo que hay en cada ubicación, minimos y bajas",
         "url": "/stock",
         "modulo": Modulo.STOCK,
     },
