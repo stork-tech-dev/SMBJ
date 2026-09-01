@@ -1865,12 +1865,17 @@ def test_ningun_item_del_sidebar_lleva_a_un_404(client, crear_usuario):
 
 
 def test_los_modulos_pendientes_muestran_su_pantalla(client, crear_usuario):
-    """Cada uno con su título y su ítem del sidebar marcado."""
+    """
+    Cada uno con su título y su ítem del sidebar marcado.
+
+    `/ventas` salió de esta lista al implementarse el módulo: ahora sirve el
+    listado de escritorio o el home mobile según el dispositivo. Lo cubre
+    `test_ventas_rutea_por_dispositivo`.
+    """
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    for ruta, titulo in {"/ventas": "Ventas", "/reportes": "Reportes",
-                         "/ajustes": "Ajustes"}.items():
+    for ruta, titulo in {"/reportes": "Reportes", "/ajustes": "Ajustes"}.items():
         resp = client.get(ruta)
         assert resp.status_code == 200, ruta
         assert f">{titulo}</h1>" in resp.text, ruta
@@ -2454,3 +2459,189 @@ def test_las_pantallas_de_stock_no_dependen_del_permiso_de_configuracion(
         js = _js_de(url)
         assert "/api/v1/stock/ubicaciones" in js, f"{url} no usa el endpoint del módulo"
         assert "/api/v1/puntos-de-venta" not in js, f"{url} sigue pidiendo Configuración"
+
+
+# ============================================================================
+# VENTAS
+# ============================================================================
+
+
+def test_ventas_rutea_por_dispositivo(client, db, crear_usuario, crear_punto_de_venta):
+    """
+    El equipo decide qué pantalla se sirve, no el usuario ni el ancho del
+    navegador.
+
+    Es la regla del módulo: desde un celular registrado en un local se
+    trabaja el punto de venta, y desde cualquier otro equipo se mira el
+    listado. Si dependiera del ancho, una vendedora que gira el teléfono
+    perdería la caja, y un supervisor en una notebook angosta recibiría el
+    flujo de venta.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    # Sin dispositivo de local: listado de escritorio.
+    html = client.get("/ventas").text
+    assert "listadoVentas(" in html
+    assert "homeVentas()" not in html
+
+    # Con un equipo asignado a un local: el home de la vendedora.
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+
+    html = client.get("/ventas").text
+    assert "homeVentas()" in html
+    assert "listadoVentas(" not in html
+
+
+def test_las_pantallas_del_flujo_son_solo_mobile(client, crear_usuario):
+    """
+    Entrar al carrito desde una notebook manda al listado, no dibuja una
+    pantalla de 390px estirada a 1440.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    for ruta in ("/ventas/nueva", "/ventas/carrito", "/ventas/finalizar",
+                 "/ventas/consulta-stock"):
+        resp = client.get(ruta, follow_redirects=False)
+        assert resp.status_code == 303, ruta
+        assert resp.headers["location"] == "/ventas", ruta
+
+
+def test_el_layout_mobile_no_arrastra_el_sidebar(client, db, crear_usuario,
+                                                 crear_punto_de_venta):
+    """
+    En el celular no hay sidebar: lo reemplaza la barra inferior fija, con
+    los tres destinos al alcance del pulgar.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/ventas").text
+    assert 'id="sidebar-nav"' not in html
+    assert 'aria-label="Navegación del punto de venta"' in html
+    # Los tres destinos de la barra.
+    for destino in ("/ventas", "/ventas/nueva", "/ventas/consulta-stock"):
+        assert f'href="{destino}"' in html, destino
+
+
+def test_la_barra_inferior_respeta_el_area_segura(client, db, crear_usuario,
+                                                  crear_punto_de_venta):
+    """
+    Sin `env(safe-area-inset-bottom)` la barra queda debajo del indicador de
+    gestos del iPhone y el botón central se vuelve intocable — justo el que
+    más se usa.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/ventas").text
+    assert "env(safe-area-inset-bottom)" in html
+    assert "viewport-fit=cover" in html
+
+
+def test_el_descuento_se_elige_de_una_lista_y_no_se_escribe(
+    client, db, crear_usuario, crear_punto_de_venta
+):
+    """
+    La vendedora NO puede escribir un porcentaje: elige de la lista de 5 en
+    5. Un `<input type="number">` en el modal de descuento sería la puerta
+    de atrás que la regla del backend viene a cerrar.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    html = client.get("/ventas/carrito").text
+    # Los porcentajes son botones alimentados por la lista del backend.
+    assert 'x-for="p in porcentajes"' in html
+    assert 'x-model="descuento.porcentaje"' not in html
+    # Y el motivo va primero: el porcentaje queda deshabilitado sin él.
+    assert ':disabled="!descuento.motivo_id"' in html
+
+
+def test_las_pantallas_de_ventas_no_calculan_precios():
+    """
+    El total, los descuentos y los recargos los resuelve el backend. Si la
+    pantalla hiciera su propia cuenta y diera distinto, la vendedora vería un
+    número y el cliente pagaría otro.
+
+    Se permite el reparto entre dos medios y el preview del recargo: son
+    ayudas para completar el formulario, y el backend los vuelve a calcular
+    antes de cobrar.
+    """
+    import pathlib
+
+    js = (
+        pathlib.Path(__file__).parent.parent / "app" / "static" / "js" / "ventas_mobile.js"
+    ).read_text()
+
+    # El total a cobrar siempre sale de la respuesta, nunca de sumar ítems.
+    assert "venta.a_cobrar" in js
+    assert "precio_final" not in js, "la pantalla está sumando los ítems por su cuenta"
+
+
+def test_las_secciones_de_configuracion_de_ventas_resuelven(client, crear_usuario):
+    """Las tres cuelgan del hub y ninguna puede llevar a un 404."""
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    hub = client.get("/configuracion").text
+    for nombre in ("Medios de pago", "Motivos de descuento", "Promociones"):
+        assert nombre in hub, nombre
+
+    for ruta, componente in {
+        "/medios-de-pago": "abmMediosDePago",
+        "/motivos-descuento": "abmMotivosDescuento",
+        "/promociones": "abmPromociones",
+    }.items():
+        resp = client.get(ruta)
+        assert resp.status_code == 200, ruta
+        assert componente in resp.text, ruta
+
+
+def test_clientes_es_modulo_propio_en_el_sidebar(client, crear_usuario):
+    """
+    El cliente se carga en el día a día de la venta, no cuando se configura
+    el sistema: por eso está en el sidebar y no dentro de Configuraciones.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    aside = client.get("/").text.split("<aside")[1].split("</aside>")[0]
+    assert 'href="/clientes"' in aside
+
+    assert "abmClientes" in client.get("/clientes").text

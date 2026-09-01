@@ -1,0 +1,100 @@
+{# Pantalla de arqueo y cierre de turno (mobile).
+   El arqueo se carga dinámicamente desde GET /api/v1/turnos/{id}/arqueo/esperado.
+   Al confirmar, hace POST /api/v1/turnos/{id}/arqueo y redirige a /ventas. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block encabezado_mobile %}
+    <a href="/ventas"
+       class="inline-flex items-center gap-2 min-h-toque -ml-2 pl-2 pr-3
+              text-base font-semibold text-texto hover:text-primary">
+        {{ icono('flecha-izquierda', clases='w-5 h-5') }}
+        <span>Cerrar Turno</span>
+    </a>
+{% endblock %}
+
+{% block contenido_mobile %}
+<div x-data="cajaArqueo({{ turno_id }})" x-init="init()">
+
+    <p class="mt-2 mb-5 text-sm text-texto-muted text-center">
+        Completá las novedades de caja antes de cerrar el turno.
+    </p>
+
+    {# Estado de carga #}
+    <div x-show="cargando" class="py-10 text-center text-texto-muted text-sm">
+        Cargando arqueo…
+    </div>
+
+    {# Formulario de arqueo #}
+    <div x-show="!cargando" class="space-y-4">
+
+        {# Items dinámicos del arqueo #}
+        <template x-for="(item, i) in items" :key="i">
+            <div class="rounded-input bg-surface-alt p-4">
+                <label class="block text-xs font-semibold text-texto-muted mb-1"
+                       x-text="item.medio_nombre + (item.es_informativo ? ' (informativo)' : '')"></label>
+                <p class="text-xs text-texto-disabled mb-2"
+                   x-text="'Esperado: ' + pesos(item.monto_esperado)"></p>
+                <input
+                    type="number"
+                    inputmode="decimal"
+                    x-model="item.monto_declarado"
+                    :placeholder="pesos(item.monto_esperado)"
+                    :disabled="item.es_informativo"
+                    class="w-full h-boton border border-borde rounded-input px-3 text-base
+                           bg-white disabled:bg-surface-alt disabled:text-texto-muted">
+            </div>
+        </template>
+
+        {# Total calculado (solo-lectura) #}
+        <div class="rounded-input bg-surface p-4 tarjeta">
+            <label class="block text-xs font-semibold text-texto-muted mb-1">Total declarado</label>
+            <p class="text-base font-semibold text-texto" x-text="pesos(totalCalculado)"></p>
+        </div>
+
+        {# Botón de cierre #}
+        <button
+            @click="intentarCerrar()"
+            :disabled="enviando"
+            class="w-full h-boton rounded-input bg-primary text-white text-base
+                   font-semibold disabled:opacity-60">
+            <span x-show="!enviando">Cerrar Turno</span>
+            <span x-show="enviando" x-cloak>Cerrando…</span>
+        </button>
+
+    </div>
+
+    {# Modal de confirmación cuando hay diferencia en el arqueo #}
+    <div x-show="mostrarConfirmacion" x-cloak
+         class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-5">
+        <div class="bg-surface rounded-[10px] p-6 w-full shadow-lg">
+            <p class="text-base font-semibold text-texto text-center mb-2">
+                Diferencia en el arqueo
+            </p>
+            <p class="text-sm text-texto-muted text-center mb-6"
+               x-text="'Hay una diferencia de ' + pesos(Math.abs(diferencia))
+                        + (diferencia > 0 ? ' (sobrante)' : ' (faltante)')
+                        + '. Se notificará a los dueños. ¿Confirmar cierre?'">
+            </p>
+            <div class="flex gap-3">
+                <button @click="mostrarConfirmacion = false"
+                        class="flex-1 h-boton border border-borde rounded-input
+                               text-sm text-texto-muted hover:border-danger hover:text-danger">
+                    Cancelar
+                </button>
+                <button @click="cerrar()" :disabled="enviando"
+                        class="flex-1 h-boton bg-primary text-white rounded-input
+                               text-sm font-semibold disabled:opacity-60">
+                    Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/caja.js') }}"></script>
+{% endblock %}

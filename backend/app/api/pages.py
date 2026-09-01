@@ -47,7 +47,6 @@ RUTA_HUB_STOCK = "/gestion-de-stock"
 
 MENU_SIDEBAR = [
     {"nombre": "Home", "url": "/", "icono": "home", "modulo": None},
-    {"nombre": "Proveedores", "url": "/proveedores", "icono": "truck", "modulo": Modulo.PROVEEDORES},
     {"nombre": "Productos", "url": "/productos", "icono": "box", "modulo": Modulo.PRODUCTOS},
     # El control de stock entra por su propia página de menú, no por una de
     # sus pantallas: con las tres sueltas en el sidebar el módulo se leía como
@@ -59,6 +58,7 @@ MENU_SIDEBAR = [
         "icono": "almacen",
         "modulo": Modulo.STOCK,
     },
+    {"nombre": "Clientes", "url": "/clientes", "icono": "users", "modulo": Modulo.CLIENTES},
     {"nombre": "Ventas", "url": "/ventas", "icono": "cart", "modulo": Modulo.VENTAS},
     {"nombre": "Reportes", "url": "/reportes", "icono": "chart", "modulo": Modulo.REPORTES},
     # Oculto hasta que exista su pantalla: hoy /auditoria no tiene ruta HTML
@@ -94,6 +94,12 @@ MENU_SIDEBAR_PIE = [
 # es una línea acá; cada una se muestra solo si el usuario tiene su permiso.
 CONFIGURACION_SECCIONES = [
     {
+        "nombre": "Proveedores",
+        "descripcion": "Datos de proveedores nacionales e internacionales",
+        "url": "/proveedores",
+        "modulo": Modulo.PROVEEDORES,
+    },
+    {
         "nombre": "Usuarios",
         "descripcion": "Altas, permisos e historial de accesos",
         "url": "/usuarios",
@@ -117,6 +123,27 @@ CONFIGURACION_SECCIONES = [
         "descripcion": "Celulares corporativos y su asignación a locales",
         "url": "/dispositivos",
         "modulo": Modulo.DISPOSITIVOS,
+    },
+    {
+        "nombre": "Medios de pago",
+        "descripcion": "Con qué se cobra y los planes de cuotas de cada uno",
+        "url": "/medios-de-pago",
+        "modulo": Modulo.CONFIGURACION,
+    },
+    {
+        "nombre": "Motivos de descuento",
+        "descripcion": "Por qué se descuenta y qué porcentaje se sugiere",
+        "url": "/motivos-descuento",
+        "modulo": Modulo.CONFIGURACION,
+    },
+    {
+        "nombre": "Promociones",
+        "descripcion": "2x1 y 3x2, sobre qué productos y hasta cuándo",
+        "url": "/promociones",
+        "modulo": Modulo.CONFIGURACION,
+        # Recurso propio: el Supervisor las administra sin tener el permiso
+        # general de Configuración.
+        "recurso": Recurso.PROMOCIONES,
     },
 ]
 
@@ -212,7 +239,12 @@ def _visible(db: Session, usuario, item: dict, es_maestra: bool) -> bool:
         )
     if item.get("modulo") is None:
         return True
-    return resolver_permiso(db, usuario.id, item["modulo"], "ver")
+    # `recurso` acota el ítem a un permiso puntual dentro del módulo. Lo usa
+    # Promociones: el Supervisor las administra sin tener el permiso general
+    # de Configuración, que le abriría también los medios de pago.
+    return resolver_permiso(
+        db, usuario.id, item["modulo"], "ver", item.get("recurso")
+    )
 
 
 def menu_visible(db: Session, usuario) -> tuple[list, list]:
@@ -332,7 +364,10 @@ async def cambiar_password(
 async def index(
     request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
 ):
-    """Dashboard."""
+    """Dashboard. Dispositivos de local redirigen a /ventas."""
+
+    if _es_dispositivo_de_local(_dispositivo_de_request(request, db)):
+        return RedirectResponse("/ventas", status_code=303)
 
     return templates.TemplateResponse(
         request,
@@ -442,7 +477,7 @@ async def proveedores(
     return templates.TemplateResponse(
         request,
         "pages/proveedores/listado.html",
-        contexto_base(request, db, usuario, titulo="Proveedores", ruta_activa="/proveedores"),
+        contexto_base(request, db, usuario, titulo="Proveedores", ruta_activa="/configuracion"),
     )
 
 
@@ -454,7 +489,7 @@ async def proveedores_dolar_masivo(
         request,
         "pages/proveedores/dolar_masivo.html",
         contexto_base(
-            request, db, usuario, titulo="Cambio masivo del dólar", ruta_activa="/proveedores"
+            request, db, usuario, titulo="Cambio masivo del dólar", ruta_activa="/configuracion"
         ),
     )
 
@@ -481,7 +516,6 @@ async def configuracion(
 # vez de dar 404. Cuando cada módulo se implemente, su entrada sale de acá
 # y pasa a tener su propia ruta.
 MODULOS_PENDIENTES = {
-    "/ventas": "Ventas",
     "/reportes": "Reportes",
     "/ajustes": "Ajustes",
 }
@@ -491,9 +525,9 @@ def _registrar_pendientes() -> None:
     """
     Da de alta las rutas de los módulos pendientes.
 
-    En un bucle y no una por una: las tres son idénticas salvo el título y
-    la ruta activa, así que escribirlas a mano sería copiar tres veces el
-    mismo handler.
+    En un bucle y no una por una: son idénticas salvo el título y la ruta
+    activa, así que escribirlas a mano sería copiar el mismo handler una
+    vez por módulo.
     """
     for ruta, titulo in MODULOS_PENDIENTES.items():
 
@@ -790,4 +824,301 @@ async def auditorias_inventario(
         request,
         "pages/auditorias/listado.html",
         _contexto_stock(request, db, usuario, "Auditorías de Stock", RUTA_HUB_STOCK),
+    )
+
+
+# ============================================================================
+# CLIENTES
+# ============================================================================
+
+
+@router.get("/clientes", response_class=HTMLResponse)
+async def clientes(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    ABM de clientes, con su ficha, sus puntos y sus señas.
+
+    Es módulo propio y no una sección de Configuración: el cliente se carga
+    en el día a día de la venta, no cuando se configura el sistema.
+    """
+    puede = lambda accion: resolver_permiso(  # noqa: E731
+        db, usuario.id, Modulo.CLIENTES, accion
+    )
+    return templates.TemplateResponse(
+        request,
+        "pages/clientes/listado.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Clientes",
+            ruta_activa="/clientes",
+            puede_crear=puede("crear"),
+            puede_editar=puede("editar"),
+        ),
+    )
+
+
+# ============================================================================
+# VENTAS
+# ============================================================================
+#
+# El módulo tiene DOS frentes y el usuario no elige entre ellos: desde un
+# celular registrado en un local se sirve la UI mobile, y desde cualquier
+# otro equipo la de escritorio. Lo decide `_es_dispositivo_de_local()` con el
+# dispositivo de la request, no una preferencia ni el ancho de la pantalla —
+# una vendedora que agranda el navegador sigue necesitando el punto de venta,
+# y un supervisor en su notebook no quiere el flujo de caja.
+
+
+def _dispositivo_de_request(request: Request, db: Session):
+    """
+    El equipo desde el que llega la request, leído de la COOKIE.
+
+    De la cookie y no de `request.state.device`: ese lo completa el
+    middleware, que se puede apagar por configuración, y con él apagado toda
+    pantalla trataría a cualquier vendedora como si su equipo no tuviera
+    local. Es solo lectura — dar de alta un dispositivo es cosa del login.
+    """
+    from app.services.device_service import DeviceService
+
+    uuid_cookie = request.cookies.get(settings.DEVICE_COOKIE_NAME)
+    return DeviceService(db).repo.get_by_uuid(uuid_cookie) if uuid_cookie else None
+
+
+def _es_dispositivo_de_local(dispositivo) -> bool:
+    """TRUE si la request viene de un equipo asignado a un punto de venta."""
+    return (
+        dispositivo is not None
+        and dispositivo.activo
+        and dispositivo.punto_de_venta_id is not None
+    )
+
+
+def _contexto_ventas(request, db, usuario, titulo, **extra):
+    """
+    Contexto común de todas las pantallas de ventas, mobile y escritorio.
+
+    Los `puede_*` salen de la misma `resolver_permiso` que usa la API: no hay
+    una segunda tabla de verdades. Esconder un botón no es la barrera —el
+    endpoint valida igual—, pero ofrecer una acción que siempre termina en
+    403 es peor que no ofrecerla.
+    """
+    from app.core.device_scope import MENSAJE_SIN_ASIGNACION, get_punto_de_venta_scope
+
+    dispositivo = _dispositivo_de_request(request, db)
+    scope = get_punto_de_venta_scope(usuario, dispositivo)
+
+    puede = lambda accion, recurso=None: resolver_permiso(  # noqa: E731
+        db, usuario.id, Modulo.VENTAS, accion, recurso
+    )
+
+    return contexto_base(
+        request, db, usuario,
+        titulo=titulo,
+        ruta_activa="/ventas",
+        sin_asignacion=scope.sin_asignacion,
+        mensaje_sin_asignacion=MENSAJE_SIN_ASIGNACION,
+        # Con un solo local a la vista el combobox de punto de venta sobra.
+        punto_fijo=scope.punto_de_venta_id if scope.restringido else None,
+        local_nombre=(
+            dispositivo.punto_de_venta.nombre
+            if _es_dispositivo_de_local(dispositivo)
+            else None
+        ),
+        puede_vender=puede("crear"),
+        puede_descontar=puede("crear", Recurso.VENTA_DESCUENTO),
+        puede_anular=puede("eliminar", Recurso.VENTA_ANULAR),
+        puede_ver_clientes=resolver_permiso(db, usuario.id, Modulo.CLIENTES, "ver"),
+        # ID numérico del punto de venta para el componente cajaTurno() de caja.js.
+        # Ninguna pantalla distinta al home mobile lo usa, pero agregarlo acá (en
+        # vez de en el handler de /ventas) evita pasarlo como `extra` en cada ruta.
+        punto_de_venta_id_num=scope.punto_de_venta_id or 0,
+        **extra,
+    )
+
+
+@router.get("/ventas", response_class=HTMLResponse)
+async def ventas(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    La puerta del módulo. El equipo decide qué se sirve.
+
+    Desde un celular de local: el home de la vendedora, con el acceso a la
+    venta nueva y el aviso de venta sin concluir. Desde cualquier otro
+    equipo: el listado de ventas con sus filtros.
+    """
+    dispositivo = _dispositivo_de_request(request, db)
+    plantilla = (
+        "pages/ventas/mobile/home.html"
+        if _es_dispositivo_de_local(dispositivo)
+        else "pages/ventas/desktop/listado.html"
+    )
+    return templates.TemplateResponse(
+        request,
+        plantilla,
+        _contexto_ventas(request, db, usuario, "Ventas", activa_mobile="inicio"),
+    )
+
+
+# Las pantallas del flujo de venta son SOLO mobile: se hacen desde el celular
+# de la vendedora, parada en el local. Entrar desde una notebook manda al
+# listado en vez de mostrar una pantalla de 390px estirada a 1440.
+# `volver` es la flecha de retorno del encabezado; `activa` marca el ítem de
+# la barra inferior. Van acá y no en cada plantilla porque el layout mobile
+# los necesita ANTES de entrar a los bloques del hijo.
+_PANTALLAS_MOBILE = {
+    "/ventas/nueva": {
+        "plantilla": "pages/ventas/mobile/busqueda_producto.html",
+        "titulo": "Nueva Venta",
+        "volver": "/ventas",
+        "activa": "venta",
+    },
+    "/ventas/carrito": {
+        "plantilla": "pages/ventas/mobile/carrito.html",
+        "titulo": "Carrito",
+        "volver": "/ventas/nueva",
+        "activa": "venta",
+    },
+    "/ventas/finalizar": {
+        "plantilla": "pages/ventas/mobile/finalizacion.html",
+        "titulo": "Finalización de Compra",
+        "volver": "/ventas/carrito",
+        "activa": "venta",
+    },
+    "/ventas/consulta-stock": {
+        "plantilla": "pages/ventas/mobile/consulta_stock.html",
+        "titulo": "Consulta de Stock",
+        "volver": "/ventas",
+        "activa": "stock",
+    },
+}
+
+
+def _registrar_pantallas_mobile() -> None:
+    """
+    Da de alta las pantallas del flujo de venta.
+
+    En un bucle: las cuatro son el mismo handler con otra plantilla y otro
+    título, y escribirlas a mano sería copiar cuatro veces la comprobación
+    del dispositivo — que es justamente la que no puede faltar en ninguna.
+    """
+    for ruta, pantalla in _PANTALLAS_MOBILE.items():
+
+        def _pagina(
+            request: Request,
+            db: Session = Depends(get_db),
+            usuario=Depends(requiere_sesion),
+            # Se captura por defecto: sin esto todas las closures leerían el
+            # valor de la última vuelta del bucle.
+            _p: dict = pantalla,
+        ):
+            if not _es_dispositivo_de_local(_dispositivo_de_request(request, db)):
+                return RedirectResponse("/ventas", status_code=303)
+            return templates.TemplateResponse(
+                request,
+                _p["plantilla"],
+                _contexto_ventas(
+                    request, db, usuario, _p["titulo"],
+                    volver_url=_p["volver"],
+                    activa_mobile=_p["activa"],
+                ),
+            )
+
+        router.get(ruta, response_class=HTMLResponse, name=f"mobile{ruta}")(_pagina)
+
+
+_registrar_pantallas_mobile()
+
+
+# ============================================================================
+# CONFIGURACIÓN DEL MÓDULO DE VENTAS
+# ============================================================================
+#
+# Los tres catálogos cuelgan del hub de Configuraciones, así que `ruta_activa`
+# apunta ahí para que el sidebar mantenga marcada esa entrada.
+
+# El tercer valor es el recurso que habilita a EDITAR esa pantalla. None =
+# alcanza con el permiso general de Configuración.
+_CATALOGOS_VENTAS = {
+    "/medios-de-pago": ("pages/medios_pago/listado.html", "Medios de pago", None),
+    "/motivos-descuento": (
+        "pages/motivos_descuento/listado.html", "Motivos de descuento", None,
+    ),
+    "/promociones": (
+        "pages/promociones/listado.html", "Promociones", Recurso.PROMOCIONES,
+    ),
+}
+
+
+def _registrar_catalogos_ventas() -> None:
+    """
+    Las tres pantallas son el mismo handler con otra plantilla: cambia el
+    título y el archivo, no la lógica.
+    """
+    for ruta, (plantilla, titulo, recurso) in _CATALOGOS_VENTAS.items():
+
+        def _pagina(
+            request: Request,
+            db: Session = Depends(get_db),
+            usuario=Depends(requiere_sesion),
+            _plantilla: str = plantilla,
+            _titulo: str = titulo,
+            _recurso=recurso,
+        ):
+            return templates.TemplateResponse(
+                request,
+                _plantilla,
+                contexto_base(
+                    request, db, usuario,
+                    titulo=_titulo,
+                    ruta_activa="/configuracion",
+                    # Mismo permiso que exige el endpoint: el botón aparece
+                    # exactamente para quien puede usarlo.
+                    puede_editar=resolver_permiso(
+                        db, usuario.id, Modulo.CONFIGURACION, "editar", _recurso
+                    ),
+                ),
+            )
+
+        router.get(ruta, response_class=HTMLResponse, name=f"catalogo{ruta}")(_pagina)
+
+
+_registrar_catalogos_ventas()
+
+
+# ============================================================================
+# CAJA
+# ============================================================================
+#
+# Solo mobile: desde un celular de local. El home de ventas ya muestra el
+# estado del turno; esta ruta sirve exclusivamente la pantalla de arqueo y
+# cierre, a la que se accede desde el link "Cerrar" de esa sección.
+
+
+@router.get("/caja/cerrar/{turno_id}", response_class=HTMLResponse)
+async def cerrar_turno_page(
+    turno_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    """
+    Pantalla de arqueo y cierre de turno.
+
+    Solo disponible desde un dispositivo asignado a un punto de venta.
+    El arqueo se carga desde GET /api/v1/turnos/{turno_id}/arqueo/esperado.
+    """
+    dispositivo = _dispositivo_de_request(request, db)
+    if not _es_dispositivo_de_local(dispositivo):
+        return RedirectResponse("/ventas", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "pages/caja/mobile/cerrar_turno.html",
+        _contexto_ventas(
+            request, db, usuario,
+            "Cerrar Turno",
+            turno_id=turno_id,
+            volver_url="/ventas",
+        ),
     )

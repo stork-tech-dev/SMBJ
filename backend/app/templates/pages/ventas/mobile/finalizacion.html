@@ -1,0 +1,275 @@
+{# Finalización de compra (Figma `302:1014` y `293:574`).
+
+   Tres bloques en el orden en que ocurren: cliente (opcional), medios de
+   pago, confirmación.
+
+   Dos reglas que la pantalla hace visibles:
+
+   - El monto que se carga por medio es SIN recargo. El recargo lo calcula
+     el sistema sobre esa parte y lo suma aparte, y se muestra como renglón
+     propio: pedirle a la vendedora que lo incluya en el monto sería pedirle
+     la cuenta que el sistema tiene que hacer.
+   - Con dos medios, el segundo se completa solo. La vendedora carga cuánto
+     entra por el primero y el resto queda cubierto sin que tenga que restar.
+#}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido_mobile %}
+<div x-data="finalizarVenta()" x-init="cargar()">
+
+    <p x-show="!venta && !cargando" x-cloak
+       class="mt-16 text-center text-sm text-texto-disabled">
+        No hay ninguna venta abierta.
+        <a href="/ventas/nueva" class="block mt-2 text-primary font-semibold">Empezar una</a>
+    </p>
+
+    {# ---------- Confirmada: el código de cambio ----------
+       Es la pantalla más importante del flujo y por eso reemplaza a todo lo
+       demás. El código se copia a mano al ticket de papel —en el local no
+       hay impresora conectada—, así que va grande, monoespaciado y espaciado
+       carácter por carácter. #}
+    <template x-if="confirmada">
+        <div class="mt-8 text-center">
+            <div class="mx-auto grid place-items-center w-16 h-16 rounded-full bg-success/15
+                        text-success">
+                {{ icono('check', clases='w-8 h-8') }}
+            </div>
+
+            <h2 class="mt-4 text-lg font-black text-welcome">Venta confirmada</h2>
+            <p class="text-sm text-texto-muted" x-text="confirmada.numero"></p>
+
+            <p class="mt-6 text-sm font-semibold text-texto-header">Código de cambio</p>
+            <p class="mt-1 font-mono text-[2rem] leading-tight tracking-[0.2em] text-texto
+                      select-all break-all"
+               x-text="confirmada.codigo_cambio"></p>
+            <p class="mt-2 text-xs text-texto-disabled">
+                Copialo a mano en el ticket de cambio antes de cerrar esta pantalla.
+            </p>
+
+            <dl class="mt-6 space-y-1 text-base">
+                <div class="flex justify-between">
+                    <dt class="text-texto-muted">Total cobrado</dt>
+                    <dd class="font-medium tabular-nums" x-text="pesos(confirmada.total)"></dd>
+                </div>
+                <div class="flex justify-between" x-show="confirmada.puntos_acumulados">
+                    <dt class="text-texto-muted">Puntos sumados</dt>
+                    <dd class="tabular-nums" x-text="confirmada.puntos_acumulados"></dd>
+                </div>
+            </dl>
+
+            <a href="/ventas/nueva"
+               class="mt-8 h-[3.25rem] grid place-items-center rounded-input bg-primary
+                      text-white text-base font-medium hover:bg-primary-hover">
+                Nueva venta
+            </a>
+        </div>
+    </template>
+
+    <template x-if="venta && !confirmada">
+        <div>
+            {# ---------- Cliente (opcional) ---------- #}
+            <section class="mt-2" aria-labelledby="cliente-titulo">
+                <h2 id="cliente-titulo" class="text-base font-semibold text-texto">Cliente</h2>
+
+                <template x-if="!venta.cliente">
+                    <div class="mt-2">
+                        <div class="relative">
+                            <label for="buscar-cliente" class="sr-only">Buscar cliente</label>
+                            <input id="buscar-cliente" type="search" x-model="clienteBusqueda"
+                                   @input.debounce.300ms="buscarCliente()"
+                                   placeholder="DNI o nombre" autocomplete="off"
+                                   class="w-full h-[3.25rem] px-4 text-base bg-surface border-2
+                                          border-borde rounded-input
+                                          placeholder:text-texto-disabled
+                                          focus:outline-none focus:border-primary">
+
+                            <ul x-show="clientes.length" x-cloak
+                                @click.outside="clientes = []"
+                                class="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto
+                                       bg-surface border border-borde rounded-input shadow-lg">
+                                <template x-for="c in clientes" :key="c.id">
+                                    <li>
+                                        <button type="button" @click="asociarCliente(c.id)"
+                                                class="w-full text-left px-4 py-3 min-h-toque
+                                                       hover:bg-surface-alt">
+                                            <span class="block text-base" x-text="c.nombre"></span>
+                                            <span class="block text-xs text-texto-muted"
+                                                  x-text="c.dni || 'Sin DNI'"></span>
+                                        </button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+
+                        <p class="mt-2 text-xs text-texto-disabled">
+                            La venta se puede cerrar sin cliente. Se carga solo si suma puntos,
+                            usa una seña o tiene una promoción asignada.
+                        </p>
+                    </div>
+                </template>
+
+                <template x-if="venta.cliente">
+                    <div class="mt-2 flex items-center justify-between gap-3 px-4 py-3
+                                rounded-input bg-surface-alt">
+                        <div class="min-w-0">
+                            <p class="text-base font-medium truncate" x-text="venta.cliente.nombre"></p>
+                            <p class="text-xs text-texto-muted"
+                               x-text="(venta.cliente.dni || 'Sin DNI')
+                                       + (saldoSenas > 0 ? ' · Señas: ' + pesos(saldoSenas) : '')"></p>
+                        </div>
+                        <button type="button" @click="asociarCliente(null)"
+                                aria-label="Quitar el cliente"
+                                class="grid place-items-center min-h-toque min-w-toque
+                                       text-texto-muted hover:text-danger">
+                            {{ icono('cerrar', clases='w-5 h-5') }}
+                        </button>
+                    </div>
+                </template>
+            </section>
+
+            {# ---------- Medios de pago ---------- #}
+            <section class="mt-6" aria-labelledby="pagos-titulo">
+                <h2 id="pagos-titulo" class="text-base font-semibold text-texto">Medios de pago</h2>
+                <p class="text-xs text-texto-disabled mt-1">
+                    Hasta dos. El monto va sin recargo: el interés se calcula aparte y solo
+                    sobre la parte financiada.
+                </p>
+
+                <div class="mt-3 space-y-3">
+                    <template x-for="(linea, indice) in lineas" :key="indice">
+                        <div class="p-4 rounded-input border-2 border-borde">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="text-sm font-semibold text-texto-header"
+                                      x-text="indice === 0 ? 'Primer medio' : 'Segundo medio'"></span>
+                                <button type="button" @click="quitarLinea(indice)"
+                                        x-show="lineas.length > 1"
+                                        aria-label="Quitar este medio de pago"
+                                        class="grid place-items-center min-h-toque min-w-toque
+                                               text-texto-muted hover:text-danger">
+                                    {{ icono('cerrar', clases='w-5 h-5') }}
+                                </button>
+                            </div>
+
+                            <div class="relative mt-2">
+                                <label :for="'medio-' + indice" class="sr-only">Medio de pago</label>
+                                <select :id="'medio-' + indice" x-model.number="linea.medio_de_pago_id"
+                                        @change="alCambiarMedio(indice)"
+                                        class="campo-linea w-full appearance-none pr-10">
+                                    <option :value="null">Elegí un medio</option>
+                                    <template x-for="m in medios" :key="m.id">
+                                        <option :value="m.id" x-text="m.nombre"></option>
+                                    </template>
+                                </select>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    {{ icono('chevron') }}
+                                </span>
+                            </div>
+
+                            {# Seña: hay que decir de CUÁL se descuenta, porque
+                               un cliente puede tener varias. #}
+                            <div class="relative mt-3" x-show="esSena(linea)" x-cloak>
+                                <label :for="'sena-' + indice" class="sr-only">Seña</label>
+                                <select :id="'sena-' + indice" x-model.number="linea.sena_id"
+                                        class="campo-linea w-full appearance-none pr-10">
+                                    <option :value="null">Elegí la seña</option>
+                                    <template x-for="s in senas" :key="s.id">
+                                        <option :value="s.id"
+                                                x-text="pesos(s.saldo) + ' — ' + (s.descripcion || 'sin descripción')"></option>
+                                    </template>
+                                </select>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    {{ icono('chevron') }}
+                                </span>
+                            </div>
+
+                            {# Planes: solo los que ESTE monto habilita. La
+                               lista viene filtrada del backend, así que lo que
+                               se ofrece es siempre cobrable. #}
+                            <div class="relative mt-3" x-show="planesDe(linea).length" x-cloak>
+                                <label :for="'plan-' + indice" class="sr-only">Plan de cuotas</label>
+                                <select :id="'plan-' + indice" x-model.number="linea.plan_cuotas_id"
+                                        @change="recalcular()"
+                                        class="campo-linea w-full appearance-none pr-10">
+                                    <option :value="null">Un pago</option>
+                                    <template x-for="p in planesDe(linea)" :key="p.id">
+                                        <option :value="p.id" x-text="etiquetaPlan(p)"></option>
+                                    </template>
+                                </select>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    {{ icono('chevron') }}
+                                </span>
+                            </div>
+
+                            <div class="mt-3">
+                                <label :for="'monto-' + indice"
+                                       class="text-sm font-semibold text-texto-header">Monto</label>
+                                <input :id="'monto-' + indice" x-model.number="linea.monto"
+                                       @input.debounce.300ms="alCambiarMonto(indice)"
+                                       type="number" min="0" step="0.01" inputmode="decimal"
+                                       class="campo-linea w-full mt-1">
+                            </div>
+
+                            <p class="mt-2 text-sm text-texto-muted" x-show="recargoDe(linea) > 0" x-cloak>
+                                Recargo por cuotas:
+                                <span class="tabular-nums" x-text="pesos(recargoDe(linea))"></span>
+                            </p>
+                        </div>
+                    </template>
+
+                    <button type="button" @click="agregarLinea()" x-show="lineas.length < 2"
+                            class="w-full h-boton rounded-input border border-borde text-sm
+                                   text-texto-muted hover:border-primary hover:text-primary">
+                        + Segundo medio de pago
+                    </button>
+                </div>
+            </section>
+
+            {# ---------- Totales ---------- #}
+            <dl class="mt-6 pt-4 border-t border-borde space-y-2">
+                <div class="flex justify-between text-sm">
+                    <dt class="text-texto-muted">Productos</dt>
+                    <dd class="tabular-nums" x-text="pesos(venta.a_cobrar)"></dd>
+                </div>
+                <div class="flex justify-between text-sm" x-show="recargoTotal > 0">
+                    <dt class="text-texto-muted">Recargo por cuotas</dt>
+                    <dd class="tabular-nums" x-text="pesos(recargoTotal)"></dd>
+                </div>
+                <div class="flex justify-between text-lg font-black text-welcome pt-1">
+                    <dt>Total</dt>
+                    <dd class="tabular-nums" x-text="pesos(Number(venta.a_cobrar) + recargoTotal)"></dd>
+                </div>
+            </dl>
+
+            {# El faltante se muestra siempre que no cierre: es la diferencia
+               que la vendedora tiene que resolver antes de poder cobrar, y
+               esconderla hasta el error obligaría a intentar para enterarse. #}
+            <p x-show="faltante !== 0" x-cloak
+               class="mt-3 px-4 py-3 rounded-input bg-danger/15 text-danger text-sm">
+                <span x-show="faltante > 0"
+                      x-text="'Faltan ' + pesos(faltante) + ' por asignar.'"></span>
+                <span x-show="faltante < 0"
+                      x-text="'Los medios superan el total en ' + pesos(-faltante) + '.'"></span>
+            </p>
+
+            <div class="mt-6 grid gap-3">
+                <button type="button" @click="confirmar()"
+                        :disabled="!puedeConfirmar || confirmando"
+                        class="h-[3.25rem] rounded-input bg-primary text-white text-base
+                               font-medium hover:bg-primary-hover disabled:opacity-60"
+                        x-text="confirmando ? 'Confirmando…' : 'Finalizar'"></button>
+                <a href="/ventas/carrito"
+                   class="h-boton grid place-items-center rounded-input border border-borde
+                          text-base hover:border-primary hover:text-primary">
+                    Volver al carrito
+                </a>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/ventas_mobile.js') }}"></script>
+{% endblock %}

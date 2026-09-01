@@ -1,0 +1,334 @@
+{# Listado de ventas para escritorio. Datos desde /api/v1/ventas
+   (Principio 1: esta página no consulta la base).
+
+   Es lo que se sirve a supervisión y administración. La vendedora, desde el
+   celular del local, recibe otra pantalla: el ruteo lo decide el middleware
+   por el dispositivo, no el usuario ni el ancho del navegador.
+
+   Tabla de alto volumen: los filtros llevan botón "Buscar" explícito, no se
+   disparan al tipear (Principio 5). #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/botones.html" import accion, acciones %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/encabezado.html" import encabezado %}
+
+{% block contenido %}
+<div x-data="listadoVentas({{ 'true' if puede_anular else 'false' }})" x-init="cargarCatalogos(); cargar()">
+
+    {% call encabezado('Ventas') %}
+        {% if puede_ver_clientes %}
+        <a href="/clientes"
+           class="h-control px-5 inline-flex items-center gap-2 rounded-input border border-borde
+                  text-sm font-semibold hover:border-primary hover:text-primary">
+            {{ icono('users', clases='w-4 h-4') }} Clientes
+        </a>
+        {% endif %}
+    {% endcall %}
+
+    {% if sin_asignacion %}
+    {# Un vendedor en un equipo sin local asignado no ve nada, y tiene que
+       poder leer por qué en vez de mirar una tabla vacía. #}
+    <p class="mt-8 p-6 rounded-input bg-danger/15 text-danger text-base">
+        {{ mensaje_sin_asignacion }}
+    </p>
+    {% else %}
+
+    {# ---------- Filtros (Principio 5, con botón Buscar) ---------- #}
+    <form @submit.prevent="buscar()" class="flex flex-wrap items-end gap-4 mt-8">
+        <div class="flex flex-col gap-1">
+            <label for="v-numero" class="text-sm font-semibold text-texto-header">Número</label>
+            <input id="v-numero" x-model="filtros.numero" placeholder="V-000123"
+                   class="campo-linea w-full sm:w-[10rem]">
+        </div>
+
+        <div class="flex flex-col gap-1">
+            <label for="v-estado" class="text-sm font-semibold text-texto-header">Estado</label>
+            <div class="relative">
+                <select id="v-estado" x-model="filtros.estado"
+                        class="campo-linea appearance-none pr-10 w-full sm:w-[11rem]">
+                    <option value="">Todos</option>
+                    <option value="en_curso">En curso</option>
+                    <option value="confirmada">Confirmada</option>
+                    <option value="anulada">Anulada</option>
+                </select>
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                    {{ icono('chevron') }}
+                </span>
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold text-texto-header">Fecha</span>
+            <div class="flex items-center gap-2">
+                <input x-model="filtros.fecha_desde" type="date" aria-label="Fecha desde"
+                       class="campo-linea w-full sm:w-[9.5rem]">
+                <span class="text-texto-disabled" aria-hidden="true">–</span>
+                <input x-model="filtros.fecha_hasta" type="date" aria-label="Fecha hasta"
+                       class="campo-linea w-full sm:w-[9.5rem]">
+            </div>
+        </div>
+
+        {% if not punto_fijo %}
+        <div class="flex flex-col gap-1">
+            {{ combobox('f-punto', 'puntos', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Local',
+                        placeholder='Todos los locales',
+                        vacio='Todos los locales',
+                        al_elegir='') }}
+        </div>
+        {% endif %}
+
+        <button type="submit"
+                class="h-boton px-6 rounded-input bg-primary text-white text-base font-medium
+                       hover:bg-primary-hover">Buscar</button>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="h-boton grid place-items-center text-sm text-texto-muted">
+            <span>
+                <span x-text="total"></span>
+                <span x-text="total === 1 ? 'venta encontrada' : 'ventas encontradas'"></span>
+            </span>
+        </p>
+    </form>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Número</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Fecha</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Local</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Cliente</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Total</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Cambio</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="v in ventas" :key="v.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                            :class="v.estado === 'anulada' && 'opacity-60'">
+                            <td class="px-8 py-3 align-middle font-medium tabular-nums"
+                                x-text="v.numero"></td>
+                            <td class="px-4 py-3 align-middle text-sm" x-text="fecha(v.created_at)"></td>
+                            <td class="px-4 py-3 align-middle text-sm"
+                                x-text="v.punto_de_venta?.nombre || '—'"></td>
+                            <td class="px-4 py-3 align-middle" x-text="v.cliente?.nombre || 'Sin cliente'"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums font-medium"
+                                x-text="pesos(v.total)"></td>
+                            {# Monoespaciado: es un código que alguien va a
+                               comparar contra un papel escrito a mano. #}
+                            <td class="px-4 py-3 align-middle font-mono text-sm"
+                                x-text="v.codigo_cambio || '—'"></td>
+                            <td class="px-4 py-3 align-middle">
+                                <span class="text-xs font-medium" :class="colorEstado(v.estado)"
+                                      x-text="etiquetaEstado(v.estado)"></span>
+                            </td>
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
+                                {% call acciones() %}
+                                    {{ accion('ver', atributos='@click="abrirDetalle(v)"') }}
+                                    {% if puede_anular %}
+                                    {# Solo las confirmadas se anulan: una en
+                                       curso se descarta y una anulada ya lo está. #}
+                                    {{ accion('borrar', texto='Anular',
+                                              atributos='x-show="v.estado === \'confirmada\'"
+                                                         @click="pedirAnulacion(v)"') }}
+                                    {% endif %}
+                                {% endcall %}
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!ventas.length && !cargando">
+                        <td colspan="8" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# ---------- Paginación ---------- #}
+    <nav class="flex items-center justify-end gap-3 mt-4" x-show="paginas > 1" x-cloak
+         aria-label="Paginación">
+        <button type="button" @click="irA(pagina - 1)" :disabled="pagina <= 1"
+                class="h-boton px-4 rounded-input border border-borde text-sm
+                       disabled:opacity-40">Anterior</button>
+        <span class="text-sm text-texto-muted">
+            Página <span x-text="pagina"></span> de <span x-text="paginas"></span>
+        </span>
+        <button type="button" @click="irA(pagina + 1)" :disabled="pagina >= paginas"
+                class="h-boton px-4 rounded-input border border-borde text-sm
+                       disabled:opacity-40">Siguiente</button>
+    </nav>
+    {% endif %}
+
+    {# ---------- Detalle ---------- #}
+    <div x-show="detalle.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @keydown.escape.window="detalle.abierto = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-venta">
+        <div class="w-full max-w-3xl bg-surface rounded-[10px] my-8
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]" x-show="detalle.venta">
+            <div class="flex items-start justify-between px-8 pt-7 pb-2">
+                <div>
+                    <h2 id="titulo-venta" class="text-lg font-black text-welcome"
+                        x-text="'Venta ' + (detalle.venta?.numero || '')"></h2>
+                    <p class="text-sm text-texto-muted"
+                       x-text="fecha(detalle.venta?.created_at) + ' · '
+                               + (detalle.venta?.cliente?.nombre || 'Sin cliente')"></p>
+                </div>
+                <button type="button" @click="detalle.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <div class="px-8 pb-8 pt-4 space-y-6">
+                {# Ítems #}
+                <div>
+                    <h3 class="text-base font-semibold text-texto">Productos</h3>
+                    <ul class="mt-2 divide-y divide-borde">
+                        <template x-for="i in detalle.venta?.items || []" :key="i.id">
+                            <li class="py-2 flex items-start justify-between gap-4">
+                                <div class="min-w-0">
+                                    <p class="text-base truncate"
+                                       x-text="i.variante?.producto?.descripcion || '—'"></p>
+                                    <p class="text-xs text-texto-muted">
+                                        <span x-text="i.variante?.codigo_completo"></span>
+                                        <span x-show="i.en_promocion" class="text-success font-medium">
+                                            · en promoción
+                                        </span>
+                                        <span x-show="Number(i.descuento_item) > 0"
+                                              x-text="' · ' + Number(i.descuento_item) + '% off'"></span>
+                                        <span x-show="i.porcentaje_modificado" class="text-danger"
+                                              title="La vendedora se apartó del porcentaje sugerido">
+                                            · % modificado
+                                        </span>
+                                    </p>
+                                </div>
+                                <div class="text-right whitespace-nowrap">
+                                    <p class="text-base font-medium tabular-nums"
+                                       x-text="pesos(i.precio_final)"></p>
+                                    {# El de lista solo cuando difiere: si no,
+                                       sería el mismo número dos veces. #}
+                                    <p class="text-xs text-texto-disabled line-through tabular-nums"
+                                       x-show="Number(i.precio_final) !== Number(i.precio_lista)"
+                                       x-text="pesos(i.precio_lista)"></p>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
+                {# Pagos #}
+                <div>
+                    <h3 class="text-base font-semibold text-texto">Medios de pago</h3>
+                    <ul class="mt-2 divide-y divide-borde">
+                        <template x-for="p in detalle.venta?.pagos || []" :key="p.id">
+                            <li class="py-2 flex items-center justify-between gap-4">
+                                <span class="text-sm text-texto-muted"
+                                      x-text="nombreMedio(p.medio_de_pago_id)"></span>
+                                <span class="text-base tabular-nums">
+                                    <span x-text="pesos(p.monto)"></span>
+                                    <span x-show="Number(p.recargo) > 0" class="text-texto-muted"
+                                          x-text="' + ' + pesos(p.recargo) + ' de recargo'"></span>
+                                </span>
+                            </li>
+                        </template>
+                        <li class="py-2 text-sm text-texto-muted"
+                            x-show="!detalle.venta?.pagos?.length">Todavía sin cobrar.</li>
+                    </ul>
+                </div>
+
+                {# Totales #}
+                <dl class="grid gap-2 pt-4 border-t border-borde text-base">
+                    <div class="flex justify-between">
+                        <dt class="text-texto-muted">Subtotal (precios de lista)</dt>
+                        <dd class="tabular-nums" x-text="pesos(detalle.venta?.subtotal)"></dd>
+                    </div>
+                    <div class="flex justify-between" x-show="Number(detalle.venta?.descuento_total) > 0">
+                        <dt class="text-texto-muted">Descuentos y promociones</dt>
+                        <dd class="tabular-nums text-success"
+                            x-text="'– ' + pesos(detalle.venta?.descuento_total)"></dd>
+                    </div>
+                    <div class="flex justify-between" x-show="Number(detalle.venta?.recargo_total) > 0">
+                        <dt class="text-texto-muted">Recargo por cuotas</dt>
+                        <dd class="tabular-nums" x-text="pesos(detalle.venta?.recargo_total)"></dd>
+                    </div>
+                    <div class="flex justify-between text-lg font-black text-welcome">
+                        <dt>Total</dt>
+                        <dd class="tabular-nums" x-text="pesos(detalle.venta?.total)"></dd>
+                    </div>
+                </dl>
+
+                <div class="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-borde">
+                    <p class="text-sm text-texto-muted">
+                        Código de cambio:
+                        <span class="font-mono text-base text-texto"
+                              x-text="detalle.venta?.codigo_cambio || '—'"></span>
+                    </p>
+                    <p class="text-sm text-texto-muted" x-show="detalle.venta?.puntos_acumulados">
+                        Puntos sumados:
+                        <span class="text-texto" x-text="detalle.venta?.puntos_acumulados"></span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if puede_anular %}
+    {# ---------- Confirmación de anulación ---------- #}
+    <div x-show="anulacion.abierta" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         @keydown.escape.window="anulacion.abierta = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-anular">
+        <div class="w-full max-w-md bg-surface rounded-[10px]
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="px-8 pt-7 pb-2">
+                <h2 id="titulo-anular" class="text-lg font-black text-welcome">Anular venta</h2>
+            </div>
+
+            <form @submit.prevent="anular()" class="px-8 pb-8 pt-2 grid gap-5">
+                <p class="text-base text-texto-muted">
+                    Se devuelve el stock al local, se le sacan los puntos al cliente y se repone
+                    el saldo de las señas usadas. La venta no se borra: queda registrada como
+                    anulada.
+                </p>
+
+                <div class="flex flex-col gap-1">
+                    <label for="an-motivo" class="text-sm font-semibold text-texto-header">Motivo</label>
+                    <input id="an-motivo" x-model="anulacion.motivo"
+                           placeholder="Se arrepintió" class="campo-linea">
+                </div>
+
+                <div class="flex justify-end gap-3">
+                    <button type="button" @click="anulacion.abierta = false"
+                            class="h-boton px-5 rounded-input border border-borde text-base
+                                   hover:border-primary hover:text-primary">Cancelar</button>
+                    <button type="submit" :disabled="anulacion.enviando"
+                            class="h-boton px-8 rounded-input bg-danger text-white text-base
+                                   font-medium hover:opacity-90 disabled:opacity-60"
+                            x-text="anulacion.enviando ? 'Anulando…' : 'Anular'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/ventas.js') }}"></script>
+{% endblock %}

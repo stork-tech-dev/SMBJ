@@ -6,7 +6,7 @@ específico vive acá (Principio 2: DRY).
 """
 
 from datetime import datetime
-from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 from fastapi import Request
 from sqlalchemy import func
@@ -78,6 +78,24 @@ def redondear_hacia_arriba(valor: Decimal, multiplo: Decimal) -> Decimal:
     if multiplo is None or multiplo <= 0:
         return valor
     return (Decimal(valor) / multiplo).quantize(Decimal(1), rounding=ROUND_CEILING) * multiplo
+
+
+def redondear_hacia_abajo(valor: Decimal, multiplo: Decimal) -> Decimal:
+    """
+    El espejo de `redondear_hacia_arriba`: FLOOR sobre el múltiplo configurado.
+
+    Va para el otro lado a propósito. El precio de lista se redondea hacia
+    ARRIBA —el redondeo nunca puede hacer que se cobre menos de lo que
+    corresponde— pero el precio con descuento se redondea hacia ABAJO, por el
+    mismo motivo visto desde el cliente: un 20% que termina descontando 19,6%
+    porque el redondeo lo empujó para arriba es un descuento que no se cumplió.
+
+    Un múltiplo de cero o negativo no redondea nada: devuelve el valor tal
+    cual en vez de dividir por cero.
+    """
+    if multiplo is None or multiplo <= 0:
+        return valor
+    return (Decimal(valor) / multiplo).quantize(Decimal(1), rounding=ROUND_FLOOR) * multiplo
 
 
 def normalizar_texto(valor: str | None) -> str | None:

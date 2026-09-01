@@ -51,6 +51,32 @@ window.formatearDolar = function (v) {
     });
 };
 
+/**
+ * Importe en pesos, mostrando EXACTAMENTE lo que guarda el backend.
+ *
+ * Los decimales aparecen solo si existen. La pantalla NO vuelve a redondear:
+ * el redondeo del precio es una regla de negocio, lo hace el backend y es
+ * CEIL sobre el múltiplo configurado. Una versión anterior de esta función
+ * usaba `maximumFractionDigits: 0`, que aplica su propio redondeo half-up:
+ * con el redondeo del sistema en 0,50, un precio guardado como 1234,49 se
+ * mostraba "$1.234" — menos de lo que se cobra.
+ *
+ * Vive acá y no en cada componente porque la usan productos, clientes, el
+ * carrito, el cobro y el listado de ventas: copiada seis veces, alcanzaba
+ * con corregir una para que las demás mostraran otra cosa (Principio 2).
+ */
+window.pesos = function (valor) {
+    if (valor === null || valor === undefined || valor === '') return '—';
+    const n = Number(valor);
+    const decimales = Number.isInteger(n) ? 0 : 2;
+    return n.toLocaleString('es-AR', {
+        style: 'currency',
+        currency: 'ARS',
+        minimumFractionDigits: decimales,
+        maximumFractionDigits: decimales,
+    });
+};
+
 window.toast = function (mensaje, tipo = 'info', duracion = 4000) {
     window.dispatchEvent(
         new CustomEvent('toast', { detail: { mensaje, tipo, duracion } })

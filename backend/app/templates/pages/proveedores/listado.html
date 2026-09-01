@@ -10,7 +10,7 @@
 {% block contenido %}
 <div x-data="abmProveedores()" x-init="cargar()">
 
-    {% call encabezado('Proveedores') %}
+    {% call encabezado('Proveedores', volver_url='/configuracion', volver_texto='Configuraciones') %}
         <a href="/proveedores/dolar-masivo"
            class="h-control px-5 inline-flex items-center gap-2 rounded-input border border-borde
                   text-sm font-semibold hover:border-primary hover:text-primary">
