@@ -275,6 +275,10 @@ body {
     border-bottom-style: dashed;
 }
 
+.campo-linea.campo-error {
+    border-bottom-color: var(--color-danger);
+}
+
 /* Casillero de "Accesos permitidos": el diseño lo dibuja como un círculo
    con punto interior. Se mantiene <input type="checkbox"> por accesibilidad
    y semántica (son opciones múltiples) y solo se cambia su apariencia. */

@@ -47,8 +47,9 @@
             <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
                 {# ---------- Categoría: un select por nivel ---------- #}
                 <div class="sm:col-span-2 flex flex-col gap-1">
-                    <span class="text-sm font-semibold text-texto-header">
-                        Categoría<span class="text-danger ml-0.5">*</span>
+                    <span class="text-sm font-semibold"
+                          :class="errores.categoria_id ? 'text-danger' : 'text-texto-header'">
+                        Categoría<span class="ml-0.5">*</span>
                     </span>
 
                     <div class="flex flex-wrap gap-x-4 gap-y-4 mt-1">
@@ -74,6 +75,8 @@
                         {% endfor %}
                     </div>
 
+                    <span x-show="errores.categoria_id" x-cloak
+                          class="text-xs text-danger" x-text="errores.categoria_id"></span>
                     <span x-show="!categoriaCompleta()" x-cloak
                           class="text-xs text-texto-disabled">
                         Elegí hasta el último nivel: la categoría del producto es
@@ -85,14 +88,18 @@
                 <div class="flex flex-col gap-1">
                     {# En alta sin proveedor fijo: combobox editable #}
                     <template x-if="!form.id && !proveedorFijo">
-                        {{ combobox('pf-proveedor', 'proveedores', 'o.nombre',
-                                    'form.proveedor_id',
-                                    etiqueta='Proveedor', obligatorio=true,
-                                    al_elegir='calcularPreview(); buscarSimilares();',
-                                    clases='w-full h-control pl-3 pr-9 text-base font-light
-                                            bg-surface text-texto border-[0.5px]
-                                            border-texto-disabled rounded-input
-                                            focus:outline-none focus:border-primary') }}
+                        <div class="flex flex-col gap-1">
+                            {{ combobox('pf-proveedor', 'proveedores', 'o.nombre',
+                                        'form.proveedor_id',
+                                        etiqueta='Proveedor', obligatorio=true,
+                                        al_elegir='calcularPreview(); buscarSimilares();',
+                                        clases='w-full h-control pl-3 pr-9 text-base font-light
+                                                bg-surface text-texto border-[0.5px]
+                                                border-texto-disabled rounded-input
+                                                focus:outline-none focus:border-primary') }}
+                            <span x-show="errores.proveedor_id" x-cloak
+                                  class="text-xs text-danger" x-text="errores.proveedor_id"></span>
+                        </div>
                     </template>
 
                     {# En edición o con proveedor fijo: solo texto #}
@@ -121,8 +128,9 @@
 
                 {# ---------- Descripción con autocompletado ---------- #}
                 <div class="sm:col-span-2 flex flex-col gap-1">
-                    <label for="pf-desc" class="text-sm font-semibold text-texto-header">
-                        Descripción<span class="text-danger ml-0.5">*</span>
+                    <label for="pf-desc" class="text-sm font-semibold"
+                           :class="errores.descripcion ? 'text-danger' : 'text-texto-header'">
+                        Descripción<span class="ml-0.5">*</span>
                     </label>
 
                     <div class="relative" @click.outside="similares.abierto = false">
@@ -141,6 +149,7 @@
                                                     $event.stopPropagation();
                                                     similares.abierto = false;
                                                 }"
+                               :class="{ 'campo-error': errores.descripcion }"
                                class="campo-linea">
 
                         <ul id="pf-desc-lista" x-show="similares.abierto" x-cloak
@@ -173,6 +182,8 @@
                         </ul>
                     </div>
 
+                    <span x-show="errores.descripcion" x-cloak
+                          class="text-xs text-danger" x-text="errores.descripcion"></span>
                     <template x-if="duplicadoExacto()">
                         <p class="text-xs text-danger">
                             Ese nombre ya lo tiene
@@ -193,13 +204,17 @@
                 {# ---------- Precio USD + preview ---------- #}
                 <div class="sm:col-span-2 grid gap-x-8 gap-y-5 sm:grid-cols-3 items-end">
                     <div class="flex flex-col gap-1">
-                        <label for="pf-usd" class="text-sm font-semibold text-texto-header">
-                            Precio USD<span class="text-danger ml-0.5">*</span>
+                        <label for="pf-usd" class="text-sm font-semibold"
+                               :class="errores.precio_usd ? 'text-danger' : 'text-texto-header'">
+                            Precio USD<span class="ml-0.5">*</span>
                         </label>
                         <input id="pf-usd" type="number" step="0.01" min="0.01" required
                                x-model="form.precio_usd"
                                @input.debounce.400ms="calcularPreview()"
+                               :class="{ 'campo-error': errores.precio_usd }"
                                class="campo-linea">
+                        <span x-show="errores.precio_usd" x-cloak
+                              class="text-xs text-danger" x-text="errores.precio_usd"></span>
                     </div>
 
                     <div class="flex flex-col gap-1">

@@ -52,6 +52,9 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
             stock_inicial: '',
         },
 
+        // Errores de validación del backend por campo (422).
+        errores: {},
+
         // Valores informativos calculados por el backend.
         preview: { dolar_proveedor: null, precio_venta: null },
 
@@ -129,6 +132,7 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
         /* --- Descripciones parecidas --- */
 
         async buscarSimilares() {
+            if (this.errores.descripcion) this.errores.descripcion = null;
             const texto = (this.form.descripcion || '').trim();
             if (this.form.id || texto.length < MINIMO_SIMILARES) {
                 this.cerrarSimilares();
@@ -191,6 +195,8 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
         /* --- Preview de precio --- */
 
         async calcularPreview() {
+            if (this.errores.precio_usd) this.errores.precio_usd = null;
+            if (this.errores.proveedor_id) this.errores.proveedor_id = null;
             const proveedor = Number(this.form.proveedor_id);
             const usdVal = Number(this.form.precio_usd);
 
@@ -280,6 +286,7 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
         abrirAlta() {
             this.quitarFoto();
             this.cerrarSimilares();
+            this.errores = {};
             this.form = {
                 abierto: true, guardando: false, id: null, sku: '',
                 descripcion: '', categoria_id: '',
@@ -295,6 +302,7 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
 
         abrirEdicion(p) {
             this.cerrarSimilares();
+            this.errores = {};
             this.form = {
                 abierto: true, guardando: false, id: p.id, sku: p.sku,
                 descripcion: p.descripcion || '',
@@ -347,9 +355,19 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
 
                 if (!resp.ok) {
                     const error = await resp.json().catch(() => ({}));
+                    if (resp.status === 422 && Array.isArray(error.detail)) {
+                        this.errores = Object.fromEntries(
+                            error.detail
+                                .filter((e) => e.loc?.[1])
+                                .map((e) => [e.loc[1], 'Completá este campo'])
+                        );
+                        window.toast('Revisá los campos marcados en rojo', 'error');
+                        return;
+                    }
                     throw new Error(error.detail || 'No se pudo guardar el producto');
                 }
 
+                this.errores = {};
                 const guardado = await resp.json();
 
                 const habiaFoto = alta && !!this.form.foto.archivo;
