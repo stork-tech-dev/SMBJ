@@ -1,0 +1,417 @@
+{# Remitos mobile — vista para dispositivos de local.
+   Reutiliza abmRemitos() de remitos.js sin cambios.
+   Tres secciones: pendientes de recibir (en_camino), armados sin
+   despachar (pendiente, solo si puede_remitir), historial reciente.
+   Bottom sheets a z-50, por encima del nav (z-40). #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block encabezado_mobile %}
+<div class="min-w-0">
+    <p class="text-[1.75rem] leading-tight font-black text-welcome truncate">Remitos</p>
+    <p class="text-sm font-medium text-texto-muted">Mercadería en tránsito</p>
+</div>
+{% endblock %}
+
+{% block contenido_mobile %}
+{% if sin_asignacion %}
+<p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+    {{ mensaje_sin_asignacion }}
+</p>
+{% else %}
+<div x-data="abmRemitos({ puntoFijo: {{ punto_fijo or 'null' }} })"
+     x-init="cargarCatalogos(); cargar()">
+
+    {# -------- Pendientes de recibir (en_camino) -------- #}
+    <section class="mt-4">
+        <p class="text-xs font-semibold text-texto-disabled uppercase tracking-wide mb-2">
+            Pendientes de recibir
+        </p>
+
+        <div x-show="cargando"
+             class="p-4 rounded-input bg-surface-alt text-sm text-texto-disabled">
+            Cargando…
+        </div>
+
+        <p x-show="!cargando && remitos.filter(r => r.estado === 'en_camino').length === 0"
+           x-cloak
+           class="p-4 rounded-input bg-surface-alt text-sm text-texto-muted text-center">
+            Sin mercadería en camino
+        </p>
+
+        <template x-for="r in remitos.filter(r => r.estado === 'en_camino')" :key="r.id">
+            <div class="mb-3 p-4 rounded-input bg-surface tarjeta">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                        <p class="text-base font-semibold text-texto truncate"
+                           x-text="r.numero"></p>
+                        <p class="text-sm text-texto-muted truncate"
+                           x-text="(r.punto_venta_origen?.nombre || '') + ' → ' + (r.punto_venta_destino?.nombre || '')"></p>
+                        <p class="text-xs text-texto-disabled mt-1"
+                           x-text="fecha(r.fecha_envio)"></p>
+                    </div>
+                    <span class="shrink-0 text-sm font-semibold text-primary">En camino</span>
+                </div>
+                <div class="mt-3 flex gap-2">
+                    {% if puede_recibir %}
+                    <button type="button"
+                            @click="abrirRecepcion(r.id)"
+                            class="flex-1 h-boton bg-primary text-white text-sm font-semibold
+                                   rounded-input hover:opacity-90">
+                        Recibir
+                    </button>
+                    {% endif %}
+                    <button type="button"
+                            @click="abrirDetalle(r.id)"
+                            class="flex-1 h-boton border border-borde text-sm text-texto-muted
+                                   rounded-input hover:border-primary hover:text-primary">
+                        Ver detalle
+                    </button>
+                </div>
+            </div>
+        </template>
+    </section>
+
+    {# -------- Armados sin despachar (pendiente) -------- #}
+    {% if puede_remitir %}
+    <section class="mt-5">
+        <p class="text-xs font-semibold text-texto-disabled uppercase tracking-wide mb-2">
+            Armados sin despachar
+        </p>
+
+        <p x-show="!cargando && remitos.filter(r => r.estado === 'pendiente').length === 0"
+           x-cloak
+           class="p-4 rounded-input bg-surface-alt text-sm text-texto-muted text-center">
+            Sin envíos armados pendientes
+        </p>
+
+        <template x-for="r in remitos.filter(r => r.estado === 'pendiente')" :key="r.id">
+            <div class="mb-3 p-4 rounded-input bg-surface tarjeta">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                        <p class="text-base font-semibold text-texto truncate"
+                           x-text="r.numero"></p>
+                        <p class="text-sm text-texto-muted truncate"
+                           x-text="(r.punto_venta_origen?.nombre || '') + ' → ' + (r.punto_venta_destino?.nombre || '')"></p>
+                        <p class="text-xs text-texto-disabled mt-1"
+                           x-text="fecha(r.fecha_envio)"></p>
+                    </div>
+                    <span class="shrink-0 text-sm font-semibold text-accent">Pendiente</span>
+                </div>
+                <div class="mt-3 flex gap-2">
+                    <button type="button"
+                            @click="despachar(r)"
+                            class="flex-1 h-boton bg-accent text-white text-sm font-semibold
+                                   rounded-input hover:opacity-90">
+                        Despachar
+                    </button>
+                    <button type="button"
+                            @click="abrirDetalle(r.id)"
+                            class="flex-1 h-boton border border-borde text-sm text-texto-muted
+                                   rounded-input hover:border-primary hover:text-primary">
+                        Ver detalle
+                    </button>
+                </div>
+            </div>
+        </template>
+    </section>
+    {% endif %}
+
+    {# -------- Historial reciente (confirmado / con_diferencia) -------- #}
+    <section class="mt-5">
+        <p class="text-xs font-semibold text-texto-disabled uppercase tracking-wide mb-2">
+            Historial reciente
+        </p>
+
+        <p x-show="!cargando && remitos.filter(r => ['confirmado','con_diferencia'].includes(r.estado)).length === 0"
+           x-cloak
+           class="p-4 rounded-input bg-surface-alt text-sm text-texto-muted text-center">
+            Sin movimientos recientes
+        </p>
+
+        <template x-for="r in remitos.filter(r => ['confirmado','con_diferencia'].includes(r.estado))" :key="r.id">
+            <button type="button"
+                    @click="abrirDetalle(r.id)"
+                    class="w-full mb-2 p-3 rounded-input bg-surface tarjeta text-left
+                           hover:border-primary flex items-center gap-3">
+                {{ icono('remito', clases='w-5 h-5 text-texto-muted shrink-0') }}
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-texto truncate"
+                       x-text="r.numero + ' · ' + (r.punto_venta_origen?.nombre || '') + ' → ' + (r.punto_venta_destino?.nombre || '')"></p>
+                    <p class="text-xs text-texto-disabled mt-0.5"
+                       x-text="fecha(r.fecha_recepcion || r.fecha_envio)"></p>
+                </div>
+                <span class="shrink-0 text-xs font-semibold"
+                      :class="colorEstado(r.estado)"
+                      x-text="etiquetaEstado(r.estado)"></span>
+            </button>
+        </template>
+    </section>
+
+    {# -------- FAB: Armar envío -------- #}
+    {% if puede_remitir %}
+    <div class="fixed bottom-[5.5rem] right-5 z-40">
+        <button type="button"
+                @click="abrirAlta()"
+                class="flex items-center gap-2 h-[3rem] px-4 bg-accent text-white
+                       text-sm font-semibold rounded-full shadow-lg hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }}
+            Armar envío
+        </button>
+    </div>
+    {% endif %}
+
+    {# ===========================================================
+       BOTTOM SHEETS — z-50 > z-40 (nav). Tap fuera cierra.
+       =========================================================== #}
+
+    {# -------- Sheet: Detalle -------- #}
+    <div x-show="detalle.abierto" x-cloak
+         class="fixed inset-0 bg-black/40 z-50"
+         @click.self="detalle.abierto = false">
+        <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl
+                    px-5 pt-6 pb-[calc(2rem+env(safe-area-inset-bottom))]
+                    shadow-xl max-h-[85vh] overflow-y-auto">
+
+            <button @click="detalle.abierto = false"
+                    class="w-full flex justify-center mb-4 min-h-toque">
+                {{ icono('chevron', clases='w-6 h-6 text-texto-muted') }}
+            </button>
+
+            <template x-if="detalle.remito">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <p class="text-lg font-semibold text-texto"
+                           x-text="detalle.remito.numero"></p>
+                        <span class="text-sm font-semibold"
+                              :class="colorEstado(detalle.remito.estado)"
+                              x-text="etiquetaEstado(detalle.remito.estado)"></span>
+                    </div>
+
+                    <p class="text-sm text-texto-muted mb-1">
+                        <span class="font-medium text-texto">Origen: </span>
+                        <span x-text="detalle.remito.punto_venta_origen?.nombre"></span>
+                    </p>
+                    <p class="text-sm text-texto-muted mb-4">
+                        <span class="font-medium text-texto">Destino: </span>
+                        <span x-text="detalle.remito.punto_venta_destino?.nombre"></span>
+                    </p>
+
+                    <p class="text-xs font-semibold text-texto-disabled uppercase tracking-wide mb-2">
+                        Artículos
+                    </p>
+                    <template x-for="item in detalle.remito.items" :key="item.id">
+                        <div class="flex items-center gap-3 py-2 border-b border-borde last:border-0">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-texto truncate"
+                                   x-text="item.variante.producto.descripcion"></p>
+                                <p class="text-xs text-texto-muted"
+                                   x-text="item.variante.codigo_completo + item.variante.verificador"></p>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <p class="text-sm font-semibold text-texto"
+                                   x-text="item.cantidad_enviada + ' env.'"></p>
+                                <p x-show="item.cantidad_recibida !== null"
+                                   class="text-xs"
+                                   :class="item.cantidad_recibida === item.cantidad_enviada ? 'text-success' : 'text-danger'"
+                                   x-text="item.cantidad_recibida + ' recib.'"></p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <button type="button"
+                            @click="verPdf(detalle.remito)"
+                            class="mt-4 w-full h-boton border border-borde rounded-input
+                                   text-sm text-texto-muted hover:border-primary hover:text-primary">
+                        Ver PDF
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# -------- Sheet: Recepción -------- #}
+    <div x-show="recepcion.abierto" x-cloak
+         class="fixed inset-0 bg-black/40 z-50"
+         @click.self="recepcion.abierto = false">
+        <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl
+                    px-5 pt-6 pb-[calc(2rem+env(safe-area-inset-bottom))]
+                    shadow-xl max-h-[90vh] overflow-y-auto">
+
+            <button @click="recepcion.abierto = false"
+                    class="w-full flex justify-center mb-4 min-h-toque">
+                {{ icono('chevron', clases='w-6 h-6 text-texto-muted') }}
+            </button>
+
+            <p class="text-xl font-semibold text-texto text-center mb-1">Confirmar recepción</p>
+            <p class="text-sm text-texto-muted text-center mb-5"
+               x-text="recepcion.remito?.numero || ''"></p>
+
+            <label class="block text-sm text-texto mb-1">Número del remito</label>
+            <input type="text"
+                   x-model="recepcion.numero_confirmacion"
+                   placeholder="Ej: REM-0001"
+                   autocomplete="off"
+                   class="w-full h-boton border rounded-input px-3 text-base"
+                   :class="recepcion.numero_confirmacion.trim() ? 'border-borde' : 'border-danger'">
+            <p class="mt-1 mb-4 text-sm"
+               :class="recepcion.numero_confirmacion.trim() ? 'text-texto-muted' : 'text-danger font-medium'">
+                <span x-show="!recepcion.numero_confirmacion.trim()">
+                    Escribí el número que figura en el papel del remito.
+                </span>
+                <span x-show="recepcion.numero_confirmacion.trim()" x-cloak class="text-texto-muted">
+                    El número del papel que vino con la mercadería.
+                </span>
+            </p>
+
+            <p class="text-xs font-semibold text-texto-disabled uppercase tracking-wide mb-2">
+                Artículos
+            </p>
+            <template x-for="(item, idx) in recepcion.items" :key="item.variante_id">
+                <div class="flex items-center gap-3 py-3 border-b border-borde last:border-0">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-texto truncate"
+                           x-text="item.descripcion"></p>
+                        <p class="text-xs text-texto-muted"
+                           x-text="item.codigo + ' · enviado: ' + item.enviada"></p>
+                    </div>
+                    <input type="number"
+                           x-model.number="recepcion.items[idx].recibida"
+                           min="0"
+                           :max="item.enviada"
+                           class="w-16 h-9 border rounded-input text-center text-base"
+                           :class="Number(item.recibida) !== item.enviada
+                               ? 'border-danger text-danger'
+                               : 'border-borde text-texto'">
+                </div>
+            </template>
+
+            <p x-show="hayDiferencia()" x-cloak
+               class="mt-3 text-sm text-danger font-medium text-center">
+                Hay diferencias entre lo enviado y lo recibido.
+            </p>
+
+            <label class="block text-sm text-texto mt-4 mb-1">Notas</label>
+            <textarea x-model="recepcion.notas"
+                      rows="2"
+                      placeholder="Opcional"
+                      class="w-full border border-borde rounded-input px-3 py-2 text-base resize-none"></textarea>
+
+            <button type="button"
+                    @click="guardarRecepcion()"
+                    :disabled="recepcion.guardando || !recepcion.numero_confirmacion.trim()"
+                    class="mt-4 w-full h-boton bg-primary text-white font-semibold
+                           rounded-input disabled:opacity-60">
+                <span x-show="!recepcion.guardando">Confirmar recepción</span>
+                <span x-show="recepcion.guardando" x-cloak>Confirmando…</span>
+            </button>
+        </div>
+    </div>
+
+    {# -------- Sheet: Armar envío -------- #}
+    {% if puede_remitir %}
+    <div x-show="alta.abierto" x-cloak
+         class="fixed inset-0 bg-black/40 z-50"
+         @click.self="alta.abierto = false">
+        <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl
+                    px-5 pt-6 pb-[calc(2rem+env(safe-area-inset-bottom))]
+                    shadow-xl max-h-[92vh] overflow-y-auto">
+
+            <button @click="alta.abierto = false"
+                    class="w-full flex justify-center mb-4 min-h-toque">
+                {{ icono('chevron', clases='w-6 h-6 text-texto-muted') }}
+            </button>
+
+            <p class="text-xl font-semibold text-texto text-center mb-5">Armar envío</p>
+
+            <label class="block text-sm text-texto mb-1">Origen</label>
+            <select x-model="alta.punto_venta_origen_id"
+                    class="w-full h-boton border border-borde rounded-input px-3 text-base mb-3">
+                <option value="">Seleccionar origen…</option>
+                <template x-for="p in puntosOrigen()" :key="p.id">
+                    <option :value="p.id" x-text="p.nombre"></option>
+                </template>
+            </select>
+
+            <label class="block text-sm text-texto mb-1">Destino</label>
+            <select x-model="alta.punto_venta_destino_id"
+                    :disabled="!alta.punto_venta_origen_id"
+                    class="w-full h-boton border border-borde rounded-input px-3 text-base mb-3
+                           disabled:opacity-50">
+                <option value="">Seleccionar destino…</option>
+                <template x-for="p in puntosDestino()" :key="p.id">
+                    <option :value="p.id" x-text="p.nombre"></option>
+                </template>
+            </select>
+
+            <label class="block text-sm text-texto mb-1">Código de artículo</label>
+            <div class="flex gap-2 mb-3">
+                <input type="text"
+                       x-model="alta.codigo"
+                       @keydown.enter="agregarItem()"
+                       @input.debounce.500ms="agregarSiEsUnico()"
+                       inputmode="text"
+                       placeholder="Escanear o tipear código"
+                       class="flex-1 h-boton border border-borde rounded-input px-3 text-base">
+                <button type="button"
+                        @click="agregarItem()"
+                        class="px-4 h-boton bg-surface-alt rounded-input text-sm text-texto-muted
+                               border border-borde hover:border-primary">
+                    Agregar
+                </button>
+            </div>
+
+            <template x-for="(item, idx) in alta.items" :key="item.variante_id">
+                <div class="flex items-center gap-3 py-2 border-b border-borde last:border-0">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-texto truncate"
+                           x-text="item.descripcion"></p>
+                        <p class="text-xs text-texto-muted"
+                           x-text="item.codigo + ' · disp: ' + item.disponible"></p>
+                    </div>
+                    <input type="number"
+                           x-model.number="alta.items[idx].cantidad"
+                           min="1"
+                           :max="item.disponible"
+                           class="w-14 h-9 border border-borde rounded-input text-center text-base text-texto">
+                    <button type="button"
+                            @click="alta.items.splice(idx, 1)"
+                            class="text-texto-muted hover:text-danger shrink-0
+                                   min-h-toque min-w-toque flex items-center justify-center">
+                        {{ icono('papelera', clases='w-4 h-4') }}
+                    </button>
+                </div>
+            </template>
+
+            <p x-show="alta.items.length === 0" x-cloak
+               class="py-4 text-sm text-texto-disabled text-center">
+                Sin artículos agregados
+            </p>
+
+            <label class="block text-sm text-texto mt-4 mb-1">Notas</label>
+            <textarea x-model="alta.notas"
+                      rows="2"
+                      placeholder="Opcional"
+                      class="w-full border border-borde rounded-input px-3 py-2 text-base resize-none"></textarea>
+
+            <button type="button"
+                    @click="guardarAlta()"
+                    :disabled="alta.guardando || alta.items.length === 0
+                               || !alta.punto_venta_origen_id || !alta.punto_venta_destino_id"
+                    class="mt-4 w-full h-boton bg-accent text-white font-semibold
+                           rounded-input disabled:opacity-60">
+                <span x-show="!alta.guardando">Crear remito</span>
+                <span x-show="alta.guardando" x-cloak>Creando…</span>
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/remitos.js') }}"></script>
+{% endblock %}

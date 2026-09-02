@@ -776,10 +776,18 @@ async def stock(
 async def remitos(
     request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
 ):
+    dispositivo = _dispositivo_de_request(request, db)
+    contexto = _contexto_stock(request, db, usuario, "Remitos", RUTA_HUB_STOCK)
+    if _es_dispositivo_de_local(dispositivo):
+        return templates.TemplateResponse(
+            request,
+            "pages/remitos/mobile/listado.html",
+            {**contexto, "activa_mobile": "stock"},
+        )
     return templates.TemplateResponse(
         request,
         "pages/remitos/listado.html",
-        _contexto_stock(request, db, usuario, "Remitos", RUTA_HUB_STOCK),
+        contexto,
     )
 
 
