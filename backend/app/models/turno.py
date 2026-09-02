@@ -57,7 +57,7 @@ class Turno(Base):
         nullable=False, index=True
     )
     estado: Mapped[EstadoTurno] = mapped_column(
-        Enum(EstadoTurno, name="estado_turno"), nullable=False,
+        Enum(EstadoTurno, name="estado_turno", values_callable=lambda x: [e.value for e in x]), nullable=False,
         server_default=EstadoTurno.ABIERTO.value
     )
     efectivo_apertura: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -309,7 +309,7 @@ class Notificacion(Base):
         nullable=False, index=True
     )
     tipo: Mapped[TipoNotificacion] = mapped_column(
-        Enum(TipoNotificacion, name="tipo_notificacion"), nullable=False
+        Enum(TipoNotificacion, name="tipo_notificacion", values_callable=lambda x: [e.value for e in x]), nullable=False
     )
     titulo: Mapped[str] = mapped_column(String, nullable=False)
     cuerpo: Mapped[str] = mapped_column(Text, nullable=False)
