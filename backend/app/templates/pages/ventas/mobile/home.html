@@ -98,9 +98,10 @@
 
         {# Overlay — iniciar turno (sin turno activo) #}
         <div x-show="overlay === 'iniciar'" x-cloak
-             class="fixed inset-0 bg-black/40 z-40"
+             class="fixed inset-0 bg-black/40 z-50"
              @click.self="cerrarOverlay()">
-            <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl px-5 py-8 shadow-xl">
+            <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl px-5 pt-8
+                        pb-[calc(2rem+env(safe-area-inset-bottom))] shadow-xl">
 
                 {# Tirador de cierre #}
                 <button @click="cerrarOverlay()"
@@ -136,9 +137,10 @@
 
         {# Overlay — sumarse al turno (hay turno de otra persona) #}
         <div x-show="overlay === 'sumarse'" x-cloak
-             class="fixed inset-0 bg-black/40 z-40"
+             class="fixed inset-0 bg-black/40 z-50"
              @click.self="cerrarOverlay()">
-            <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl px-5 py-8 shadow-xl">
+            <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl px-5 pt-8
+                        pb-[calc(2rem+env(safe-area-inset-bottom))] shadow-xl">
 
                 {# Tirador de cierre #}
                 <button @click="cerrarOverlay()"
