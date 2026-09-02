@@ -169,7 +169,7 @@
     {# -------- Sheet: Detalle -------- #}
     <div x-show="detalle.abierto" x-cloak
          class="fixed inset-0 bg-black/40 z-50"
-         @click.self="detalle.abierto = false">
+         @keydown.escape.window="detalle.abierto = false">
         <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl
                     px-5 pt-6 pb-[calc(2rem+env(safe-area-inset-bottom))]
                     shadow-xl max-h-[85vh] overflow-y-auto">
@@ -234,7 +234,7 @@
     {# -------- Sheet: Recepción -------- #}
     <div x-show="recepcion.abierto" x-cloak
          class="fixed inset-0 bg-black/40 z-50"
-         @click.self="recepcion.abierto = false">
+         @keydown.escape.window="recepcion.abierto = false">
         <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl
                     px-5 pt-6 pb-[calc(2rem+env(safe-area-inset-bottom))]
                     shadow-xl max-h-[90vh] overflow-y-auto">
@@ -280,7 +280,7 @@
                            x-model.number="recepcion.items[idx].recibida"
                            min="0"
                            :max="item.enviada"
-                           class="w-16 h-9 border rounded-input text-center text-base"
+                           class="w-16 h-control border rounded-input text-center text-base"
                            :class="Number(item.recibida) !== item.enviada
                                ? 'border-danger text-danger'
                                : 'border-borde text-texto'">
@@ -313,7 +313,7 @@
     {% if puede_remitir %}
     <div x-show="alta.abierto" x-cloak
          class="fixed inset-0 bg-black/40 z-50"
-         @click.self="alta.abierto = false">
+         @keydown.escape.window="alta.abierto = false">
         <div class="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl
                     px-5 pt-6 pb-[calc(2rem+env(safe-area-inset-bottom))]
                     shadow-xl max-h-[92vh] overflow-y-auto">
@@ -374,7 +374,7 @@
                            x-model.number="alta.items[idx].cantidad"
                            min="1"
                            :max="item.disponible"
-                           class="w-14 h-9 border border-borde rounded-input text-center text-base text-texto">
+                           class="w-14 h-control border border-borde rounded-input text-center text-base text-texto">
                     <button type="button"
                             @click="alta.items.splice(idx, 1)"
                             class="text-texto-muted hover:text-danger shrink-0

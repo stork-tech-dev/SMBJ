@@ -58,23 +58,23 @@ def test_guardar_accesos_crea_override(db, crear_usuario, roles):
     autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
     usuario = crear_usuario("juan", ROL_VENDEDOR)
 
-    clave = f"{Modulo.TESORERIA.value}:{Recurso.CAJA_RETIRO.value}:crear"
+    clave = f"{Modulo.CAJA.value}:{Recurso.CAJA_RETIRO.value}:crear"
     servicio_permisos.actualizar_accesos_usuario(db, usuario, [clave], autor.id)
 
-    assert resolver_permiso(db, usuario.id, Modulo.TESORERIA, "crear", Recurso.CAJA_RETIRO) is True
+    assert resolver_permiso(db, usuario.id, Modulo.CAJA, "crear", Recurso.CAJA_RETIRO) is True
     # No habilita el módulo completo.
-    assert resolver_permiso(db, usuario.id, Modulo.TESORERIA, "crear") is False
+    assert resolver_permiso(db, usuario.id, Modulo.CAJA, "crear") is False
 
 
 def test_desmarcar_acceso_lo_quita(db, crear_usuario, roles):
     autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
     usuario = crear_usuario("juan", ROL_VENDEDOR)
-    clave = f"{Modulo.TESORERIA.value}:{Recurso.CAJA_RETIRO.value}:crear"
+    clave = f"{Modulo.CAJA.value}:{Recurso.CAJA_RETIRO.value}:crear"
 
     servicio_permisos.actualizar_accesos_usuario(db, usuario, [clave], autor.id)
     servicio_permisos.actualizar_accesos_usuario(db, usuario, [], autor.id)
 
-    assert resolver_permiso(db, usuario.id, Modulo.TESORERIA, "crear", Recurso.CAJA_RETIRO) is False
+    assert resolver_permiso(db, usuario.id, Modulo.CAJA, "crear", Recurso.CAJA_RETIRO) is False
 
 
 def test_lo_heredado_del_rol_no_se_puede_quitar(db, crear_usuario, roles, dar_permiso):
@@ -137,7 +137,7 @@ def test_no_pisa_otros_permisos_del_mismo_modulo(db, crear_usuario, roles, dar_p
     # Override de módulo completo cargado por la pantalla de permisos.
     dar_permiso(usuario_id=usuario.id, modulo=Modulo.TESORERIA, ver=True)
 
-    clave = f"{Modulo.TESORERIA.value}:{Recurso.CAJA_RETIRO.value}:crear"
+    clave = f"{Modulo.CAJA.value}:{Recurso.CAJA_RETIRO.value}:crear"
     servicio_permisos.actualizar_accesos_usuario(db, usuario, [clave], autor.id)
 
     assert resolver_permiso(db, usuario.id, Modulo.TESORERIA, "ver") is True
@@ -168,7 +168,7 @@ def test_endpoint_guardar_accesos(client, crear_usuario, login):
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     juan = crear_usuario("juan", ROL_VENDEDOR)
     headers = login("admin")
-    clave = f"{Modulo.TESORERIA.value}:{Recurso.CAJA_RETIRO.value}:crear"
+    clave = f"{Modulo.CAJA.value}:{Recurso.CAJA_RETIRO.value}:crear"
 
     resp = client.put(
         f"/api/v1/usuarios/{juan.id}/accesos", json={"accesos": [clave]}, headers=headers
@@ -199,7 +199,7 @@ def test_guardar_accesos_queda_auditado(db, crear_usuario, roles):
 
     autor = crear_usuario("admin", ROL_CUENTA_MAESTRA)
     usuario = crear_usuario("juan", ROL_VENDEDOR)
-    clave = f"{Modulo.TESORERIA.value}:{Recurso.CAJA_RETIRO.value}:crear"
+    clave = f"{Modulo.CAJA.value}:{Recurso.CAJA_RETIRO.value}:crear"
 
     servicio_permisos.actualizar_accesos_usuario(db, usuario, [clave], autor.id)
 
@@ -285,7 +285,7 @@ def test_guardar_accesos_con_permisos_generales_del_rol(db, crear_usuario, roles
     usuario = crear_usuario("juan", ROL_VENDEDOR)
     dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
 
-    clave = f"{Modulo.TESORERIA.value}:{Recurso.CAJA_RETIRO.value}:crear"
+    clave = f"{Modulo.CAJA.value}:{Recurso.CAJA_RETIRO.value}:crear"
     accesos = servicio_permisos.actualizar_accesos_usuario(db, usuario, [clave], autor.id)
 
     assert any(a["clave"] == clave and a["permitido"] for a in accesos)
