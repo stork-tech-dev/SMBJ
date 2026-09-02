@@ -151,6 +151,20 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_arqueo_items_arqueo_id'), 'arqueo_items', ['arqueo_id'], unique=False)
 
+    # Permisos mínimos del módulo Caja para los roles que operan el POS.
+    # Vendedor: puede ver y crear (abrir/unirse al turno).
+    # Supervisor: puede ver, crear y editar (además puede hacer retiros y arqueo
+    #             vía recursos específicos, pero el permiso base del módulo es este).
+    op.execute(
+        """
+        INSERT INTO rol_permisos
+            (rol_id, modulo, recurso, puede_ver, puede_crear, puede_editar, puede_eliminar)
+        SELECT id, 'caja', NULL, true, true, false, false
+        FROM roles WHERE nombre IN ('vendedor', 'supervisor')
+        ON CONFLICT DO NOTHING
+        """
+    )
+
 
 def downgrade() -> None:
     op.drop_index(op.f('ix_arqueo_items_arqueo_id'), table_name='arqueo_items')
