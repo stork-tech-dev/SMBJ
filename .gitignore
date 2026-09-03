@@ -35,3 +35,6 @@ Thumbs.db
 /backend/app/static/productos/
 
 prompts/
+
+/docs/superpowers
+/docs/compilar_manuales.py

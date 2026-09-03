@@ -29,6 +29,7 @@ python-barcode==0.15.1
 # --- Reportes ---
 weasyprint==63.1
 openpyxl==3.1.5
+markdown==3.7
 
 # --- Utilidades ---
 python-dateutil==2.9.0.post0
