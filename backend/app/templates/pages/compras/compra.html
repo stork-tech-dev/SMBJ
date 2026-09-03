@@ -171,7 +171,10 @@
                             <div class="flex items-center gap-1 text-sm">
                                 <span class="text-texto-muted">Cant:</span>
                                 <input type="number" min="1" step="1"
+                                       inputmode="numeric"
                                        x-model="item.cantidad"
+                                       @keydown="['.', ',', 'e', 'E', '+', '-'].includes($event.key) && $event.preventDefault()"
+                                       @input="item.cantidad = $el.value === '' ? '' : Math.trunc(+$el.value)"
                                        @change="actualizarItem(item)"
                                        :disabled="estado !== 'borrador'"
                                        class="campo-linea w-16 text-sm"
