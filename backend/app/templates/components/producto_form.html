@@ -331,7 +331,10 @@
                                 Stock inicial
                             </label>
                             <input id="pf-stock-ini" type="number" min="0" step="1"
+                                   inputmode="numeric"
                                    x-model="form.stock_inicial"
+                                   @keydown="['.', ',', 'e', 'E', '+', '-'].includes($event.key) && $event.preventDefault()"
+                                   @input="form.stock_inicial = $el.value === '' ? '' : Math.trunc(+$el.value)"
                                    placeholder="0"
                                    class="h-control w-full rounded-input border border-borde-campo
                                           px-3 text-base bg-surface">
