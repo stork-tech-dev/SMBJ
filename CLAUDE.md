@@ -174,6 +174,40 @@ Antes de entregar o dar por finalizado un componente UI, verifica:
 - ¿Se preserva la legibilidad tipográfica y la jerarquía visual en todos los tamaños?
 ---
 
+## Principio 7: Git Rules — IMPORTANT
+
+- NEVER run `git push`.
+- NEVER push changes to any remote repository.
+- Do NOT run `git commit` unless the user explicitly asks you to create a commit.
+- If the user explicitly requests a commit, you may run `git commit`.
+- Before creating a commit, review the staged changes and ensure the commit only contains the intended changes.
+- Do not amend, reset, rebase, or otherwise rewrite commit history unless explicitly requested by the user.
+- The user is responsible for pushing changes to the remote repository.
+
+### Allowed Git commands
+
+You MAY use read-only commands such as:
+
+- `git status`
+- `git diff`
+- `git log`
+- `git show`
+- `git branch`
+
+You MAY use `git add` when necessary to prepare a commit or when explicitly requested.
+
+### Commit policy
+
+The normal workflow is:
+
+1. Modify the code.
+2. Review the changes.
+3. Show or summarize the changes to the user.
+4. Wait for explicit instructions before committing.
+5. If explicitly requested, create the commit.
+6. NEVER push the commit.
+---
+
 ## ARQUITECTURA Y ESTRUCTURA DE ARCHIVOS
 
 ```

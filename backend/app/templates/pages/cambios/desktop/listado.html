@@ -9,7 +9,7 @@
 {% block contenido %}
 <div x-data="listadoCambios()" x-init="cargar()">
 
-    {% call encabezado('Cambios de Producto') %}
+    {% call encabezado('Cambios de Producto', volver_url='/ventas', volver_texto='Ventas') %}
         <a href="/cambios/nuevo"
            class="h-control px-6 inline-flex items-center gap-2 rounded-input
                   bg-primary text-white text-sm font-semibold hover:opacity-90">

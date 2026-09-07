@@ -25,6 +25,11 @@
             {{ icono('users', clases='w-4 h-4') }} Clientes
         </a>
         {% endif %}
+        <a href="/cambios"
+           class="h-control px-5 inline-flex items-center gap-2 rounded-input border border-borde
+                  text-sm font-semibold hover:border-primary hover:text-primary">
+            {{ icono('list', clases='w-4 h-4') }} Cambios
+        </a>
     {% endcall %}
 
     {% if sin_asignacion %}
