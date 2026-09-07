@@ -13,6 +13,7 @@ from app.api.v1 import (
     auditoria,
     auditoria_inventario,
     auth,
+    cambios,
     categorias,
     clientes,
     compras,
@@ -49,6 +50,7 @@ api_router.include_router(puntos_de_venta.router)
 api_router.include_router(dispositivos.router)
 api_router.include_router(admin_dispositivos.router)
 api_router.include_router(ventas.router)
+api_router.include_router(cambios.router)
 api_router.include_router(senas.router)
 api_router.include_router(configuracion_ventas.router)
 api_router.include_router(configuracion_ventas.pgc_router)

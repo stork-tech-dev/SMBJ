@@ -1085,6 +1085,7 @@ def anular_venta(
         )
 
     venta.estado = EstadoVenta.ANULADA
+    venta.codigo_cambio_activo = False  # ya no se puede cambiar una venta anulada
     venta.updated_at = ahora_db()
     db.flush()
 

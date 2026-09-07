@@ -1130,3 +1130,42 @@ async def cerrar_turno_page(
             volver_url="/ventas",
         ),
     )
+
+
+# ============================================================================
+# CAMBIOS DE PRODUCTO
+# ============================================================================
+
+
+@router.get("/cambios", response_class=HTMLResponse)
+async def cambios_listado(
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    """Historial de cambios de producto."""
+    return templates.TemplateResponse(
+        request,
+        "pages/cambios/desktop/listado.html",
+        contexto_base(request, db, usuario, titulo="Cambios de Producto", ruta_activa="/ventas"),
+    )
+
+
+@router.get("/cambios/nuevo", response_class=HTMLResponse)
+async def cambios_nuevo(
+    request: Request,
+    codigo: str = "",
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    """Wizard de nuevo cambio. Acepta ?codigo= para pre-llenar el código."""
+    return templates.TemplateResponse(
+        request,
+        "pages/cambios/desktop/nuevo.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Nuevo Cambio",
+            ruta_activa="/ventas",
+            codigo_inicial=codigo,
+        ),
+    )

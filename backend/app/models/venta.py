@@ -175,6 +175,11 @@ class Venta(Base):
         String(8), nullable=True, unique=True, index=True
     )
 
+    # FALSE cuando la venta fue anulada: el código de cambio ya no sirve.
+    codigo_cambio_activo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+
     puntos_acumulados: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
