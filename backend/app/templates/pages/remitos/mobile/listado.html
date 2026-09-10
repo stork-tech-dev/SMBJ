@@ -279,7 +279,6 @@
                     <input type="number"
                            x-model.number="recepcion.items[idx].recibida"
                            min="0"
-                           :max="item.enviada"
                            class="w-16 h-control border rounded-input text-center text-base"
                            :class="Number(item.recibida) !== item.enviada
                                ? 'border-danger text-danger'
