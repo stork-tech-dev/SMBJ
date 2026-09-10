@@ -288,20 +288,14 @@ def confirmar_recepcion(
         cantidad = recibidos.get(item.variante_id, item.cantidad_enviada)
         if cantidad < 0:
             raise ReglaDeNegocio("Las cantidades recibidas no pueden ser negativas")
-        if cantidad > item.cantidad_enviada:
-            raise ReglaDeNegocio(
-                f"Llegaron {cantidad} de un código del que se enviaron "
-                f"{item.cantidad_enviada}: no puede recibirse más de lo que salió"
-            )
 
         item.cantidad_recibida = cantidad
         if cantidad != item.cantidad_enviada:
             hubo_diferencia = True
 
-        # Solo lo que efectivamente llegó entra al destino. Lo que falta NO
-        # se devuelve al origen: ya salió de ahí, y darlo por presente en los
-        # dos lados sería inventar mercadería. Queda como diferencia a
-        # revisar, que es lo que un faltante es.
+        # El stock del destino recibe exactamente lo que se contó, aunque
+        # difiera de lo enviado. Si llegaron más o menos, la diferencia queda
+        # registrada; el stock refleja la realidad física del local.
         if cantidad > 0:
             servicio_stock.aplicar_movimiento(
                 db,
