@@ -58,7 +58,7 @@ from app.services.turnos import verificar_bloqueo_turno
 _ALFABETO_CAMBIO = "".join(
     c for c in (string.ascii_uppercase + string.digits) if c not in "IO01"
 )
-LARGO_CODIGO_CAMBIO = 8
+LARGO_CODIGO_CAMBIO = 4
 
 # Cuántos medios de pago admite una venta. Dos: efectivo + tarjeta cubre lo
 # que pasa en el mostrador, y con tres la pantalla del celular se vuelve
@@ -84,7 +84,7 @@ def _siguiente_numero(db: Session) -> str:
 
 def generar_codigo_cambio(db: Session) -> str:
     """
-    Código alfanumérico de 8 caracteres, único, para el ticket de cambio.
+    Código alfanumérico de 4 caracteres, único, para el ticket de cambio.
 
     No se imprime: en los locales no hay impresoras conectadas al sistema.
     La vendedora lo copia a mano al ticket de papel, y por eso el alfabeto

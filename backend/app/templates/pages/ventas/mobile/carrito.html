@@ -91,9 +91,6 @@
             <p x-show="!venta.items.length" x-cloak
                class="py-16 text-center text-sm text-texto-disabled">
                 El carrito está vacío.
-                <a href="/ventas/nueva" class="block mt-2 text-primary font-semibold">
-                    Escanear un producto
-                </a>
             </p>
 
             {# ---------- Totales ---------- #}
@@ -124,7 +121,7 @@
                           text-base hover:border-primary hover:text-primary">
                     Seguir agregando
                 </a>
-                <button type="button" @click="descartar()" x-show="venta.items.length"
+                <button type="button" @click="descartar()"
                         class="h-boton rounded-input text-sm text-texto-muted
                                hover:text-danger">
                     Descartar la venta
