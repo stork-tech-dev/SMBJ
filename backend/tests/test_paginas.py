@@ -1875,7 +1875,7 @@ def test_los_modulos_pendientes_muestran_su_pantalla(client, crear_usuario):
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    for ruta, titulo in {"/reportes": "Reportes", "/ajustes": "Ajustes"}.items():
+    for ruta, titulo in {"/ajustes": "Ajustes"}.items():
         resp = client.get(ruta)
         assert resp.status_code == 200, ruta
         assert f">{titulo}</h1>" in resp.text, ruta

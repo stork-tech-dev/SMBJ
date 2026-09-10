@@ -151,3 +151,38 @@ class ResumenStock(BaseModel):
     unidades: int
     alertas: int
     valorizado: Decimal
+
+
+# ---------------------------------------------------------------------------
+# Consulta cruzada (reporte de stock por ubicación)
+# ---------------------------------------------------------------------------
+
+
+class ConsultaStockColumna(BaseModel):
+    """Un punto de venta como columna de la tabla cruzada."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    nombre: str
+
+
+class ConsultaStockFila(BaseModel):
+    """Una variante como fila: sus datos fijos + el stock por ubicación."""
+
+    variante_id: int
+    codigo_completo: str
+    verificador: str
+    descripcion: str
+    descripcion_sufijo: str | None
+    # Claves son los id de punto_de_venta; ausente en el dict = 0 (sin fila de stock aún)
+    stocks: dict[int, int]
+
+
+class ConsultaStockResponse(BaseModel):
+    columnas: list[ConsultaStockColumna]   # CD primero, luego alpha por nombre
+    filas: list[ConsultaStockFila]
+    total: int
+    pagina: int
+    tamano: int

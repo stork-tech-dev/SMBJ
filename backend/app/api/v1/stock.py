@@ -23,6 +23,9 @@ from app.models.stock import TipoMovimiento
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.stock import (
     BajaCrear,
+    ConsultaStockColumna,
+    ConsultaStockFila,
+    ConsultaStockResponse,
     IngresoCrear,
     MotivoBajaCrear,
     MotivoBajaEditar,
@@ -86,6 +89,37 @@ def listar(
     )
     return RespuestaPaginada[StockResponse](
         total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
+    )
+
+
+@router.get("/consulta", response_model=ConsultaStockResponse, summary="Consulta cruzada de stock")
+def consulta(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    pagina: int = Query(default=1, ge=1),
+    tamano: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """
+    Tabla pivotada: una fila por variante, una columna por punto de venta.
+    Sin aislamiento por dispositivo: es un reporte global.
+    """
+    filas, columnas, total = servicio.consulta_cruzada(
+        db,
+        busqueda=busqueda,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        pagina=pagina,
+        tamano=tamano,
+    )
+    return ConsultaStockResponse(
+        columnas=[ConsultaStockColumna.model_validate(c) for c in columnas],
+        filas=[ConsultaStockFila(**f) for f in filas],
+        total=total,
+        pagina=pagina,
+        tamano=tamano,
     )
 
 

@@ -456,6 +456,107 @@ def alertas(db: Session, scope: DeviceScope, limite: int = 200) -> list[Stock]:
     return list(db.execute(consulta).unique().scalars().all())
 
 
+def consulta_cruzada(
+    db: Session,
+    busqueda: str | None = None,
+    categoria_id: int | None = None,
+    proveedor_id: int | None = None,
+    pagina: int = 1,
+    tamano: int = 10,
+) -> tuple[list[dict], list[PuntoDeVenta], int]:
+    """
+    Tabla pivotada: variantes × puntos de venta.
+
+    Sin aislamiento por dispositivo: es una vista de reporting global para
+    roles con acceso al módulo REPORTES.
+
+    Retorna (filas_pivot, columnas, total_variantes).
+    """
+    from sqlalchemy import case as sa_case, literal
+
+    # 1. Columnas: todos los PdV activos, CD primero, luego alpha por nombre
+    columnas = db.execute(
+        select(PuntoDeVenta)
+        .where(PuntoDeVenta.activo.is_(True))
+        .order_by(
+            sa_case((PuntoDeVenta.tipo == TipoPuntoVenta.CD, literal(0)), else_=literal(1)),
+            func.lower(PuntoDeVenta.nombre),
+        )
+    ).scalars().all()
+
+    col_ids = [c.id for c in columnas]
+
+    # 2. Variantes que cumplen los filtros
+    consulta_variantes = (
+        select(Variante)
+        .join(Producto, Producto.id == Variante.producto_id)
+        .where(Producto.activo.is_(True))
+        .options(joinedload(Variante.producto))
+    )
+    if busqueda:
+        patron = f"%{busqueda.strip()}%"
+        consulta_variantes = consulta_variantes.where(
+            Variante.codigo_completo.ilike(patron)
+            | Producto.sku.ilike(patron)
+            | Producto.descripcion.ilike(patron)
+        )
+    if categoria_id is not None:
+        from app.services.categorias import rama_de_ids
+        consulta_variantes = consulta_variantes.where(
+            Producto.categoria_id.in_(rama_de_ids(db, categoria_id))
+        )
+    if proveedor_id is not None:
+        consulta_variantes = consulta_variantes.where(
+            Producto.proveedor_id == proveedor_id
+        )
+
+    total = db.execute(
+        select(func.count()).select_from(consulta_variantes.order_by(None).subquery())
+    ).scalar_one()
+
+    variantes = (
+        db.execute(
+            consulta_variantes
+            .order_by(func.lower(Producto.descripcion), Variante.codigo_completo)
+            .limit(tamano)
+            .offset((pagina - 1) * tamano)
+        )
+        .unique().scalars().all()
+    )
+
+    if not variantes:
+        return [], list(columnas), total
+
+    # 3. Stock de esas variantes en todos los PdV (una sola query)
+    variante_ids = [v.id for v in variantes]
+    filas_stock = db.execute(
+        select(Stock.variante_id, Stock.punto_de_venta_id, Stock.cantidad)
+        .where(
+            Stock.variante_id.in_(variante_ids),
+            Stock.punto_de_venta_id.in_(col_ids),
+        )
+    ).all()
+
+    # 4. Pivot en Python: {variante_id: {punto_id: cantidad}}
+    pivot: dict[int, dict[int, int]] = {v.id: {} for v in variantes}
+    for fila in filas_stock:
+        pivot[fila.variante_id][fila.punto_de_venta_id] = fila.cantidad
+
+    # 5. Armar las filas resultado
+    resultado = []
+    for v in variantes:
+        resultado.append({
+            "variante_id": v.id,
+            "codigo_completo": v.codigo_completo,
+            "verificador": v.verificador,
+            "descripcion": v.producto.descripcion,
+            "descripcion_sufijo": None if v.es_base else v.descripcion_sufijo,
+            "stocks": pivot[v.id],
+        })
+
+    return resultado, list(columnas), total
+
+
 def listar_movimientos(
     db: Session,
     scope: DeviceScope,
