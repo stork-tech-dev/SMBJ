@@ -159,7 +159,7 @@ SECCIONES_STOCK = [
         "modulo": Modulo.COMPRAS,
     },
     {
-        "nombre": "Movimientos de Stock",
+        "nombre": "Stock mínimo y descuentos de stock",
         "descripcion": "Lo que hay en cada ubicación, minimos y bajas",
         "url": "/stock",
         "modulo": Modulo.STOCK,
@@ -768,7 +768,7 @@ async def stock(
     return templates.TemplateResponse(
         request,
         "pages/stock/listado.html",
-        _contexto_stock(request, db, usuario, "Movimientos de Stock", RUTA_HUB_STOCK),
+        _contexto_stock(request, db, usuario, "Stock mínimo y descuentos de stock", RUTA_HUB_STOCK),
     )
 
 
