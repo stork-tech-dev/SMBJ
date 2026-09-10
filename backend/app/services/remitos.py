@@ -311,6 +311,44 @@ def confirmar_recepcion(
                 ip_origen=ip_origen,
             )
 
+        # Si hubo diferencia, ajustar el origen para que el stock total del
+        # sistema quede balanceado: lo que no llegó al destino vuelve al origen,
+        # y lo que llegó de más se descuenta del origen.
+        diferencia_unidades = cantidad - item.cantidad_enviada
+        if diferencia_unidades < 0:
+            # Llegó menos: el origen recupera las unidades faltantes.
+            servicio_stock.aplicar_movimiento(
+                db,
+                autor,
+                tipo=TipoMovimiento.AJUSTE_AUDITORIA,
+                variante_id=item.variante_id,
+                cantidad=abs(diferencia_unidades),
+                punto_venta_destino_id=remito.punto_venta_origen_id,
+                remito_id=remito.id,
+                notas=(
+                    f"Diferencia en recepción de {remito.numero}: "
+                    f"enviado {item.cantidad_enviada}, recibido {cantidad}"
+                ),
+                ip_origen=ip_origen,
+            )
+        elif diferencia_unidades > 0:
+            # Llegó más: el origen pierde las unidades adicionales encontradas.
+            servicio_stock.aplicar_movimiento(
+                db,
+                autor,
+                tipo=TipoMovimiento.AJUSTE_AUDITORIA,
+                variante_id=item.variante_id,
+                cantidad=diferencia_unidades,
+                punto_venta_origen_id=remito.punto_venta_origen_id,
+                remito_id=remito.id,
+                permitir_faltante=True,
+                notas=(
+                    f"Diferencia en recepción de {remito.numero}: "
+                    f"enviado {item.cantidad_enviada}, recibido {cantidad}"
+                ),
+                ip_origen=ip_origen,
+            )
+
     remito.estado = (
         EstadoRemito.CON_DIFERENCIA if hubo_diferencia else EstadoRemito.CONFIRMADO
     )
