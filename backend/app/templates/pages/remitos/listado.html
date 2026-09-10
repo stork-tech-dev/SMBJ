@@ -99,6 +99,8 @@
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Ruta</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Enviado</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Enviado por</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Recibido por</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
                 </thead>
@@ -128,6 +130,12 @@
                             <td class="px-4 py-3 align-middle whitespace-nowrap text-sm text-texto-muted"
                                 x-text="fecha(r.fecha_envio)"></td>
 
+                            <td class="px-4 py-3 align-middle whitespace-nowrap text-sm text-texto-muted"
+                                x-text="r.usuario_envio_nombre || '—'"></td>
+
+                            <td class="px-4 py-3 align-middle whitespace-nowrap text-sm text-texto-muted"
+                                x-text="r.usuario_recepcion_nombre || '—'"></td>
+
                             <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
                                 {% call acciones() %}
                                     {{ accion('ver', texto='Detalle',
@@ -156,7 +164,7 @@
                     </template>
 
                     <tr x-show="!remitos.length && !cargando">
-                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">
+                        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">
                             Sin resultados.
                         </td>
                     </tr>
@@ -344,6 +352,18 @@
                         </li>
                     </template>
                 </ol>
+
+                <div class="flex flex-wrap gap-x-8 gap-y-1 mt-4 text-sm text-texto-muted">
+                    <span>Enviado por:
+                        <span class="font-medium text-texto"
+                              x-text="detalle.remito?.usuario_envio_nombre || '—'"></span>
+                    </span>
+                    <span x-show="detalle.remito?.usuario_recepcion_nombre">
+                        Recibido por:
+                        <span class="font-medium text-texto"
+                              x-text="detalle.remito?.usuario_recepcion_nombre"></span>
+                    </span>
+                </div>
 
                 <table class="w-full border-collapse text-sm mt-6">
                     <thead>

@@ -52,6 +52,8 @@ def obtener_remito(db: Session, remito_id: int) -> Remito:
         .options(
             joinedload(Remito.origen),
             joinedload(Remito.destino),
+            joinedload(Remito.usuario_envio),
+            joinedload(Remito.usuario_recepcion),
             joinedload(Remito.items).joinedload(RemitoItem.variante).joinedload(
                 Variante.producto
             ),
@@ -319,6 +321,9 @@ def confirmar_recepcion(
         EstadoRemito.CON_DIFERENCIA if hubo_diferencia else EstadoRemito.CONFIRMADO
     )
     remito.usuario_recepcion_id = autor.id
+    # Asignar el objeto también para que la plantilla del PDF lo resuelva sin
+    # necesidad de una consulta adicional.
+    remito.usuario_recepcion = autor
     remito.fecha_recepcion = ahora_db()
     if notas:
         # Se suma a lo que ya había: la nota del que recibe explica la
@@ -326,6 +331,14 @@ def confirmar_recepcion(
         remito.notas = "\n".join(filter(None, [remito.notas, normalizar_texto(notas)]))
     remito.updated_at = ahora_db()
     db.flush()
+
+    # Regenerar el PDF para que quede el nombre de quien recibió. El archivo
+    # se sobreescribe en el mismo path: el número no cambia, y guardar dos
+    # versiones no aportaría nada.
+    if remito.pdf_url:
+        from app.reports.remito_pdf import generar_pdf_remito
+        remito.pdf_url = generar_pdf_remito(db, remito)
+        db.flush()
 
     registrar_auditoria(
         db,
@@ -358,6 +371,8 @@ def listar_remitos(
     consulta = select(Remito).options(
         joinedload(Remito.origen),
         joinedload(Remito.destino),
+        joinedload(Remito.usuario_envio),
+        joinedload(Remito.usuario_recepcion),
     )
 
     if scope.restringido:

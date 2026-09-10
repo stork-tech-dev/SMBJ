@@ -43,6 +43,20 @@ def _403(exc):
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
 
 
+def _resumen(remito) -> RemitoResumen:
+    r = RemitoResumen.model_validate(remito)
+    r.usuario_envio_nombre = remito.usuario_envio.nombre if remito.usuario_envio else None
+    r.usuario_recepcion_nombre = remito.usuario_recepcion.nombre if remito.usuario_recepcion else None
+    return r
+
+
+def _response(remito) -> RemitoResponse:
+    r = RemitoResponse.model_validate(remito)
+    r.usuario_envio_nombre = remito.usuario_envio.nombre if remito.usuario_envio else None
+    r.usuario_recepcion_nombre = remito.usuario_recepcion.nombre if remito.usuario_recepcion else None
+    return r
+
+
 def _exigir_visible(remito, scope: DeviceScope) -> None:
     """
     Un remito es visible desde sus dos puntas.
@@ -86,7 +100,8 @@ def listar(
         tamano=tamano,
     )
     return RespuestaPaginada[RemitoResumen](
-        total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
+        total=total, pagina=pagina, tamano=tamano,
+        resultados=[_resumen(r) for r in filas],
     )
 
 
@@ -123,7 +138,7 @@ def crear(
         raise _409(exc) from exc
 
     db.commit()
-    return servicio.obtener_remito(db, remito.id)
+    return _response(servicio.obtener_remito(db, remito.id))
 
 
 @router.get("/{remito_id}", response_model=RemitoResponse, summary="Detalle con ítems")
@@ -139,7 +154,7 @@ def detalle(
         raise _404(exc) from exc
 
     _exigir_visible(remito, scope)
-    return remito
+    return _response(remito)
 
 
 @router.patch(
@@ -166,7 +181,7 @@ def despachar(
         raise _409(exc) from exc
 
     db.commit()
-    return servicio.obtener_remito(db, remito_id)
+    return _response(servicio.obtener_remito(db, remito_id))
 
 
 @router.patch(
@@ -209,7 +224,7 @@ def confirmar(
         raise _409(exc) from exc
 
     db.commit()
-    return servicio.obtener_remito(db, remito_id)
+    return _response(servicio.obtener_remito(db, remito_id))
 
 
 @router.get(

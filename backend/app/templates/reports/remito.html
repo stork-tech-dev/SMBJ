@@ -93,8 +93,16 @@
     {% endif %}
 
     <div class="firmas">
-        <div class="firma">Entregué conforme (origen)</div>
-        <div class="firma">Recibí conforme (destino)</div>
+        <div class="firma">
+            Entregué conforme (origen)
+            <div class="valor" style="margin-top:4pt">{{ remito.usuario_envio.nombre }}</div>
+        </div>
+        <div class="firma">
+            Recibí conforme (destino)
+            {% if remito.usuario_recepcion %}
+            <div class="valor" style="margin-top:4pt">{{ remito.usuario_recepcion.nombre }}</div>
+            {% endif %}
+        </div>
     </div>
 
 </body>
