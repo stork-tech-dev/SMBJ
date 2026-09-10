@@ -29,8 +29,10 @@ from app.core.database import get_db
 from app.core.permisos import Modulo, Recurso, requiere_permiso
 from app.core.utils import ip_de_request
 from app.models.categoria import Categoria
+from app.models.medio_pago import MedioDePago
 from app.models.producto import Producto
 from app.models.promocion import Promocion, TipoAlcance, TipoPromocion
+from app.models.punto_de_venta import PuntoDeVenta
 from app.models.turno import PlataformaGiftCard
 from app.schemas.medios_pago import (
     EstadoCambio,
@@ -53,6 +55,7 @@ from app.schemas.ventas import (
     MotivoDescuentoCrear,
     MotivoDescuentoEditar,
     MotivoDescuentoResponse,
+    RestriccionItem,
 )
 from app.services import descuentos as servicio_descuentos
 from app.services import medios_pago as servicio_medios
@@ -289,12 +292,38 @@ def listar_motivos(
     db: Session = Depends(get_db),
     _=Depends(requiere_permiso(Modulo.CONFIGURACION, "ver")),
 ):
-    return servicio_descuentos.listar_motivos(
+    motivos = servicio_descuentos.listar_motivos(
         db,
         nombre=nombre,
         activo=activo,
         habilita_cuotas_sin_interes=habilita_cuotas_sin_interes,
     )
+    return [MotivoDescuentoResponse.from_orm_motivo(m) for m in motivos]
+
+
+@router.get(
+    "/motivos-descuento/catalogos",
+    summary="Catálogos para el formulario de motivos (sucursales y medios)",
+)
+def catalogos_motivos(
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "ver")),
+):
+    """Reutiliza los mismos catálogos que /promociones/catalogos."""
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    pdvs = db.execute(
+        select(PuntoDeVenta)
+        .where(PuntoDeVenta.activo.is_(True), PuntoDeVenta.tipo != TipoPuntoVenta.CD)
+        .order_by(PuntoDeVenta.nombre)
+    ).scalars().all()
+    medios = db.execute(
+        select(MedioDePago).where(MedioDePago.activo.is_(True)).order_by(MedioDePago.nombre)
+    ).scalars().all()
+    return {
+        "puntos_de_venta": [{"id": p.id, "nombre": p.nombre} for p in pdvs],
+        "medios_de_pago": [{"id": m.id, "nombre": m.nombre} for m in medios],
+    }
 
 
 @router.post(
@@ -315,14 +344,17 @@ def crear_motivo(
     por la puerta de atrás, preseleccionado y sin que nadie lo eligiera.
     """
     try:
+        campos = datos.model_dump()
+        # Convertir RestriccionItem → dict para el service
+        campos["restricciones"] = [r.model_dump() for r in (datos.restricciones or [])]
         motivo = servicio_descuentos.crear_motivo(
-            db, autor, ip_origen=ip_de_request(request), **datos.model_dump()
+            db, autor, ip_origen=ip_de_request(request), **campos
         )
     except ReglaDeNegocio as exc:
         raise _409(exc) from exc
 
     db.commit()
-    return motivo
+    return MotivoDescuentoResponse.from_orm_motivo(motivo)
 
 
 @router.put(
@@ -342,13 +374,16 @@ def editar_motivo(
     sugerido": los dos llegan como None y significan cosas distintas.
     """
     try:
+        campos = datos.model_dump()
+        if datos.restricciones is not None:
+            campos["restricciones"] = [r.model_dump() for r in datos.restricciones]
         motivo = servicio_descuentos.editar_motivo(
             db,
             autor,
             motivo_id,
             editar_sugerido="porcentaje_sugerido" in datos.model_fields_set,
             ip_origen=ip_de_request(request),
-            **datos.model_dump(),
+            **campos,
         )
     except NoEncontrado as exc:
         raise _404(exc) from exc
@@ -356,7 +391,7 @@ def editar_motivo(
         raise _409(exc) from exc
 
     db.commit()
-    return motivo
+    return MotivoDescuentoResponse.from_orm_motivo(motivo)
 
 
 @router.patch(
@@ -380,7 +415,7 @@ def estado_motivo(
         raise _404(exc) from exc
 
     db.commit()
-    return motivo
+    return MotivoDescuentoResponse.from_orm_motivo(motivo)
 
 
 # ============================================================================
@@ -408,16 +443,57 @@ def _promocion_response(db: Session, promocion: Promocion) -> PromocionResponse:
     alcances = []
     for alcance in promocion.alcances:
         fila = AlcanceResponse.model_validate(alcance)
-        if alcance.tipo_alcance == TipoAlcance.PRODUCTO:
+        if alcance.tipo_alcance in (TipoAlcance.TODOS_PRODUCTOS, TipoAlcance.TODOS_CATEGORIAS):
+            fila.nombre = "Todos"
+        elif alcance.tipo_alcance == TipoAlcance.PRODUCTO:
             producto = db.get(Producto, alcance.referencia_id)
             fila.nombre = producto.descripcion if producto else None
-        else:
+        elif alcance.tipo_alcance == TipoAlcance.CATEGORIA:
             categoria = db.get(Categoria, alcance.referencia_id)
             fila.nombre = categoria.nombre if categoria else None
+        elif alcance.tipo_alcance == TipoAlcance.PUNTO_DE_VENTA:
+            if alcance.referencia_id == 0:
+                fila.nombre = "Todas las sucursales"
+            else:
+                pdv = db.get(PuntoDeVenta, alcance.referencia_id)
+                fila.nombre = pdv.nombre if pdv else None
+        elif alcance.tipo_alcance == TipoAlcance.MEDIO_DE_PAGO:
+            if alcance.referencia_id == 0:
+                fila.nombre = "Todos los medios de pago"
+            else:
+                medio = db.get(MedioDePago, alcance.referencia_id)
+                fila.nombre = medio.nombre if medio else None
         alcances.append(fila)
     respuesta.alcances = alcances
 
     return respuesta
+
+
+@router.get(
+    "/promociones/catalogos",
+    summary="Catálogos para el formulario de promociones",
+)
+def catalogos_promociones(
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "ver", Recurso.PROMOCIONES)),
+):
+    """
+    Los puntos de venta y medios de pago activos para poblar los selectores
+    del formulario. Se carga una vez al abrir el modal y no en cada keystroke.
+    """
+    from app.models.punto_de_venta import TipoPuntoVenta
+    pdvs = db.execute(
+        select(PuntoDeVenta)
+        .where(PuntoDeVenta.activo.is_(True), PuntoDeVenta.tipo != TipoPuntoVenta.CD)
+        .order_by(PuntoDeVenta.nombre)
+    ).scalars().all()
+    medios = db.execute(
+        select(MedioDePago).where(MedioDePago.activo.is_(True)).order_by(MedioDePago.nombre)
+    ).scalars().all()
+    return {
+        "puntos_de_venta": [{"id": p.id, "nombre": p.nombre} for p in pdvs],
+        "medios_de_pago": [{"id": m.id, "nombre": m.nombre} for m in medios],
+    }
 
 
 @router.get(
@@ -466,7 +542,9 @@ def crear_promocion(
             db,
             autor,
             nombre=datos.nombre,
+            nota=datos.nota,
             tipo=datos.tipo,
+            porcentaje_descuento=datos.porcentaje_descuento,
             alcances=[a.model_dump() for a in datos.alcances],
             fecha_inicio=datos.fecha_inicio,
             fecha_fin=datos.fecha_fin,
@@ -503,7 +581,9 @@ def editar_promocion(
             autor,
             promocion_id,
             nombre=datos.nombre,
+            nota=datos.nota,
             tipo=datos.tipo,
+            porcentaje_descuento=datos.porcentaje_descuento,
             alcances=(
                 [a.model_dump() for a in datos.alcances]
                 if datos.alcances is not None

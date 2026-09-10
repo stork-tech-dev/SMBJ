@@ -43,6 +43,7 @@
                 <option value="">Tipo (todos)</option>
                 <option value="dos_x_uno">2x1</option>
                 <option value="tres_x_dos">3x2</option>
+                <option value="porcentaje">% Porcentaje</option>
             </select>
             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                 {{ icono('chevron') }}
@@ -96,12 +97,26 @@
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!p.activo && 'opacity-60'">
                             <td class="px-8 py-3 align-middle">
-                                <span class="font-medium" x-text="p.nombre"></span>
-                                <span x-show="p.exclusiva_de_clientes"
-                                      class="ml-2 inline-flex items-center px-3 py-0.5 rounded-pill
-                                             text-xs font-medium bg-primary/15 text-primary"
-                                      title="Solo se ofrece a los clientes que la tienen asignada">
-                                    Por cliente
+                                <span class="inline-flex items-center gap-1.5 flex-wrap">
+                                    <span class="font-medium" x-text="p.nombre"></span>
+                                    {# Ícono de nota: visible solo si hay nota #}
+                                    <span x-show="p.nota" class="relative group/nota inline-flex">
+                                        <span class="cursor-help text-texto-muted hover:text-primary">
+                                            {{ icono('info', clases='w-4 h-4') }}
+                                        </span>
+                                        <span class="pointer-events-none absolute bottom-full left-1/2
+                                                     -translate-x-1/2 mb-1.5 z-20 w-56 rounded-input
+                                                     bg-gray-800 px-3 py-2 text-xs text-white
+                                                     opacity-0 group-hover/nota:opacity-100
+                                                     transition-opacity whitespace-normal"
+                                              x-text="p.nota"></span>
+                                    </span>
+                                    <span x-show="p.exclusiva_de_clientes"
+                                          class="inline-flex items-center px-3 py-0.5 rounded-pill
+                                                 text-xs font-medium bg-primary/15 text-primary"
+                                          title="Solo se ofrece a los clientes que la tienen asignada">
+                                        Por cliente
+                                    </span>
                                 </span>
                             </td>
                             <td class="px-4 py-3 align-middle" x-text="etiquetaTipo(p.tipo)"></td>
@@ -167,7 +182,8 @@
             </div>
 
             <form @submit.prevent="guardar()" class="px-8 pb-8 pt-4 grid gap-6">
-                <div class="grid gap-5" style="grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr))">
+                {# ---------- Nombre y tipo ---------- #}
+                <div class="grid gap-5 sm:grid-cols-2">
                     <div class="flex flex-col gap-1">
                         <label for="pr-nombre" class="text-sm font-semibold text-texto-header">
                             Nombre<span class="text-danger ml-0.5">*</span>
@@ -185,99 +201,215 @@
                                     class="campo-linea w-full appearance-none pr-10">
                                 <option value="dos_x_uno">2x1 — por cada 2, la más barata es $0</option>
                                 <option value="tres_x_dos">3x2 — por cada 3, la más barata es $0</option>
+                                <option value="porcentaje">% Porcentaje — descuento fijo sobre precio</option>
                             </select>
                             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                                 {{ icono('chevron') }}
                             </span>
                         </div>
                     </div>
+                </div>
 
-                    <div class="flex flex-col gap-1">
+                {# ---------- Nota interna ---------- #}
+                <div class="flex flex-col gap-1">
+                    <label for="pr-nota" class="text-sm font-semibold text-texto-header flex items-center gap-1">
+                        Nota interna
+                        <span class="relative group/info inline-flex">
+                            <span class="cursor-help text-texto-muted">{{ icono('info', clases='w-4 h-4') }}</span>
+                            <span class="pointer-events-none absolute bottom-full left-1/2
+                                         -translate-x-1/2 mb-1.5 z-20 w-56 rounded-input
+                                         bg-gray-800 px-3 py-2 text-xs text-white
+                                         opacity-0 group-hover/info:opacity-100 transition-opacity">
+                                Aparece en un tooltip junto al nombre en la tabla. Solo para uso interno.
+                            </span>
+                        </span>
+                    </label>
+                    <textarea id="pr-nota" x-model="form.nota" maxlength="500" rows="2"
+                              placeholder="Ej: Se aplica solo en liquidación de fin de temporada"
+                              class="campo-linea resize-none"></textarea>
+                </div>
+
+                {# ---------- Porcentaje + Vigencia en una fila ---------- #}
+                <div class="flex flex-wrap gap-4">
+                    {# Campo de porcentaje: solo para tipo PORCENTAJE #}
+                    <div class="flex flex-col gap-1 w-36" x-show="form.tipo === 'porcentaje'" x-cloak>
+                        <label for="pr-pct" class="text-sm font-semibold text-texto-header">
+                            Descuento<span class="text-danger ml-0.5">*</span>
+                        </label>
+                        <div class="relative">
+                            <input id="pr-pct" x-model="form.porcentaje_descuento"
+                                   type="number" min="1" max="75"
+                                   :required="form.tipo === 'porcentaje'"
+                                   placeholder="20" class="campo-linea pr-8">
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none
+                                         text-texto-muted font-semibold text-sm">%</span>
+                        </div>
+                        <span class="text-xs text-texto-disabled">1 – 75 %</span>
+                    </div>
+
+                    <div class="flex flex-col gap-1 w-36">
                         <label for="pr-desde" class="text-sm font-semibold text-texto-header">Desde</label>
                         <input id="pr-desde" x-model="form.fecha_inicio" type="date" class="campo-linea">
                         <span class="text-xs text-texto-disabled">Vacío = sin límite.</span>
                     </div>
 
-                    <div class="flex flex-col gap-1">
+                    <div class="flex flex-col gap-1 w-36">
                         <label for="pr-hasta" class="text-sm font-semibold text-texto-header">Hasta</label>
                         <input id="pr-hasta" x-model="form.fecha_fin" type="date" class="campo-linea">
                         <span class="text-xs text-texto-disabled">Vacío = sin límite.</span>
                     </div>
                 </div>
 
-                {# ---------- Alcance ---------- #}
+                {# ---------- Alcance — Productos/Categorías ---------- #}
                 <div class="border-t border-borde pt-5">
                     <h3 class="text-base font-semibold text-texto">
-                        Alcance<span class="text-danger ml-0.5">*</span>
+                        Productos alcanzados<span class="text-danger ml-0.5">*</span>
                     </h3>
                     <p class="text-xs text-texto-disabled mt-1">
-                        Una categoría alcanza también a sus subcategorías: poniendo "Plata"
-                        entran "Plata &gt; Anillos" y "Plata &gt; Cadenas".
+                        Una categoría alcanza también a sus subcategorías. Los alcances son
+                        concurrentes: todos deben cumplirse para que la promoción aplique.
                     </p>
 
-                    <div class="flex flex-wrap items-end gap-3 mt-4">
-                        <div class="relative">
-                            <select x-model="busqueda.tipo" @change="busqueda.texto=''; busqueda.opciones=[]"
-                                    aria-label="Tipo de alcance"
-                                    class="campo-linea appearance-none pr-10 w-full sm:w-[10rem]">
-                                <option value="categoria">Categoría</option>
-                                <option value="producto">Producto</option>
-                            </select>
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                {{ icono('chevron') }}
-                            </span>
-                        </div>
-
-                        <div class="relative flex-1 min-w-0 sm:min-w-[14rem]">
-                            <input type="search" x-model="busqueda.texto"
-                                   @input.debounce.300ms="buscarAlcance()"
-                                   :placeholder="busqueda.tipo === 'categoria'
-                                                 ? 'Buscar categoría…' : 'Buscar producto…'"
-                                   aria-label="Buscar para agregar al alcance"
-                                   class="campo-linea w-full">
-
-                            <ul x-show="busqueda.opciones.length" x-cloak
-                                @click.outside="busqueda.opciones = []"
-                                class="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-surface
-                                       border border-borde rounded-input shadow-lg">
-                                <template x-for="o in busqueda.opciones" :key="o.id">
-                                    <li>
-                                        <button type="button" @click="agregarAlcance(o)"
-                                                class="w-full text-left px-4 py-2 text-sm min-h-toque
-                                                       hover:bg-surface-alt"
-                                                x-text="o.nombre"></button>
-                                    </li>
-                                </template>
-                            </ul>
-                        </div>
+                    {# Opciones "Todos" #}
+                    <div class="flex flex-wrap gap-4 mt-4">
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" x-model="form.todos_productos"
+                                   @change="form.todos_categorias = false; form.alcances = []"
+                                   class="w-4 h-4 rounded accent-primary">
+                            <span class="text-sm font-medium">Todos los productos</span>
+                        </label>
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" x-model="form.todos_categorias"
+                                   @change="form.todos_productos = false; form.alcances = []"
+                                   class="w-4 h-4 rounded accent-primary">
+                            <span class="text-sm font-medium">Todas las categorías</span>
+                        </label>
                     </div>
 
-                    <ul class="mt-4 flex flex-wrap gap-2">
-                        <template x-for="(a, i) in form.alcances" :key="a.tipo_alcance + '-' + a.referencia_id">
-                            <li class="inline-flex items-center gap-2 pl-3 pr-2 py-1 rounded-pill
-                                       bg-surface-alt text-sm">
-                                <span class="text-texto-muted"
-                                      x-text="a.tipo_alcance === 'categoria' ? 'Cat.' : 'Prod.'"></span>
-                                <span x-text="a.nombre"></span>
-                                <button type="button" @click="form.alcances.splice(i, 1)"
-                                        :aria-label="'Quitar ' + a.nombre"
-                                        class="grid place-items-center min-h-toque min-w-toque
-                                               text-texto-muted hover:text-danger">
-                                    {{ icono('cerrar', clases='w-4 h-4') }}
-                                </button>
-                            </li>
-                        </template>
-                    </ul>
-                    <p class="mt-2 text-sm text-texto-muted" x-show="!form.alcances.length">
-                        Todavía no agregaste nada. Una promoción sin alcance no aplica a nada.
+                    {# Buscador individual: visible si no eligió "todos" #}
+                    <div x-show="!form.todos_productos && !form.todos_categorias" class="mt-4">
+                        <div class="flex flex-wrap items-end gap-3">
+                            <div class="relative">
+                                <select x-model="busqueda.tipo"
+                                        @change="busqueda.texto=''; busqueda.opciones=[]"
+                                        aria-label="Tipo de alcance"
+                                        class="campo-linea appearance-none pr-10 w-full sm:w-[10rem]">
+                                    <option value="categoria">Categoría</option>
+                                    <option value="producto">Producto</option>
+                                </select>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    {{ icono('chevron') }}
+                                </span>
+                            </div>
+
+                            <div class="relative flex-1 min-w-0 sm:min-w-[14rem]">
+                                <input type="search" x-model="busqueda.texto"
+                                       @input.debounce.300ms="buscarAlcance()"
+                                       :placeholder="busqueda.tipo === 'categoria'
+                                                     ? 'Buscar categoría…' : 'Buscar producto…'"
+                                       aria-label="Buscar para agregar al alcance"
+                                       class="campo-linea w-full">
+
+                                <ul x-show="busqueda.opciones.length" x-cloak
+                                    @click.outside="busqueda.opciones = []"
+                                    class="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-surface
+                                           border border-borde rounded-input shadow-lg">
+                                    <template x-for="o in busqueda.opciones" :key="o.id">
+                                        <li>
+                                            <button type="button" @click="agregarAlcance(o)"
+                                                    class="w-full text-left px-4 py-2 text-sm min-h-toque
+                                                           hover:bg-surface-alt"
+                                                    x-text="o.nombre"></button>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <ul class="mt-4 flex flex-wrap gap-2">
+                            <template x-for="(a, i) in form.alcances"
+                                      :key="a.tipo_alcance + '-' + a.referencia_id">
+                                <li class="inline-flex items-center gap-2 pl-3 pr-2 py-1 rounded-pill
+                                           bg-surface-alt text-sm">
+                                    <span class="text-texto-muted"
+                                          x-text="a.tipo_alcance === 'categoria' ? 'Cat.' : 'Prod.'"></span>
+                                    <span x-text="a.nombre"></span>
+                                    <button type="button" @click="form.alcances.splice(i, 1)"
+                                            :aria-label="'Quitar ' + a.nombre"
+                                            class="grid place-items-center min-h-toque min-w-toque
+                                                   text-texto-muted hover:text-danger">
+                                        {{ icono('cerrar', clases='w-4 h-4') }}
+                                    </button>
+                                </li>
+                            </template>
+                        </ul>
+                        <p class="mt-2 text-sm text-texto-muted"
+                           x-show="!form.alcances.length">
+                            Todavía no agregaste nada. Una promoción sin alcance no aplica a nada.
+                        </p>
+                    </div>
+                </div>
+
+                {# ---------- Sucursales ---------- #}
+                <div class="border-t border-borde pt-5">
+                    <h3 class="text-base font-semibold text-texto">Sucursales</h3>
+                    <p class="text-xs text-texto-disabled mt-1">
+                        Sin selección = todas las sucursales. Elegí una o más para restringir.
                     </p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <template x-for="pdv in catalogos.puntos_de_venta" :key="pdv.id">
+                            <button type="button" @click="toggleSucursal(pdv)"
+                                    :class="sucursalSeleccionada(pdv)
+                                            ? 'bg-primary text-white border-primary'
+                                            : 'bg-surface text-texto border-borde hover:border-primary'"
+                                    class="h-control px-4 rounded-input border-2 text-sm font-medium
+                                           transition-colors"
+                                    x-text="pdv.nombre"></button>
+                        </template>
+                        <span x-show="!catalogos.puntos_de_venta.length"
+                              class="text-sm text-texto-disabled">Cargando…</span>
+                    </div>
+                    <p class="mt-2 text-xs text-success"
+                       x-show="!form.sucursales.length">Todas las sucursales</p>
+                    <p class="mt-2 text-xs text-texto-muted"
+                       x-show="form.sucursales.length"
+                       x-text="'Solo: ' + form.sucursales.map(s => s.nombre).join(', ')"></p>
+                </div>
+
+                {# ---------- Medios de pago ---------- #}
+                <div class="border-t border-borde pt-5">
+                    <h3 class="text-base font-semibold text-texto">Medios de pago</h3>
+                    <p class="text-xs text-texto-disabled mt-1">
+                        Sin selección = todos los medios. Elegí uno o más para restringir.
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <template x-for="medio in catalogos.medios_de_pago" :key="medio.id">
+                            <button type="button" @click="toggleMedio(medio)"
+                                    :class="medioSeleccionado(medio)
+                                            ? 'bg-primary text-white border-primary'
+                                            : 'bg-surface text-texto border-borde hover:border-primary'"
+                                    class="h-control px-4 rounded-input border-2 text-sm font-medium
+                                           transition-colors"
+                                    x-text="medio.nombre"></button>
+                        </template>
+                        <span x-show="!catalogos.medios_de_pago.length"
+                              class="text-sm text-texto-disabled">Cargando…</span>
+                    </div>
+                    <p class="mt-2 text-xs text-success"
+                       x-show="!form.medios_pago.length">Todos los medios de pago</p>
+                    <p class="mt-2 text-xs text-texto-muted"
+                       x-show="form.medios_pago.length"
+                       x-text="'Solo: ' + form.medios_pago.map(m => m.nombre).join(', ')"></p>
                 </div>
 
                 <div class="flex justify-end gap-3">
                     <button type="button" @click="form.abierto = false"
                             class="h-boton px-5 rounded-input border border-borde text-base
                                    hover:border-primary hover:text-primary">Cancelar</button>
-                    <button type="submit" :disabled="form.guardando || !form.alcances.length"
+                    <button type="submit"
+                            :disabled="form.guardando
+                                       || (!form.todos_productos && !form.todos_categorias
+                                           && !form.alcances.length)"
                             class="h-boton px-8 rounded-input bg-primary text-white text-base
                                    font-medium hover:bg-primary-hover disabled:opacity-60"
                             x-text="form.guardando ? 'Guardando…' : 'Finalizar'"></button>

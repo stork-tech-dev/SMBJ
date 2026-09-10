@@ -84,7 +84,23 @@
                         <tr class="border-t border-borde transition-shadow
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!m.activo && 'opacity-60'">
-                            <td class="px-8 py-3 align-middle font-medium" x-text="m.nombre"></td>
+                            <td class="px-8 py-3 align-middle font-medium">
+                                <span class="inline-flex items-center gap-1.5">
+                                    <span x-text="m.nombre"></span>
+                                    {# Ícono de nota: visible solo si hay nota #}
+                                    <span x-show="m.nota" class="relative group/nota inline-flex">
+                                        <span class="cursor-help text-texto-muted hover:text-primary">
+                                            {{ icono('info', clases='w-4 h-4') }}
+                                        </span>
+                                        <span class="pointer-events-none absolute bottom-full left-1/2
+                                                     -translate-x-1/2 mb-1.5 z-20 w-56 rounded-input
+                                                     bg-gray-800 px-3 py-2 text-xs text-white
+                                                     opacity-0 group-hover/nota:opacity-100
+                                                     transition-opacity whitespace-normal"
+                                              x-text="m.nota"></span>
+                                    </span>
+                                </span>
+                            </td>
                             <td class="px-4 py-3 align-middle text-right tabular-nums"
                                 x-text="m.porcentaje_sugerido === null
                                         ? 'La elige la vendedora'
@@ -137,7 +153,7 @@
          @keydown.escape.window="form.abierto = false"
          role="dialog" aria-modal="true" aria-labelledby="titulo-motivo-desc">
         <div class="w-full max-w-lg bg-surface rounded-[10px]
-                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)] max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between px-8 pt-7 pb-2">
                 <h2 id="titulo-motivo-desc" class="text-lg font-black text-welcome"
                     x-text="form.id ? 'Editar motivo' : 'Nuevo motivo'"></h2>
@@ -148,6 +164,7 @@
             </div>
 
             <form @submit.prevent="guardar()" class="px-8 pb-8 pt-4 grid gap-5">
+                {# Nombre #}
                 <div class="flex flex-col gap-1">
                     <label for="md-nombre" class="text-sm font-semibold text-texto-header">
                         Nombre<span class="text-danger ml-0.5">*</span>
@@ -156,10 +173,26 @@
                            placeholder="Cumpleaños" class="campo-linea">
                 </div>
 
-                {# El sugerido sale de la MISMA lista que ve la vendedora: un
-                   motivo cargado con 12% sería un porcentaje libre entrando
-                   por la puerta de atrás, preseleccionado y sin que nadie lo
-                   hubiera elegido. Por eso es un select, no un input. #}
+                {# Nota interna #}
+                <div class="flex flex-col gap-1">
+                    <label for="md-nota" class="text-sm font-semibold text-texto-header flex items-center gap-1">
+                        Nota interna
+                        <span class="relative group/info inline-flex">
+                            <span class="cursor-help text-texto-muted">{{ icono('info', clases='w-4 h-4') }}</span>
+                            <span class="pointer-events-none absolute bottom-full left-1/2
+                                         -translate-x-1/2 mb-1.5 z-20 w-56 rounded-input
+                                         bg-gray-800 px-3 py-2 text-xs text-white
+                                         opacity-0 group-hover/info:opacity-100 transition-opacity">
+                                Aparece en un tooltip junto al nombre en la tabla. Solo para uso interno.
+                            </span>
+                        </span>
+                    </label>
+                    <textarea id="md-nota" x-model="form.nota" maxlength="500" rows="2"
+                              placeholder="Ej: Solo para empleadas con más de 6 meses"
+                              class="campo-linea resize-none"></textarea>
+                </div>
+
+                {# Porcentaje sugerido #}
                 <div class="flex flex-col gap-1">
                     <label for="md-sugerido" class="text-sm font-semibold text-texto-header">
                         Porcentaje sugerido
@@ -182,6 +215,7 @@
                     </span>
                 </div>
 
+                {# Cuotas sin interés #}
                 <label class="flex items-start gap-3 min-h-toque">
                     <input type="checkbox" x-model="form.habilita_cuotas_sin_interes"
                            class="mt-1 w-5 h-5 accent-[color:var(--color-primary)]">
@@ -194,6 +228,83 @@
                         </span>
                     </span>
                 </label>
+
+                {# Vigencia #}
+                <div class="flex flex-col gap-1">
+                    <span class="text-sm font-semibold text-texto-header">Vigencia</span>
+                    <div class="flex gap-3">
+                        <div class="flex flex-col gap-0.5 flex-1">
+                            <label for="md-desde" class="text-xs text-texto-muted">Desde</label>
+                            <input id="md-desde" type="date" x-model="form.fecha_inicio"
+                                   class="campo-linea w-full">
+                        </div>
+                        <div class="flex flex-col gap-0.5 flex-1">
+                            <label for="md-hasta" class="text-xs text-texto-muted">Hasta</label>
+                            <input id="md-hasta" type="date" x-model="form.fecha_fin"
+                                   :min="form.fecha_inicio || ''"
+                                   class="campo-linea w-full">
+                        </div>
+                    </div>
+                    <span class="text-xs text-texto-disabled">Sin fechas: vigencia indefinida.</span>
+                </div>
+
+                {# Sucursales #}
+                <div class="flex flex-col gap-2">
+                    <span class="text-sm font-semibold text-texto-header">Sucursales</span>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="pdv in catalogos.puntos_de_venta" :key="pdv.id">
+                            <button type="button" @click="toggleSucursal(pdv)"
+                                    class="px-3 py-1 rounded-input border-2 text-sm font-medium transition-colors"
+                                    :class="sucursalSeleccionada(pdv)
+                                            ? 'border-primary bg-primary text-white'
+                                            : 'border-borde text-texto hover:border-primary'"
+                                    x-text="pdv.nombre"></button>
+                        </template>
+                    </div>
+                    <span class="text-xs text-texto-disabled"
+                          x-show="!form.sucursales.length">
+                        Sin selección: aplica en todas las sucursales.
+                    </span>
+                    <div class="flex flex-wrap gap-1" x-show="form.sucursales.length">
+                        <template x-for="s in form.sucursales" :key="s.id">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                                         bg-primary/10 text-primary text-xs font-medium">
+                                <span x-text="s.nombre"></span>
+                                <button type="button" @click="toggleSucursal(s)"
+                                        class="hover:text-danger" aria-label="Quitar">×</button>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+
+                {# Medios de pago #}
+                <div class="flex flex-col gap-2">
+                    <span class="text-sm font-semibold text-texto-header">Medios de pago</span>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="medio in catalogos.medios_de_pago" :key="medio.id">
+                            <button type="button" @click="toggleMedio(medio)"
+                                    class="px-3 py-1 rounded-input border-2 text-sm font-medium transition-colors"
+                                    :class="medioSeleccionado(medio)
+                                            ? 'border-primary bg-primary text-white'
+                                            : 'border-borde text-texto hover:border-primary'"
+                                    x-text="medio.nombre"></button>
+                        </template>
+                    </div>
+                    <span class="text-xs text-texto-disabled"
+                          x-show="!form.medios_pago.length">
+                        Sin selección: aplica con todos los medios de pago.
+                    </span>
+                    <div class="flex flex-wrap gap-1" x-show="form.medios_pago.length">
+                        <template x-for="m in form.medios_pago" :key="m.id">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                                         bg-primary/10 text-primary text-xs font-medium">
+                                <span x-text="m.nombre"></span>
+                                <button type="button" @click="toggleMedio(m)"
+                                        class="hover:text-danger" aria-label="Quitar">×</button>
+                            </span>
+                        </template>
+                    </div>
+                </div>
 
                 <div class="flex justify-end gap-3 mt-2">
                     <button type="button" @click="form.abierto = false"

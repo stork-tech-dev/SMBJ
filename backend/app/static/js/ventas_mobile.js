@@ -250,6 +250,12 @@ function carritoVenta(puedeDescontar = false) {
         /* --- Descuento --- */
 
         abrirDescuento(item) {
+            // Si el ítem ya tiene motivo, determinar si ese motivo tiene sugerido.
+            const motivoActual = item.motivo_descuento_id
+                ? this.motivos.find((m) => m.id === item.motivo_descuento_id)
+                : null;
+            const elige = !motivoActual || motivoActual.porcentaje_sugerido === null;
+
             this.descuento = {
                 abierto: true,
                 item_id: item.id,
@@ -257,16 +263,27 @@ function carritoVenta(puedeDescontar = false) {
                 motivo_id: item.motivo_descuento_id || '',
                 porcentaje: Number(item.descuento_item) || null,
                 tenia: Number(item.descuento_item) > 0,
+                // TRUE cuando el motivo no tiene sugerido: la vendedora elige de la lista.
+                elige_vendedora: elige,
             };
         },
 
-        /* Al elegir el motivo se preselecciona su porcentaje sugerido. Que la
-           vendedora pueda cambiarlo no es un agujero: es el caso "hoy hacemos
-           30 en vez de 20", y el backend registra que se apartó. */
+        /* Al elegir el motivo:
+           - Si tiene porcentaje sugerido → se aplica directamente, sin lista.
+           - Si no tiene sugerido → la vendedora elige de la lista. */
         alElegirMotivo() {
             const motivo = this.motivos.find((m) => m.id === Number(this.descuento.motivo_id));
-            if (motivo && motivo.porcentaje_sugerido !== null) {
+            if (!motivo) {
+                this.descuento.elige_vendedora = true;
+                this.descuento.porcentaje = null;
+                return;
+            }
+            if (motivo.porcentaje_sugerido !== null) {
                 this.descuento.porcentaje = Number(motivo.porcentaje_sugerido);
+                this.descuento.elige_vendedora = false;
+            } else {
+                this.descuento.porcentaje = null;
+                this.descuento.elige_vendedora = true;
             }
         },
 
