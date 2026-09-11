@@ -28,7 +28,7 @@
 <div x-data="abmStock({ puntoFijo: {{ punto_fijo or 'null' }} })"
      x-init="cargarCatalogos(); cargar()">
 
-    {% call encabezado('Movimientos de Stock', volver_url='/gestion-de-stock',
+    {% call encabezado('Stock mínimo y descuentos de stock', volver_url='/gestion-de-stock',
                        volver_texto='Gestión de Stock') %}
         {# Puerta al catálogo que llena el combo del modal de baja. Va acá y
            no en Configuraciones porque es de esta pantalla, igual que

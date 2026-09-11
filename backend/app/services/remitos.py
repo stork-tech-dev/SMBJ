@@ -52,6 +52,8 @@ def obtener_remito(db: Session, remito_id: int) -> Remito:
         .options(
             joinedload(Remito.origen),
             joinedload(Remito.destino),
+            joinedload(Remito.usuario_envio),
+            joinedload(Remito.usuario_recepcion),
             joinedload(Remito.items).joinedload(RemitoItem.variante).joinedload(
                 Variante.producto
             ),
@@ -286,20 +288,14 @@ def confirmar_recepcion(
         cantidad = recibidos.get(item.variante_id, item.cantidad_enviada)
         if cantidad < 0:
             raise ReglaDeNegocio("Las cantidades recibidas no pueden ser negativas")
-        if cantidad > item.cantidad_enviada:
-            raise ReglaDeNegocio(
-                f"Llegaron {cantidad} de un código del que se enviaron "
-                f"{item.cantidad_enviada}: no puede recibirse más de lo que salió"
-            )
 
         item.cantidad_recibida = cantidad
         if cantidad != item.cantidad_enviada:
             hubo_diferencia = True
 
-        # Solo lo que efectivamente llegó entra al destino. Lo que falta NO
-        # se devuelve al origen: ya salió de ahí, y darlo por presente en los
-        # dos lados sería inventar mercadería. Queda como diferencia a
-        # revisar, que es lo que un faltante es.
+        # El stock del destino recibe exactamente lo que se contó, aunque
+        # difiera de lo enviado. Si llegaron más o menos, la diferencia queda
+        # registrada; el stock refleja la realidad física del local.
         if cantidad > 0:
             servicio_stock.aplicar_movimiento(
                 db,
@@ -315,10 +311,51 @@ def confirmar_recepcion(
                 ip_origen=ip_origen,
             )
 
+        # Si hubo diferencia, ajustar el origen para que el stock total del
+        # sistema quede balanceado: lo que no llegó al destino vuelve al origen,
+        # y lo que llegó de más se descuenta del origen.
+        diferencia_unidades = cantidad - item.cantidad_enviada
+        if diferencia_unidades < 0:
+            # Llegó menos: el origen recupera las unidades faltantes.
+            servicio_stock.aplicar_movimiento(
+                db,
+                autor,
+                tipo=TipoMovimiento.AJUSTE_AUDITORIA,
+                variante_id=item.variante_id,
+                cantidad=abs(diferencia_unidades),
+                punto_venta_destino_id=remito.punto_venta_origen_id,
+                remito_id=remito.id,
+                notas=(
+                    f"Diferencia en recepción de {remito.numero}: "
+                    f"enviado {item.cantidad_enviada}, recibido {cantidad}"
+                ),
+                ip_origen=ip_origen,
+            )
+        elif diferencia_unidades > 0:
+            # Llegó más: el origen pierde las unidades adicionales encontradas.
+            servicio_stock.aplicar_movimiento(
+                db,
+                autor,
+                tipo=TipoMovimiento.AJUSTE_AUDITORIA,
+                variante_id=item.variante_id,
+                cantidad=diferencia_unidades,
+                punto_venta_origen_id=remito.punto_venta_origen_id,
+                remito_id=remito.id,
+                permitir_faltante=True,
+                notas=(
+                    f"Diferencia en recepción de {remito.numero}: "
+                    f"enviado {item.cantidad_enviada}, recibido {cantidad}"
+                ),
+                ip_origen=ip_origen,
+            )
+
     remito.estado = (
         EstadoRemito.CON_DIFERENCIA if hubo_diferencia else EstadoRemito.CONFIRMADO
     )
     remito.usuario_recepcion_id = autor.id
+    # Asignar el objeto también para que la plantilla del PDF lo resuelva sin
+    # necesidad de una consulta adicional.
+    remito.usuario_recepcion = autor
     remito.fecha_recepcion = ahora_db()
     if notas:
         # Se suma a lo que ya había: la nota del que recibe explica la
@@ -326,6 +363,14 @@ def confirmar_recepcion(
         remito.notas = "\n".join(filter(None, [remito.notas, normalizar_texto(notas)]))
     remito.updated_at = ahora_db()
     db.flush()
+
+    # Regenerar el PDF para que quede el nombre de quien recibió. El archivo
+    # se sobreescribe en el mismo path: el número no cambia, y guardar dos
+    # versiones no aportaría nada.
+    if remito.pdf_url:
+        from app.reports.remito_pdf import generar_pdf_remito
+        remito.pdf_url = generar_pdf_remito(db, remito)
+        db.flush()
 
     registrar_auditoria(
         db,
@@ -358,6 +403,8 @@ def listar_remitos(
     consulta = select(Remito).options(
         joinedload(Remito.origen),
         joinedload(Remito.destino),
+        joinedload(Remito.usuario_envio),
+        joinedload(Remito.usuario_recepcion),
     )
 
     if scope.restringido:

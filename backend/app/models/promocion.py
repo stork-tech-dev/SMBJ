@@ -22,6 +22,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -33,16 +34,20 @@ from app.core.database import Base
 
 class TipoPromocion(str, enum.Enum):
     """
-    Cómo se arman los grupos.
+    Cómo se arman los grupos o el descuento.
 
-    El número que importa —cuántas unidades entran en el grupo y cuántas se
-    pagan— no está en el nombre sino en `TAMANO_GRUPO` / `PAGAS_POR_GRUPO`,
-    abajo: así agregar un 4x3 es una línea y no salir a buscar `if`
-    repartidos por el service.
+    Para los tipos de grupo (DOS_X_UNO, TRES_X_DOS): el número que importa
+    —cuántas unidades entran en el grupo y cuántas se pagan— está en
+    `TAMANO_GRUPO` / `PAGAS_POR_GRUPO`, no en el nombre: así agregar un 4x3
+    es una línea y no salir a buscar `if` repartidos por el service.
+
+    Para PORCENTAJE: el `porcentaje_descuento` de la promoción se aplica
+    sobre cada unidad alcanzada. No hay grupos.
     """
 
     DOS_X_UNO = "dos_x_uno"
     TRES_X_DOS = "tres_x_dos"
+    PORCENTAJE = "porcentaje"
 
 
 # Cuántas unidades forman un grupo y cuántas de ellas se cobran. Lo que
@@ -58,10 +63,22 @@ PAGAS_POR_GRUPO: dict[TipoPromocion, int] = {
 
 
 class TipoAlcance(str, enum.Enum):
-    """A qué apunta una fila de alcance."""
+    """
+    A qué apunta una fila de alcance.
+
+    PRODUCTO / CATEGORIA: referencia_id apunta a un producto o categoría.
+    TODOS_PRODUCTOS / TODOS_CATEGORIAS: referencia_id = 0 (sin sentido lógico;
+        el service lo ignora y aplica a todo el catálogo).
+    PUNTO_DE_VENTA: referencia_id apunta a un PuntoDeVenta; 0 = todos.
+    MEDIO_DE_PAGO: referencia_id apunta a un MedioDePago; 0 = todos.
+    """
 
     PRODUCTO = "producto"
     CATEGORIA = "categoria"
+    TODOS_PRODUCTOS = "todos_productos"
+    TODOS_CATEGORIAS = "todos_categorias"
+    PUNTO_DE_VENTA = "punto_de_venta"
+    MEDIO_DE_PAGO = "medio_de_pago"
 
 
 def _enum(tipo, nombre):
@@ -76,6 +93,9 @@ class Promocion(Base):
 
     nombre: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
+    # Texto libre con aclaraciones internas (no se muestra a clientes).
+    nota: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     tipo: Mapped[TipoPromocion] = mapped_column(
         _enum(TipoPromocion, "tipo_promocion"), nullable=False
     )
@@ -83,6 +103,10 @@ class Promocion(Base):
     activo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true", index=True
     )
+
+    # Solo para tipo PORCENTAJE. NULL en los otros tipos.
+    # Rango 1-75: el service lo valida; la base pone el piso y el techo.
+    porcentaje_descuento: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # NULL = sin límite de ese lado. Una promo permanente tiene las dos en
     # NULL; una de temporada, las dos cargadas.
@@ -106,15 +130,21 @@ class Promocion(Base):
             "fecha_inicio IS NULL OR fecha_fin IS NULL OR fecha_inicio <= fecha_fin",
             name="ck_promociones_vigencia_coherente",
         ),
+        # El porcentaje tiene que estar en rango cuando viene.
+        CheckConstraint(
+            "porcentaje_descuento IS NULL OR "
+            "(porcentaje_descuento >= 1 AND porcentaje_descuento <= 75)",
+            name="ck_promociones_porcentaje_rango",
+        ),
     )
 
     @property
-    def tamano_grupo(self) -> int:
-        return TAMANO_GRUPO[self.tipo]
+    def tamano_grupo(self) -> int | None:
+        return TAMANO_GRUPO.get(self.tipo)
 
     @property
-    def pagas_por_grupo(self) -> int:
-        return PAGAS_POR_GRUPO[self.tipo]
+    def pagas_por_grupo(self) -> int | None:
+        return PAGAS_POR_GRUPO.get(self.tipo)
 
     def vigente_el(self, dia: date) -> bool:
         """

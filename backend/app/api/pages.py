@@ -159,7 +159,7 @@ SECCIONES_STOCK = [
         "modulo": Modulo.COMPRAS,
     },
     {
-        "nombre": "Movimientos de Stock",
+        "nombre": "Stock mínimo y descuentos de stock",
         "descripcion": "Lo que hay en cada ubicación, minimos y bajas",
         "url": "/stock",
         "modulo": Modulo.STOCK,
@@ -175,6 +175,18 @@ SECCIONES_STOCK = [
         "descripcion": "Conteos de inventario y sus diferencias",
         "url": "/auditorias-inventario",
         "modulo": Modulo.STOCK,
+    },
+]
+
+
+RUTA_HUB_REPORTES = "/reportes"
+
+SECCIONES_REPORTES = [
+    {
+        "nombre": "Consulta Stock",
+        "descripcion": "Stock de todos los productos en todos los locales",
+        "url": "/reportes/consulta-stock",
+        "modulo": Modulo.REPORTES,
     },
 ]
 
@@ -269,6 +281,12 @@ def secciones_stock(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Gestión de Stock visibles para el usuario."""
     es_maestra = _es_maestra(usuario)
     return [s for s in SECCIONES_STOCK if _visible(db, usuario, s, es_maestra)]
+
+
+def secciones_reportes(db: Session, usuario) -> list[dict]:
+    """Tarjetas del hub de Reportes visibles para el usuario."""
+    es_maestra = _es_maestra(usuario)
+    return [s for s in SECCIONES_REPORTES if _visible(db, usuario, s, es_maestra)]
 
 
 def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
@@ -516,7 +534,6 @@ async def configuracion(
 # vez de dar 404. Cuando cada módulo se implemente, su entrada sale de acá
 # y pasa a tener su propia ruta.
 MODULOS_PENDIENTES = {
-    "/reportes": "Reportes",
     "/ajustes": "Ajustes",
 }
 
@@ -608,6 +625,42 @@ async def dispositivos(
         request,
         "pages/dispositivos/listado.html",
         contexto_base(request, db, usuario, titulo="Dispositivos", ruta_activa="/configuracion"),
+    )
+
+
+# ============================================================================
+# REPORTES
+# ============================================================================
+
+
+@router.get(RUTA_HUB_REPORTES, response_class=HTMLResponse)
+async def reportes(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/reportes/hub.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Reportes",
+            ruta_activa=RUTA_HUB_REPORTES,
+            secciones=secciones_reportes(db, usuario),
+        ),
+    )
+
+
+@router.get("/reportes/consulta-stock", response_class=HTMLResponse)
+async def reportes_consulta_stock(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/reportes/consulta_stock.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Consulta Stock",
+            ruta_activa=RUTA_HUB_REPORTES,
+        ),
     )
 
 
@@ -768,7 +821,7 @@ async def stock(
     return templates.TemplateResponse(
         request,
         "pages/stock/listado.html",
-        _contexto_stock(request, db, usuario, "Movimientos de Stock", RUTA_HUB_STOCK),
+        _contexto_stock(request, db, usuario, "Stock mínimo y descuentos de stock", RUTA_HUB_STOCK),
     )
 
 

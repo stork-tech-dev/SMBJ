@@ -75,6 +75,9 @@ class RemitoResumen(BaseModel):
     origen: PuntoResumen
     destino: PuntoResumen
     pdf_url: str | None
+    # Nombres resueltos en el router (no son columnas: vienen de la relación).
+    usuario_envio_nombre: str | None = None
+    usuario_recepcion_nombre: str | None = None
 
 
 class RemitoResponse(RemitoResumen):

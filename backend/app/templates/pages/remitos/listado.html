@@ -99,6 +99,8 @@
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Ruta</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Enviado</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Enviado por</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Recibido por</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
                 </thead>
@@ -128,6 +130,12 @@
                             <td class="px-4 py-3 align-middle whitespace-nowrap text-sm text-texto-muted"
                                 x-text="fecha(r.fecha_envio)"></td>
 
+                            <td class="px-4 py-3 align-middle whitespace-nowrap text-sm text-texto-muted"
+                                x-text="r.usuario_envio_nombre || '—'"></td>
+
+                            <td class="px-4 py-3 align-middle whitespace-nowrap text-sm text-texto-muted"
+                                x-text="r.usuario_recepcion_nombre || '—'"></td>
+
                             <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
                                 {% call acciones() %}
                                     {{ accion('ver', texto='Detalle',
@@ -156,7 +164,7 @@
                     </template>
 
                     <tr x-show="!remitos.length && !cargando">
-                        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">
+                        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">
                             Sin resultados.
                         </td>
                     </tr>
@@ -345,6 +353,18 @@
                     </template>
                 </ol>
 
+                <div class="flex flex-wrap gap-x-8 gap-y-1 mt-4 text-sm text-texto-muted">
+                    <span>Enviado por:
+                        <span class="font-medium text-texto"
+                              x-text="detalle.remito?.usuario_envio_nombre || '—'"></span>
+                    </span>
+                    <span x-show="detalle.remito?.usuario_recepcion_nombre">
+                        Recibido por:
+                        <span class="font-medium text-texto"
+                              x-text="detalle.remito?.usuario_recepcion_nombre"></span>
+                    </span>
+                </div>
+
                 <table class="w-full border-collapse text-sm mt-6">
                     <thead>
                         <tr class="bg-surface-alt">
@@ -460,7 +480,7 @@
                                 <td class="px-4 py-3" x-text="item.descripcion"></td>
                                 <td class="px-4 py-3 text-right" x-text="item.enviada"></td>
                                 <td class="px-4 py-3 text-right">
-                                    <input type="number" min="0" step="1" :max="item.enviada"
+                                    <input type="number" min="0" step="1"
                                            x-model="item.recibida"
                                            class="w-20 text-right campo-linea"
                                            :class="Number(item.recibida) !== item.enviada
@@ -481,9 +501,9 @@
                 <p x-show="hayDiferencia()" x-cloak
                    class="mt-4 p-3 rounded-input border border-danger/40 bg-danger/5
                           text-sm text-texto-muted">
-                    Hay diferencias: el remito va a quedar marcado para revisar. Entra al
-                    stock lo que efectivamente llegó, y lo que falta NO vuelve al origen —
-                    ya salió de ahí.
+                    Hay diferencias: el remito va a quedar marcado para revisar. El stock
+                    del destino se ajusta a lo que se contó efectivamente — tanto si llegó
+                    de más como de menos.
                 </p>
 
                 <div class="mt-5 flex flex-col gap-1">

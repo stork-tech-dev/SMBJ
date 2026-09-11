@@ -327,11 +327,11 @@ def test_un_numero_de_confirmacion_incorrecto_no_recibe_nada(
     assert servicio.cantidad_en(db, con_stock.id, local.id) == 0
 
 
-def test_recibir_menos_deja_el_remito_con_diferencia(db, autor, con_stock, cd, local):
+def test_recibir_menos_ajusta_el_origen(db, autor, con_stock, cd, local):
     """
-    Entra lo que llegó, no lo que se envió. Lo que falta NO vuelve al origen:
-    ya salió de ahí, y darlo por presente en los dos lados sería inventar
-    mercadería.
+    Cuando se recibe menos de lo enviado la diferencia vuelve al origen: el
+    impacto neto en el sistema es lo que se recibió efectivamente, no lo que
+    se despachó. Sin el ajuste, esas unidades desaparecerían del sistema.
     """
     remito = servicio_remitos.crear_remito(
         db, autor, LIBRE,
@@ -348,24 +348,34 @@ def test_recibir_menos_deja_el_remito_con_diferencia(db, autor, con_stock, cd, l
 
     assert remito.estado == EstadoRemito.CON_DIFERENCIA
     assert servicio.cantidad_en(db, con_stock.id, local.id) == 28
-    assert servicio.cantidad_en(db, con_stock.id, cd.id) == 70
+    # Las 2 unidades faltantes vuelven al origen: el sistema queda balanceado.
+    assert servicio.cantidad_en(db, con_stock.id, cd.id) == 72
     assert remito.items[0].diferencia == -2
 
 
-def test_no_se_puede_recibir_mas_de_lo_enviado(db, autor, con_stock, cd, local):
+def test_recibir_mas_ajusta_el_origen(db, autor, con_stock, cd, local):
+    """
+    Cuando se recibe más de lo enviado, la diferencia extra se descuenta del
+    origen: el impacto neto es lo que llegó efectivamente al destino.
+    """
     remito = servicio_remitos.crear_remito(
         db, autor, LIBRE,
         punto_venta_origen_id=cd.id,
         punto_venta_destino_id=local.id,
         items=[{"variante_id": con_stock.id, "cantidad": 10}],
     )
+    servicio_remitos.confirmar_recepcion(
+        db, autor, LIBRE, remito.id,
+        numero_confirmacion=remito.numero,
+        recibidos={con_stock.id: 11},
+    )
+    db.flush()
 
-    with pytest.raises(ReglaDeNegocio, match="no puede recibirse más"):
-        servicio_remitos.confirmar_recepcion(
-            db, autor, LIBRE, remito.id,
-            numero_confirmacion=remito.numero,
-            recibidos={con_stock.id: 11},
-        )
+    assert remito.estado == EstadoRemito.CON_DIFERENCIA
+    assert servicio.cantidad_en(db, con_stock.id, local.id) == 11
+    # 1 unidad extra descontada del origen (100 - 10 al despachar - 1 de ajuste)
+    assert servicio.cantidad_en(db, con_stock.id, cd.id) == 89
+    assert remito.items[0].diferencia == 1
 
 
 def test_un_remito_confirmado_no_se_confirma_dos_veces(db, autor, con_stock, cd, local):
