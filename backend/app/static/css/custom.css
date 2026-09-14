@@ -193,6 +193,23 @@ body {
     transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* Controles de formulario: color del design system siempre.
+   Los navegadores móviles en modo oscuro aplican su propio color de texto
+   (negro o blanco) sin respetar el fondo del sistema — esto lo fuerza. */
+input,
+select,
+textarea {
+    color: var(--color-text);
+}
+
+/* Los select con campo-linea tienen background-color: transparent, lo que
+   hace que el dropdown nativo abra sin fondo visible en modo oscuro. Este
+   selector tiene especificidad mayor que .campo-linea y lo corrige. */
+select,
+select.campo-linea {
+    background-color: var(--color-surface);
+}
+
 /* ==========================================================================
    Ítem activo del sidebar
 
