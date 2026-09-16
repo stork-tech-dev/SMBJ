@@ -10,7 +10,7 @@ dentro de cada handler porque un endpoint que se olvide del filtro no falla
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -97,6 +97,7 @@ def consulta(
     busqueda: str | None = Query(default=None),
     categoria_id: int | None = Query(default=None),
     proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
     pagina: int = Query(default=1, ge=1),
     tamano: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -111,6 +112,7 @@ def consulta(
         busqueda=busqueda,
         categoria_id=categoria_id,
         proveedor_id=proveedor_id,
+        punto_de_venta_id=punto_de_venta_id,
         pagina=pagina,
         tamano=tamano,
     )
@@ -120,6 +122,40 @@ def consulta(
         total=total,
         pagina=pagina,
         tamano=tamano,
+    )
+
+
+@router.get(
+    "/consulta/exportar",
+    response_class=Response,
+    summary="Exportar la consulta cruzada de stock a Excel",
+)
+def consulta_exportar(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """
+    Mismo filtro que `/consulta`, pero sin paginar: exporta todas las filas
+    que matchean, no solo la página que se ve en pantalla.
+    """
+    from app.reports.consulta_stock_excel import generar_xls_consulta_stock
+
+    filas, columnas, _total = servicio.consulta_cruzada(
+        db,
+        busqueda=busqueda,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        punto_de_venta_id=punto_de_venta_id,
+        tamano=None,
+    )
+    return Response(
+        content=generar_xls_consulta_stock(filas, columnas),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="stock-por-local.xlsx"'},
     )
 
 

@@ -6,11 +6,23 @@
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/combobox.html" import combobox %}
 {% from "components/paginacion.html" import paginacion %}
+{% from "components/icons.html" import icono %}
 
 {% block contenido %}
 <div x-data="consultaStock()" x-init="cargarCatalogos(); cargar()">
 
-    {% call encabezado('Consulta Stock', volver_url='/reportes', volver_texto='Reportes') %}{% endcall %}
+    {% call encabezado('Stock por Local', volver_url='/gestion-de-stock',
+                       volver_texto='Gestión de Stock') %}
+        {# Link directo: el navegador dispara la descarga solo, sin JS de por
+           medio. Trae TODO lo que matchea los filtros activos, no solo la
+           página en pantalla (el endpoint no pagina). #}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
 
     {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
     <div class="flex flex-wrap items-center gap-4 mt-8">
@@ -41,6 +53,19 @@
                         etiqueta='Proveedor', label_oculto=true,
                         placeholder='Proveedor',
                         vacio='Todos los proveedores',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto-de-venta', 'puntosDeVenta', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Punto de Venta', label_oculto=true,
+                        placeholder='Punto de Venta',
+                        vacio='Todos los locales',
                         al_elegir='pagina = 1; cargar();',
                         clases='h-control w-full pl-4 pr-10 text-sm font-semibold
                                 bg-surface text-texto border-2 border-borde rounded-input

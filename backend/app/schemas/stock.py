@@ -159,13 +159,21 @@ class ResumenStock(BaseModel):
 
 
 class ConsultaStockColumna(BaseModel):
-    """Un punto de venta como columna de la tabla cruzada."""
+    """
+    Un punto de venta como columna de la tabla cruzada.
+
+    `tipo` viaja para que el filtro de "Puntos de Venta" pueda armar sus
+    opciones sin el CD (que ya se muestra siempre) sin pedirle nada a
+    /api/v1/puntos-de-venta — ese endpoint exige permiso de Configuración,
+    que un perfil con solo Reportes no tiene.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     codigo: str
     nombre: str
+    tipo: str
 
 
 class ConsultaStockFila(BaseModel):

@@ -461,8 +461,9 @@ def consulta_cruzada(
     busqueda: str | None = None,
     categoria_id: int | None = None,
     proveedor_id: int | None = None,
+    punto_de_venta_id: int | None = None,
     pagina: int = 1,
-    tamano: int = 10,
+    tamano: int | None = 10,
 ) -> tuple[list[dict], list[PuntoDeVenta], int]:
     """
     Tabla pivotada: variantes × puntos de venta.
@@ -470,15 +471,30 @@ def consulta_cruzada(
     Sin aislamiento por dispositivo: es una vista de reporting global para
     roles con acceso al módulo REPORTES.
 
+    `tamano=None` trae todas las filas que matchean los filtros, sin
+    paginar: lo usa la exportación a Excel, que necesita el total filtrado
+    y no solo la página que se ve en pantalla.
+
+    `punto_de_venta_id` angosta las COLUMNAS (no las filas): con un local
+    elegido, la tabla compara ese local contra el CD en vez de mostrar
+    todos los puntos de venta — el CD queda siempre porque es contra lo que
+    se compara cualquier local.
+
     Retorna (filas_pivot, columnas, total_variantes).
     """
     from sqlalchemy import case as sa_case, literal
 
-    # 1. Columnas: todos los PdV activos, CD primero, luego alpha por nombre
+    # 1. Columnas: todos los PdV activos, CD primero, luego alpha por nombre.
+    # Con punto_de_venta_id, se acota a ese local + el/los CD.
+    consulta_columnas = select(PuntoDeVenta).where(PuntoDeVenta.activo.is_(True))
+    if punto_de_venta_id is not None:
+        consulta_columnas = consulta_columnas.where(
+            (PuntoDeVenta.tipo == TipoPuntoVenta.CD)
+            | (PuntoDeVenta.id == punto_de_venta_id)
+        )
+
     columnas = db.execute(
-        select(PuntoDeVenta)
-        .where(PuntoDeVenta.activo.is_(True))
-        .order_by(
+        consulta_columnas.order_by(
             sa_case((PuntoDeVenta.tipo == TipoPuntoVenta.CD, literal(0)), else_=literal(1)),
             func.lower(PuntoDeVenta.nombre),
         )
@@ -514,15 +530,13 @@ def consulta_cruzada(
         select(func.count()).select_from(consulta_variantes.order_by(None).subquery())
     ).scalar_one()
 
-    variantes = (
-        db.execute(
-            consulta_variantes
-            .order_by(func.lower(Producto.descripcion), Variante.codigo_completo)
-            .limit(tamano)
-            .offset((pagina - 1) * tamano)
-        )
-        .unique().scalars().all()
+    consulta_variantes = consulta_variantes.order_by(
+        func.lower(Producto.descripcion), Variante.codigo_completo
     )
+    if tamano is not None:
+        consulta_variantes = consulta_variantes.limit(tamano).offset((pagina - 1) * tamano)
+
+    variantes = db.execute(consulta_variantes).unique().scalars().all()
 
     if not variantes:
         return [], list(columnas), total

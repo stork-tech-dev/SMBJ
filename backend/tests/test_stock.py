@@ -1096,3 +1096,167 @@ def test_una_variante_inexistente_no_mueve_stock(db, autor, cd):
             cantidad=1,
             punto_venta_destino_id=cd.id,
         )
+
+
+# ============================================================================
+# CONSULTA CRUZADA Y SU EXPORTACIÓN A EXCEL
+# ============================================================================
+
+
+@pytest.fixture
+def otra_variante(db, autor, config, cd):
+    """Un segundo producto, con stock, para distinguirlo por búsqueda."""
+    categoria = servicio_categorias.crear_categoria(db, autor, nombre="Ropa")
+    proveedor = servicio_proveedores.crear_proveedor(
+        db, autor, nombre="Textil del Este", dolar_actual=Decimal("1000")
+    )
+    producto = servicio_productos.crear_producto(
+        db, autor,
+        categoria_id=categoria.id,
+        proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"),
+        descripcion="Campera de cuero",
+    )
+    db.flush()
+    variante = producto.variantes[0]
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id,
+        cantidad=7,
+        punto_venta_destino_id=cd.id,
+    )
+    db.flush()
+    return variante
+
+
+def test_consulta_cruzada_sin_paginar_trae_todo(db, con_stock, otra_variante):
+    """
+    `tamano=None` es lo que usa la exportación: tiene que traer TODAS las
+    filas que matchean, no solo una página — a diferencia del listado en
+    pantalla, que sí pagina.
+    """
+    filas, _columnas, total = servicio.consulta_cruzada(db, tamano=None)
+
+    assert total == 2
+    assert len(filas) == 2
+    codigos = {f["codigo_completo"] for f in filas}
+    assert con_stock.codigo_completo in codigos
+    assert otra_variante.codigo_completo in codigos
+
+
+def test_consulta_cruzada_sin_paginar_respeta_filtros(db, con_stock, otra_variante):
+    """El export no ignora los filtros activos: solo trae lo que matchea."""
+    filas, _columnas, total = servicio.consulta_cruzada(db, busqueda="campera", tamano=None)
+
+    assert total == 1
+    assert filas[0]["codigo_completo"] == otra_variante.codigo_completo
+
+
+def test_exportar_consulta_stock_devuelve_xlsx_con_todas_las_filas(
+    client, login, autor, con_stock, otra_variante, cd,
+):
+    """
+    Extremo a extremo: el endpoint de exportación devuelve un .xlsx real,
+    con encabezado Código/Descripción + una columna por local, y sin
+    paginar (las dos variantes, no solo una página de 10).
+    """
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    headers = login(autor.username)
+    resp = client.get("/api/v1/stock/consulta/exportar", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "attachment" in resp.headers["content-disposition"]
+
+    wb = load_workbook(BytesIO(resp.content))
+    hoja = wb.active
+    filas = list(hoja.iter_rows(values_only=True))
+
+    assert filas[0][:2] == ("Código", "Descripción")
+    assert cd.nombre in filas[0]
+    # La celda de código lleva codigo_completo + verificador pegados, igual
+    # que el export de Auditoría de Stock.
+    codigos = {fila[0] for fila in filas[1:]}
+    assert any(c.startswith(con_stock.codigo_completo) for c in codigos)
+    assert any(c.startswith(otra_variante.codigo_completo) for c in codigos)
+
+
+def test_exportar_consulta_stock_respeta_busqueda(client, login, autor, con_stock, otra_variante):
+    """El botón "Exportar" del filtro activo no trae de más."""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    headers = login(autor.username)
+    resp = client.get(
+        "/api/v1/stock/consulta/exportar", params={"busqueda": "campera"}, headers=headers
+    )
+
+    wb = load_workbook(BytesIO(resp.content))
+    filas = list(wb.active.iter_rows(values_only=True))
+
+    assert len(filas) == 2  # encabezado + 1 fila
+    assert filas[1][0].startswith(otra_variante.codigo_completo)
+
+
+def test_consulta_cruzada_con_punto_de_venta_angosta_columnas_no_filas(
+    db, con_stock, otra_variante, cd, local,
+):
+    """
+    Elegir un local en el filtro acota las COLUMNAS a CD + ese local — pero
+    las filas de productos son las mismas que sin filtro (el filtro no
+    oculta productos, solo columnas de stock).
+    """
+    sin_filtro, _c, _t = servicio.consulta_cruzada(db, tamano=None)
+    con_filtro, columnas, total = servicio.consulta_cruzada(
+        db, punto_de_venta_id=local.id, tamano=None
+    )
+
+    assert {c.id for c in columnas} == {cd.id, local.id}
+    assert total == len(sin_filtro) == len(con_filtro)
+
+
+def test_consulta_api_respeta_filtro_punto_de_venta(
+    client, login, autor, con_stock, cd, local, otro_local,
+):
+    """El JSON que consume la pantalla también angosta columnas, no filas."""
+    headers = login(autor.username)
+    resp = client.get(
+        "/api/v1/stock/consulta",
+        params={"punto_de_venta_id": local.id},
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    datos = resp.json()
+    ids_columnas = {c["id"] for c in datos["columnas"]}
+    assert ids_columnas == {cd.id, local.id}
+    assert otro_local.id not in ids_columnas
+
+
+def test_exportar_consulta_stock_respeta_punto_de_venta(
+    client, login, autor, con_stock, cd, local, otro_local,
+):
+    """Mismo criterio en la exportación: el Excel solo trae CD + el local elegido."""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    headers = login(autor.username)
+    resp = client.get(
+        "/api/v1/stock/consulta/exportar",
+        params={"punto_de_venta_id": local.id},
+        headers=headers,
+    )
+
+    wb = load_workbook(BytesIO(resp.content))
+    encabezado = next(wb.active.iter_rows(values_only=True))
+
+    assert encabezado[2:] == (cd.nombre, local.nombre)
+    assert otro_local.nombre not in encabezado
