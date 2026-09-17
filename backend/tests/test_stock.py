@@ -1260,3 +1260,35 @@ def test_exportar_consulta_stock_respeta_punto_de_venta(
 
     assert encabezado[2:] == (cd.nombre, local.nombre)
     assert otro_local.nombre not in encabezado
+
+
+def test_listar_stock_busqueda_con_el_digito_verificador_incluido(db, con_stock, cd):
+    """
+    El caso del lector: entrega el código CON dígito verificador, y la
+    columna guarda el cuerpo sin él. Antes de este fix, `listar_stock`
+    solo comparaba contra `codigo_completo` y este código no aparecía.
+    """
+    filas, total = servicio.listar_stock(
+        db, LIBRE, busqueda=con_stock.codigo_con_verificador
+    )
+
+    assert total == 1
+    assert filas[0].variante_id == con_stock.id
+
+
+def test_listar_stock_busqueda_sin_el_digito_verificador_sigue_andando(db, con_stock, cd):
+    """El código sin verificador (como ya funcionaba) no se rompe con el fix."""
+    filas, total = servicio.listar_stock(db, LIBRE, busqueda=con_stock.codigo_completo)
+
+    assert total == 1
+    assert filas[0].variante_id == con_stock.id
+
+
+def test_consulta_cruzada_busqueda_con_el_digito_verificador_incluido(db, con_stock):
+    """Mismo caso que `listar_stock`, ahora en la tabla cruzada / export a Excel."""
+    filas, _columnas, total = servicio.consulta_cruzada(
+        db, busqueda=con_stock.codigo_con_verificador, tamano=None
+    )
+
+    assert total == 1
+    assert filas[0]["codigo_completo"] == con_stock.codigo_completo

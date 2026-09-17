@@ -17,7 +17,7 @@ invertir el sentido de una operación.
 
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -405,12 +405,19 @@ def listar_stock(
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
     if busqueda:
         # Las mismas tres formas de nombrar un artículo que el listado de
-        # productos: código de etiqueta, SKU o parte de la descripción.
-        patron = f"%{busqueda.strip()}%"
+        # productos: código de etiqueta (con o sin dígito verificador), SKU
+        # o parte de la descripción — mismo criterio, un solo lugar
+        # (Principio 2: `condiciones_codigo_variante`).
+        from app.services.productos import condiciones_codigo_variante
+
+        texto = busqueda.strip().upper()
+        patron = f"%{texto}%"
         consulta = consulta.where(
-            Variante.codigo_completo.ilike(patron)
-            | Producto.sku.ilike(patron)
-            | Producto.descripcion.ilike(patron)
+            or_(
+                *condiciones_codigo_variante(texto),
+                Producto.sku.ilike(patron),
+                Producto.descripcion.ilike(patron),
+            )
         )
     if solo_bajo_minimo:
         consulta = consulta.where(Stock.cantidad <= _minimo_sql())
@@ -510,11 +517,18 @@ def consulta_cruzada(
         .options(joinedload(Variante.producto))
     )
     if busqueda:
-        patron = f"%{busqueda.strip()}%"
+        # Mismo criterio que `listar_stock` (Principio 2): código de
+        # etiqueta con o sin dígito verificador, SKU o descripción.
+        from app.services.productos import condiciones_codigo_variante
+
+        texto = busqueda.strip().upper()
+        patron = f"%{texto}%"
         consulta_variantes = consulta_variantes.where(
-            Variante.codigo_completo.ilike(patron)
-            | Producto.sku.ilike(patron)
-            | Producto.descripcion.ilike(patron)
+            or_(
+                *condiciones_codigo_variante(texto),
+                Producto.sku.ilike(patron),
+                Producto.descripcion.ilike(patron),
+            )
         )
     if categoria_id is not None:
         from app.services.categorias import rama_de_ids
