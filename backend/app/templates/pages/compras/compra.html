@@ -365,7 +365,8 @@
              proveedorFijo = Number(proveedor_id);
              abrirFormProducto = false;
          }">
-        {{ producto_form_modal(es_maestra=es_maestra, nivel_maximo=nivel_maximo) }}
+        {{ producto_form_modal(es_maestra=es_maestra, nivel_maximo=nivel_maximo,
+                               mostrar_stock_inicial=false) }}
     </div>
 
     {# ---------- Modal: agregar variantes al producto recién creado ---------- #}

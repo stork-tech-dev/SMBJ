@@ -5,9 +5,13 @@
    Accede a `categorias` y `proveedores` del componente padre.
 
    Parámetros:
-     es_maestra        mostrar checkbox de stock infinito
-     nivel_maximo      niveles de categoría (default 5)
-     mostrar_variantes mostrar botón "Crear con variantes" (default true)
+     es_maestra           mostrar checkbox de stock infinito
+     nivel_maximo         niveles de categoría (default 5)
+     mostrar_variantes    mostrar botón "Crear con variantes" (default true)
+     mostrar_stock_inicial  mostrar el campo de stock al crear (default true).
+       En Compras va en false: el stock de un producto nuevo lo carga el
+       propio ingreso de mercadería, no este modal — mostrarlo ahí invita a
+       cargarlo dos veces.
 
    Uso:
      {% from "components/producto_form.html" import producto_form_modal %}
@@ -17,7 +21,7 @@
 {% from "components/icons.html" import icono %}
 {% from "components/combobox.html" import combobox %}
 
-{% macro producto_form_modal(es_maestra=false, nivel_maximo=5, mostrar_variantes=true) %}
+{% macro producto_form_modal(es_maestra=false, nivel_maximo=5, mostrar_variantes=true, mostrar_stock_inicial=true) %}
 <div x-show="form.abierto" x-cloak
      @keydown.escape.window="form.abierto && (similares.abierto ? null : (form.abierto = false))"
      class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
@@ -284,7 +288,7 @@
                 {# ---------- Foto y stock inicial (solo alta) ---------- #}
                 <template x-if="!form.id">
                     <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="flex flex-col gap-1">
+                        <div class="flex flex-col gap-1{{ ' sm:col-span-2' if not mostrar_stock_inicial else '' }}">
                             <span class="text-sm font-semibold text-texto-header">Foto</span>
 
                             <div class="flex flex-wrap items-center gap-3">
@@ -326,6 +330,7 @@
                             </span>
                         </div>
 
+                        {% if mostrar_stock_inicial %}
                         <div class="flex flex-col gap-1">
                             <label for="pf-stock-ini" class="text-sm font-semibold text-texto-header">
                                 Stock inicial
@@ -342,6 +347,7 @@
                                 Se asigna al Centro de Distribución.
                             </span>
                         </div>
+                        {% endif %}
                     </div>
                 </template>
             </div>
