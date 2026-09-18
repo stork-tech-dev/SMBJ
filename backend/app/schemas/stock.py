@@ -62,6 +62,19 @@ class StockResponse(BaseModel):
     updated_at: datetime
     variante: VarianteEnStock
     punto_de_venta: PuntoResumen
+    # Precio de lista con el descuento propio del producto ya aplicado —
+    # mismo cálculo que usa el carrito real (`agregar_item`), para que el
+    # precio de esta consulta y el que se termina cobrando sean el mismo
+    # número. No incluye promociones (2x1, 3x2, % por promo): esas dependen
+    # de qué más hay en el carrito y no tienen "precio de una unidad" fuera
+    # de él.
+    precio_con_descuento: Decimal
+    # Unidades de esta variante que el usuario que pide el listado ya tiene
+    # en SU venta en curso en esta ubicación. 0 salvo que se pida con
+    # `restar_carrito=True` (ver `listar_stock`). No es el stock real —
+    # la columna `stock.cantidad` no se toca — es para que la pantalla de
+    # consulta no ofrezca vender lo que ya se está vendiendo.
+    reservado_carrito: int = 0
 
 
 class StockMinimos(BaseModel):

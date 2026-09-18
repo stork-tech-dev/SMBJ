@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.device_deps import get_current_device
 from app.core.device_scope import DeviceScope, get_device_scope
 from app.core.permisos import Modulo, Recurso, requiere_permiso
 from app.core.utils import ip_de_request
@@ -63,11 +64,23 @@ def listar(
     ),
     solo_bajo_minimo: bool = Query(default=False),
     incluir_sin_stock: bool = Query(default=True),
+    todos_los_locales: bool = Query(
+        default=False,
+        description="Solo lectura: ignora el aislamiento por dispositivo "
+        "para que una vendedora pueda ver cuánto hay en otros locales.",
+    ),
+    restar_carrito: bool = Query(
+        default=False,
+        description="Resta de la respuesta (campo reservado_carrito, no de "
+        "`cantidad`) lo que el usuario ya tiene en su propia venta en curso "
+        "en la ubicación de su dispositivo.",
+    ),
     pagina: int = Query(default=1, ge=1),
     tamano: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     scope: DeviceScope = Depends(get_device_scope),
-    _=Depends(requiere_permiso(Modulo.STOCK, "ver")),
+    dispositivo=Depends(get_current_device),
+    autor=Depends(requiere_permiso(Modulo.STOCK, "ver")),
 ):
     """
     Filtros del Principio 5, todos resueltos en el backend.
@@ -84,6 +97,11 @@ def listar(
         busqueda=busqueda,
         solo_bajo_minimo=solo_bajo_minimo,
         incluir_sin_stock=incluir_sin_stock,
+        todos_los_locales=todos_los_locales,
+        usuario_id=autor.id if restar_carrito else None,
+        punto_de_venta_dispositivo=(
+            dispositivo.punto_de_venta_id if restar_carrito and dispositivo else None
+        ),
         pagina=pagina,
         tamano=tamano,
     )

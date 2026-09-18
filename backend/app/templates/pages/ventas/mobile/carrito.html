@@ -39,10 +39,17 @@
                 <template x-for="i in venta.items" :key="i.id">
                     <li class="py-3 flex items-start gap-3">
                         <div class="min-w-0 flex-1">
+                            {# Descripción del producto + la de la variante
+                               (si no es la BASE): "Zapatilla Lona — Roja". #}
                             <p class="text-base font-medium truncate"
-                               x-text="i.variante?.producto?.descripcion || '—'"></p>
-                            <p class="text-xs text-texto-muted truncate"
-                               x-text="i.variante?.producto?.categoria?.nombre || ''"></p>
+                               x-text="(i.variante?.producto?.descripcion || '—')
+                                       + (i.variante?.descripcion_sufijo ? ' — ' + i.variante.descripcion_sufijo : '')"></p>
+                            <p class="text-xs text-texto-muted truncate">
+                                <span x-text="i.variante?.producto?.categoria?.nombre || ''"></span>
+                                <span class="font-mono"
+                                      x-text="(i.variante?.producto?.categoria?.nombre ? ' · ' : '')
+                                              + (i.variante?.codigo_completo || '') + (i.variante?.verificador || '')"></span>
+                            </p>
 
                             <p class="text-xs mt-0.5">
                                 <span x-show="i.en_promocion" class="text-success font-semibold"

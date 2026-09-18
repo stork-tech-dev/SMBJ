@@ -387,11 +387,32 @@ def listar_stock(
     busqueda: str | None = None,
     solo_bajo_minimo: bool = False,
     incluir_sin_stock: bool = True,
+    todos_los_locales: bool = False,
+    usuario_id: int | None = None,
+    punto_de_venta_dispositivo: int | None = None,
     pagina: int = 1,
     tamano: int = 50,
 ) -> tuple[list[Stock], int]:
-    """Filtros del Principio 5, todos resueltos en el backend."""
-    consulta = _consulta_base(scope)
+    """
+    Filtros del Principio 5, todos resueltos en el backend.
+
+    `todos_los_locales=True` es la única excepción al aislamiento por
+    dispositivo de todo el módulo: una vendedora consultando si OTRO local
+    tiene stock para el cliente que tiene enfrente ("acá no hay, ¿dónde
+    sí?"). Es de solo lectura — no toca `DeviceScope.exigir()`, que sigue
+    bloqueando cualquier baja, remito o movimiento sobre un local ajeno
+    exactamente igual que siempre.
+
+    `usuario_id` + `punto_de_venta_dispositivo` (los dos juntos, o ninguno)
+    calculan `StockResponse.reservado_carrito`: cuánto de cada variante ya
+    tiene ESE usuario en SU venta en curso en ESA ubicación. No toca
+    `Stock.cantidad` — la columna sigue siendo el stock real, así la
+    pantalla general de stock no se ve afectada; es dato adicional para que
+    la consulta de stock del celular no ofrezca vender lo que ya se está
+    vendiendo.
+    """
+    consulta_scope = DeviceScope(restringido=False) if todos_los_locales else scope
+    consulta = _consulta_base(consulta_scope)
 
     if punto_de_venta_id is not None:
         # Si un vendedor pide otra ubicación, el scope ya la descartó arriba;
@@ -440,7 +461,43 @@ def listar_stock(
         .scalars()
         .all()
     )
-    return list(filas), total
+    filas = list(filas)
+
+    # Precio con el descuento propio del producto ya aplicado — mismo
+    # cálculo que `agregar_item` en ventas.py, para que el precio de esta
+    # consulta y el que se termina cobrando sean el mismo número.
+    from app.services import configuracion as servicio_configuracion
+    from app.services import descuentos as servicio_descuentos
+
+    config = servicio_configuracion.obtener_configuracion(db)
+    redondeo = Decimal(config.redondeo) if config else Decimal("1")
+
+    # Lo que el usuario ya tiene en SU carrito en curso en esa ubicación
+    # puntual, variante por variante.
+    reservas: dict[int, int] = {}
+    if usuario_id is not None and punto_de_venta_dispositivo is not None:
+        from app.services.ventas import venta_en_curso
+
+        venta = venta_en_curso(db, usuario_id, punto_de_venta_dispositivo)
+        if venta is not None:
+            for item in venta.items:
+                reservas[item.variante_id] = reservas.get(item.variante_id, 0) + 1
+
+    for fila in filas:
+        producto = fila.variante.producto
+        fila.precio_con_descuento = servicio_descuentos.aplicar_descuentos(
+            Decimal(fila.variante.precio_venta_efectivo),
+            Decimal(producto.descuento_producto),
+            Decimal("0"),
+            redondeo,
+        )
+        fila.reservado_carrito = (
+            reservas.get(fila.variante_id, 0)
+            if fila.punto_de_venta_id == punto_de_venta_dispositivo
+            else 0
+        )
+
+    return filas, total
 
 
 def alertas(db: Session, scope: DeviceScope, limite: int = 200) -> list[Stock]:

@@ -869,6 +869,68 @@ def test_el_listado_de_stock_se_filtra_al_local_del_vendedor(
     assert filas[0].punto_de_venta_id == local.id
 
 
+def test_todos_los_locales_es_la_excepcion_de_solo_lectura(
+    db, autor, variante, cd, local, otro_local
+):
+    """
+    La vendedora restringida a un local puede pedir explícitamente ver los
+    demás (y el CD) — es la única excepción de lectura al aislamiento por
+    dispositivo. Sin el flag sigue viendo solo el suyo (test de arriba).
+    """
+    for punto in (cd, local, otro_local):
+        servicio.aplicar_movimiento(
+            db, autor,
+            tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+            variante_id=variante.id,
+            cantidad=10,
+            punto_venta_destino_id=punto.id,
+        )
+    db.flush()
+
+    filas, total = servicio.listar_stock(
+        db, DeviceScope(restringido=True, punto_de_venta_id=local.id),
+        todos_los_locales=True,
+    )
+
+    assert total == 3
+    assert {f.punto_de_venta_id for f in filas} == {cd.id, local.id, otro_local.id}
+
+
+def test_api_todos_los_locales_le_muestra_al_vendedor_otros_locales(
+    client, db, crear_usuario, dar_permiso, roles, autor, variante, cd, local, otro_local,
+):
+    """Extremo a extremo: un vendedor real, logueado, con su dispositivo."""
+    from app.core.permisos import Modulo
+    from app.models.dispositivo import Dispositivo
+
+    for punto in (cd, local, otro_local):
+        servicio.aplicar_movimiento(
+            db, autor,
+            tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+            variante_id=variante.id,
+            cantidad=10,
+            punto_venta_destino_id=punto.id,
+        )
+    db.flush()
+
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.STOCK, ver=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Mostrador", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    sin_flag = client.get("/api/v1/stock").json()
+    assert sin_flag["total"] == 1
+
+    con_flag = client.get("/api/v1/stock", params={"todos_los_locales": "true"}).json()
+    assert con_flag["total"] == 3
+    puntos = {fila["punto_de_venta"]["id"] for fila in con_flag["resultados"]}
+    assert puntos == {cd.id, local.id, otro_local.id}
+
+
 def test_el_listado_de_stock_de_un_vendedor_sin_asignacion_viene_vacio(
     db, autor, con_stock
 ):
@@ -1292,3 +1354,64 @@ def test_consulta_cruzada_busqueda_con_el_digito_verificador_incluido(db, con_st
 
     assert total == 1
     assert filas[0]["codigo_completo"] == con_stock.codigo_completo
+
+
+# ============================================================================
+# PRECIO CON DESCUENTO Y STOCK RESERVADO EN CARRITO
+# ============================================================================
+
+
+def test_listar_stock_incluye_precio_con_descuento(db, con_stock):
+    """
+    Mismo cálculo que usa el carrito real (`agregar_item`): el precio de
+    esta consulta y el que se termina cobrando tienen que ser el mismo
+    número.
+    """
+    from app.services import descuentos as servicio_descuentos
+
+    producto = con_stock.producto
+    producto.descuento_producto = Decimal("10")
+    db.flush()
+
+    filas, _total = servicio.listar_stock(db, LIBRE, busqueda=con_stock.codigo_completo)
+
+    esperado = servicio_descuentos.aplicar_descuentos(
+        Decimal(con_stock.precio_venta_efectivo),
+        Decimal("10"),
+        Decimal("0"),
+        Decimal("1000.00"),  # redondeo del fixture `config`
+    )
+    assert filas[0].precio_con_descuento == esperado
+    assert filas[0].precio_con_descuento < producto.precio_venta
+
+
+def test_listar_stock_sin_restar_carrito_no_calcula_reservado(db, con_stock, autor, cd):
+    """Comportamiento por defecto (pantalla general de Stock): sin pedirlo, 0."""
+    filas, _total = servicio.listar_stock(db, LIBRE, busqueda=con_stock.codigo_completo)
+
+    assert filas[0].reservado_carrito == 0
+    assert filas[0].cantidad == 100  # el stock real, sin tocar
+
+
+def test_listar_stock_restar_carrito_resta_lo_reservado(db, autor, con_stock, cd):
+    """
+    Lo que ya está en el carrito en curso del usuario NO se toca en
+    `cantidad` (el stock real sigue igual), pero se informa aparte para que
+    la consulta de stock no ofrezca vender lo que ya se está vendiendo.
+    """
+    from app.core.device_scope import DeviceScope
+    from app.services import ventas as servicio_ventas
+
+    dispositivo = _dispositivo(db, True, cd.id)
+    scope = DeviceScope(restringido=True, punto_de_venta_id=cd.id)
+    venta = servicio_ventas.iniciar_venta(db, autor, dispositivo, scope)
+    servicio_ventas.agregar_item(db, autor, venta, variante_id=con_stock.id)
+    db.flush()
+
+    filas, _total = servicio.listar_stock(
+        db, LIBRE, busqueda=con_stock.codigo_completo,
+        usuario_id=autor.id, punto_de_venta_dispositivo=cd.id,
+    )
+
+    assert filas[0].cantidad == 100
+    assert filas[0].reservado_carrito == 1
