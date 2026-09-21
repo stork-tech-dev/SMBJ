@@ -59,33 +59,15 @@ function consultaStock() {
             }
         },
 
-        /**
-         * Camino completo de una categoría: "Joyas - Anillos - Plata".
-         *
-         * Se arma acá y no en la API porque `categorias` ya está cargado en
-         * memoria con el `parent_id` de cada nodo (igual que en productos.js).
-         */
+        // Camino completo de una categoría: "Joyas - Anillos - Plata".
+        // Implementación compartida en app.js (Principio 2).
         rutaCategoria(categoria) {
-            if (!categoria) return '—';
-
-            const ids = this.rutaDeIds(categoria.id);
-            if (!ids.length) return categoria.nombre || '—';
-
-            const porId = new Map(this.categorias.map((c) => [c.id, c]));
-            return ids.map((id) => porId.get(id).nombre).join(' - ');
+            return window.rutaCategoria(this.categorias, categoria);
         },
 
         /** Los ids desde la raíz hasta la categoría dada, ella incluida. */
         rutaDeIds(categoriaId) {
-            const porId = new Map(this.categorias.map((c) => [c.id, c]));
-            const ids = [];
-
-            let actual = porId.get(Number(categoriaId));
-            for (let i = 0; i < 5 && actual; i++) {
-                ids.unshift(actual.id);
-                actual = actual.parent_id ? porId.get(actual.parent_id) : null;
-            }
-            return ids;
+            return window.rutaDeIds(this.categorias, categoriaId);
         },
 
         limpiar() {

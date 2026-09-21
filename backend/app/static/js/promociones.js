@@ -23,6 +23,7 @@ const URL_CATALOGOS = '/api/v1/configuracion/promociones/catalogos';
 function abmPromociones() {
     return {
         promociones: [],
+        categorias: [],
         cargando: false,
         filtros: { nombre: '', tipo: '', vigente: '', activo: 'true' },
 
@@ -57,7 +58,7 @@ function abmPromociones() {
             if (!p.alcances?.length) return '—';
             // Los dos primeros y un contador: la columna tiene que entrar en
             // la fila, y la lista completa está en el modal de edición.
-            const nombres = p.alcances.map((a) => a.nombre || `#${a.referencia_id}`);
+            const nombres = p.alcances.map((a) => this.nombreAlcance(a));
             const visibles = nombres.slice(0, 2).join(', ');
             return nombres.length > 2
                 ? `${visibles} +${nombres.length - 2}`
@@ -104,6 +105,42 @@ function abmPromociones() {
                 // No bloquear el modal si los catálogos fallan: el usuario
                 // puede seguir cargando sin restricciones de sucursal/medio.
             }
+        },
+
+        /**
+         * Lista plana completa de categorías, con `parent_id`. Se carga una
+         * sola vez al entrar a la pantalla (no de forma lazy en el modal)
+         * porque la columna "Alcance" del listado también necesita armar el
+         * camino completo de cada categoría.
+         */
+        async cargarCategorias() {
+            try {
+                const resp = await fetch(URL_CATEGORIAS, { credentials: 'same-origin' });
+                if (!resp.ok) return;
+                this.categorias = await resp.json();
+            } catch {
+                // Sin el catálogo, los nombres de categoría quedan sin ruta
+                // (fallback a nombre suelto) pero la pantalla sigue usable.
+            }
+        },
+
+        // Camino completo de una categoría: "Calzado - Zapatillas - Deportivas".
+        // Implementación compartida en app.js (Principio 2).
+        rutaCategoria(categoria) {
+            return window.rutaCategoria(this.categorias, categoria);
+        },
+
+        /**
+         * Nombre a mostrar de un alcance ya guardado: para categorías, el
+         * camino completo (dos ramas pueden tener una subcategoría con el
+         * mismo nombre); para productos y el resto, el nombre tal cual lo
+         * manda el backend.
+         */
+        nombreAlcance(a) {
+            if (a.tipo_alcance === 'categoria') {
+                return this.rutaCategoria({ id: a.referencia_id, nombre: a.nombre });
+            }
+            return a.nombre || `#${a.referencia_id}`;
         },
 
         /* "Limpiar" vuelve al estado de entrada, no a "mostrar todo". */
@@ -154,7 +191,7 @@ function abmPromociones() {
                     alcancesProductoCategoria.push({
                         tipo_alcance: a.tipo_alcance,
                         referencia_id: a.referencia_id,
-                        nombre: a.nombre || `#${a.referencia_id}`,
+                        nombre: this.nombreAlcance(a),
                     });
                 }
             }
@@ -194,7 +231,12 @@ function abmPromociones() {
                     );
                     if (!resp.ok) throw new Error('No se pudieron buscar categorías');
                     const datos = await resp.json();
-                    this.busqueda.opciones = datos.map((c) => ({ id: c.id, nombre: c.nombre }));
+                    // El camino completo, no el nombre suelto: dos ramas
+                    // pueden tener una subcategoría con el mismo nombre.
+                    this.busqueda.opciones = datos.map((c) => ({
+                        id: c.id,
+                        nombre: this.rutaCategoria(c),
+                    }));
                 } else {
                     const resp = await fetch(
                         `${URL_PRODUCTOS}?descripcion=${encodeURIComponent(texto)}&tamano=20`,

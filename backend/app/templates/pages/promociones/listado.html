@@ -13,7 +13,7 @@
 {% from "components/switch_activos.html" import switch_activos %}
 
 {% block contenido %}
-<div x-data="abmPromociones()" x-init="cargar()">
+<div x-data="abmPromociones()" x-init="cargar(); cargarCategorias()">
 
     {% call encabezado('Promociones', volver_url='/configuracion',
                        volver_texto='Configuraciones') %}
