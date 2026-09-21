@@ -1198,7 +1198,7 @@ def test_consulta_cruzada_sin_paginar_trae_todo(db, con_stock, otra_variante):
     filas que matchean, no solo una página — a diferencia del listado en
     pantalla, que sí pagina.
     """
-    filas, _columnas, total = servicio.consulta_cruzada(db, tamano=None)
+    filas, _columnas, total, _opciones = servicio.consulta_cruzada(db, tamano=None)
 
     assert total == 2
     assert len(filas) == 2
@@ -1209,7 +1209,9 @@ def test_consulta_cruzada_sin_paginar_trae_todo(db, con_stock, otra_variante):
 
 def test_consulta_cruzada_sin_paginar_respeta_filtros(db, con_stock, otra_variante):
     """El export no ignora los filtros activos: solo trae lo que matchea."""
-    filas, _columnas, total = servicio.consulta_cruzada(db, busqueda="campera", tamano=None)
+    filas, _columnas, total, _opciones = servicio.consulta_cruzada(
+        db, busqueda="campera", tamano=None
+    )
 
     assert total == 1
     assert filas[0]["codigo_completo"] == otra_variante.codigo_completo
@@ -1275,8 +1277,8 @@ def test_consulta_cruzada_con_punto_de_venta_angosta_columnas_no_filas(
     las filas de productos son las mismas que sin filtro (el filtro no
     oculta productos, solo columnas de stock).
     """
-    sin_filtro, _c, _t = servicio.consulta_cruzada(db, tamano=None)
-    con_filtro, columnas, total = servicio.consulta_cruzada(
+    sin_filtro, _c, _t, _o = servicio.consulta_cruzada(db, tamano=None)
+    con_filtro, columnas, total, _opciones = servicio.consulta_cruzada(
         db, punto_de_venta_id=local.id, tamano=None
     )
 
@@ -1348,7 +1350,7 @@ def test_listar_stock_busqueda_sin_el_digito_verificador_sigue_andando(db, con_s
 
 def test_consulta_cruzada_busqueda_con_el_digito_verificador_incluido(db, con_stock):
     """Mismo caso que `listar_stock`, ahora en la tabla cruzada / export a Excel."""
-    filas, _columnas, total = servicio.consulta_cruzada(
+    filas, _columnas, total, _opciones = servicio.consulta_cruzada(
         db, busqueda=con_stock.codigo_con_verificador, tamano=None
     )
 
@@ -1415,3 +1417,133 @@ def test_listar_stock_restar_carrito_resta_lo_reservado(db, autor, con_stock, cd
 
     assert filas[0].cantidad == 100
     assert filas[0].reservado_carrito == 1
+
+
+# ============================================================================
+# UBICACIONES ESPECIALES — no cuentan como stock vendible
+# ============================================================================
+
+
+def test_listar_stock_excluye_ubicaciones_especiales(
+    db, autor, variante, crear_punto_de_venta,
+):
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id,
+        cantidad=5,
+        punto_venta_destino_id=especial.id,
+    )
+    db.flush()
+
+    filas, total = servicio.listar_stock(db, LIBRE, busqueda=variante.codigo_completo)
+
+    assert total == 0
+    assert all(f.punto_de_venta_id != especial.id for f in filas)
+
+
+def test_stock_total_excluye_ubicaciones_especiales(
+    db, autor, con_stock, crear_punto_de_venta,
+):
+    """`Variante.stock_total` es lo que ve la vendedora como "cuánto hay"."""
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+    db.refresh(con_stock)  # `stock_total` quedó cacheado en 0 desde antes del movimiento
+    assert con_stock.stock_total == 100
+
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=con_stock.id,
+        cantidad=5,
+        punto_venta_destino_id=especial.id,
+    )
+    db.flush()
+    db.refresh(con_stock)
+
+    assert con_stock.stock_total == 100  # los 5 fallados no suman
+
+
+def test_consulta_cruzada_excluye_especiales_por_defecto_pero_las_ofrece_como_filtro(
+    db, con_stock, cd, crear_punto_de_venta,
+):
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+
+    _filas, columnas, _total, opciones = servicio.consulta_cruzada(db, tamano=None)
+    assert especial.id not in {c.id for c in columnas}
+    assert especial.id in {o.id for o in opciones}
+    assert cd.id not in {o.id for o in opciones}  # el CD nunca es una "opción"
+
+    _filas2, columnas2, _total2, _opciones2 = servicio.consulta_cruzada(
+        db, punto_de_venta_id=especial.id, tamano=None
+    )
+    assert {c.id for c in columnas2} == {cd.id, especial.id}
+
+
+# ============================================================================
+# ARMAR ENVÍOS DESDE EL CELULAR — origen fijo, destino CD/Especiales
+# ============================================================================
+
+
+def test_vendedor_restringido_puede_remitir_a_ubicacion_especial(
+    db, autor, con_stock, local, crear_punto_de_venta,
+):
+    """
+    El caso real: un vendedor atado a su local manda productos fallados al
+    CD o a una Ubicación Especial — el mismo `crear_remito` de siempre, con
+    un `scope` restringido al local de origen.
+    """
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=con_stock.id,
+        cantidad=10,
+        punto_venta_destino_id=local.id,
+    )
+    db.flush()
+
+    scope = DeviceScope(restringido=True, punto_de_venta_id=local.id)
+    remito = servicio_remitos.crear_remito(
+        db, autor, scope,
+        punto_venta_origen_id=local.id,
+        punto_venta_destino_id=especial.id,
+        items=[{"variante_id": con_stock.id, "cantidad": 3}],
+    )
+    db.flush()
+
+    assert remito.punto_venta_destino_id == especial.id
+    assert servicio.cantidad_en(db, con_stock.id, local.id) == 7
+
+
+def test_endpoint_ubicaciones_incluir_especiales_para_vendedor_restringido(
+    client, db, crear_usuario, dar_permiso, roles, local, cd, otro_local,
+    crear_punto_de_venta,
+):
+    """
+    Sin esto el combo de destino de "Armar envío" en el celular queda
+    siempre vacío: el endpoint recortaba TODO a la ubicación propia, sin
+    dejar ver el CD ni las Ubicaciones Especiales.
+    """
+    from app.core.permisos import Modulo
+    from app.models.dispositivo import Dispositivo
+
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.STOCK, ver=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Mostrador", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    resp = client.get("/api/v1/stock/ubicaciones", params={"incluir_especiales": "true"})
+    assert resp.status_code == 200
+    nombres = {p["nombre"] for p in resp.json()}
+
+    # >=: además de mis fixtures, puede aparecer la "Productos Fallados" del
+    # seed de la migración 0032 — es otra Ubicación Especial activa más.
+    assert nombres >= {local.nombre, cd.nombre, especial.nombre}
+    assert otro_local.nombre not in nombres

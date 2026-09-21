@@ -207,3 +207,8 @@ class ConsultaStockResponse(BaseModel):
     total: int
     pagina: int
     tamano: int
+    # Todas las ubicaciones no-CD activas (Ubicaciones Especiales incluidas),
+    # para el combo de filtro — independiente de qué haya en `columnas` en
+    # este momento. Sin esto el combo no podría ofrecer una Ubicación
+    # Especial: por defecto nunca está en `columnas`.
+    opciones_locales: list[ConsultaStockColumna]

@@ -314,7 +314,10 @@ def catalogos_motivos(
 
     pdvs = db.execute(
         select(PuntoDeVenta)
-        .where(PuntoDeVenta.activo.is_(True), PuntoDeVenta.tipo != TipoPuntoVenta.CD)
+        .where(
+            PuntoDeVenta.activo.is_(True),
+            PuntoDeVenta.tipo.not_in([TipoPuntoVenta.CD, TipoPuntoVenta.ESPECIAL]),
+        )
         .order_by(PuntoDeVenta.nombre)
     ).scalars().all()
     medios = db.execute(
@@ -484,7 +487,10 @@ def catalogos_promociones(
     from app.models.punto_de_venta import TipoPuntoVenta
     pdvs = db.execute(
         select(PuntoDeVenta)
-        .where(PuntoDeVenta.activo.is_(True), PuntoDeVenta.tipo != TipoPuntoVenta.CD)
+        .where(
+            PuntoDeVenta.activo.is_(True),
+            PuntoDeVenta.tipo.not_in([TipoPuntoVenta.CD, TipoPuntoVenta.ESPECIAL]),
+        )
         .order_by(PuntoDeVenta.nombre)
     ).scalars().all()
     medios = db.execute(

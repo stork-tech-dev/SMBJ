@@ -360,12 +360,22 @@ class Variante(Base):
 from sqlalchemy import case, literal as _literal, select as _select  # noqa: E402
 from sqlalchemy.orm import column_property  # noqa: E402
 
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta  # noqa: E402
 from app.models.stock import Stock  # noqa: E402
 
+# Excluye las Ubicaciones Especiales (ej. "Productos Fallados"): ahí el
+# producto existe físicamente pero no cuenta como stock vendible, así que
+# tampoco cuenta en el total que ve la vendedora — mismo criterio que
+# `_consulta_base` en app/services/stock.py.
 Variante.stock_total = column_property(
     _select(func.coalesce(func.sum(Stock.cantidad), 0))
-    .where(Stock.variante_id == Variante.id)
-    .correlate_except(Stock)
+    .select_from(Stock)
+    .join(PuntoDeVenta, PuntoDeVenta.id == Stock.punto_de_venta_id)
+    .where(
+        Stock.variante_id == Variante.id,
+        PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL,
+    )
+    .correlate_except(Stock, PuntoDeVenta)
     .scalar_subquery(),
     deferred=False,
 )
@@ -380,7 +390,6 @@ Variante.stock_total = column_property(
 #
 # El detalle de qué ubicación y cuánto falta es de la pantalla de stock y de
 # `GET /stock/alertas`; acá solo se enciende la luz.
-from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta  # noqa: E402
 
 Variante.bajo_minimo = column_property(
     _select(_literal(1))
@@ -388,6 +397,9 @@ Variante.bajo_minimo = column_property(
     .join(PuntoDeVenta, PuntoDeVenta.id == Stock.punto_de_venta_id)
     .where(
         Stock.variante_id == Variante.id,
+        # Una Ubicación Especial no tiene mínimo que reponer: no es stock
+        # vendible.
+        PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL,
         Stock.cantidad
         <= case(
             (PuntoDeVenta.tipo == TipoPuntoVenta.CD, Stock.stock_minimo_cd),

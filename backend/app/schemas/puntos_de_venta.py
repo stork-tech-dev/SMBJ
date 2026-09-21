@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PuntoCrear(BaseModel):
     nombre: str = Field(min_length=1, max_length=150)
-    tipo: str = Field(pattern="^(cd|local|online)$")
+    tipo: str = Field(pattern="^(cd|local|online|especial)$")
     # Abreviatura del punto de venta ("MPO"). Obligatoria y de cualquier tipo:
     # el servicio la normaliza a mayúsculas y controla que no se repita.
     codigo: str = Field(min_length=2, max_length=6)
@@ -15,7 +15,7 @@ class PuntoCrear(BaseModel):
 
 class PuntoEditar(BaseModel):
     nombre: str | None = Field(default=None, min_length=1, max_length=150)
-    tipo: str | None = Field(default=None, pattern="^(cd|local|online)$")
+    tipo: str | None = Field(default=None, pattern="^(cd|local|online|especial)$")
     codigo: str | None = Field(default=None, min_length=2, max_length=6)
 
 

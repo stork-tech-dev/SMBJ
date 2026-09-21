@@ -618,7 +618,12 @@ async def puntos_de_venta(
         request,
         "pages/puntos_de_venta/listado.html",
         contexto_base(
-            request, db, usuario, titulo="Puntos de venta", ruta_activa="/configuracion"
+            request, db, usuario, titulo="Puntos de venta", ruta_activa="/configuracion",
+            # Solo la Cuenta Maestra puede crear una Ubicación Especial —
+            # esconder la opción no es la barrera (el service la valida
+            # igual), pero ofrecerla a quien siempre va a chocar con un 403
+            # es peor que no ofrecerla.
+            es_maestra=_es_maestra(usuario),
         ),
     )
 

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_SUPERVISOR, ROL_VENDEDOR
 from app.core.utils import ahora_db, normalizar_texto
-from app.models.punto_de_venta import PuntoDeVenta
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.rol import Rol
 from app.models.usuario import HistorialAcceso, Usuario
 from app.services.auth import hash_password, revocar_sesiones_de_usuario
@@ -97,11 +97,17 @@ def puntos_de_venta_asignables(db: Session) -> list[PuntoDeVenta]:
     Consulta derecho en lugar de delegar en `locales_activos()`: esa devuelve
     solo los de tipo 'local' y la sigue usando la asignación de dispositivos,
     que conserva esa restricción.
+
+    Las Ubicaciones Especiales quedan afuera: no son un lugar de trabajo, es
+    donde va la mercadería fallada — asignarle un usuario no tiene sentido.
     """
     return list(
         db.execute(
             select(PuntoDeVenta)
-            .where(PuntoDeVenta.activo.is_(True))
+            .where(
+                PuntoDeVenta.activo.is_(True),
+                PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL,
+            )
             .order_by(PuntoDeVenta.nombre)
         )
         .scalars()

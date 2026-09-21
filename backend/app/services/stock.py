@@ -362,6 +362,7 @@ def _consulta_base(scope: DeviceScope):
         .join(PuntoDeVenta, PuntoDeVenta.id == Stock.punto_de_venta_id)
         .join(Variante, Variante.id == Stock.variante_id)
         .join(Producto, Producto.id == Variante.producto_id)
+        .where(PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL)
         .options(
             joinedload(Stock.punto_de_venta),
             joinedload(Stock.variante).joinedload(Variante.producto),
@@ -528,7 +529,7 @@ def consulta_cruzada(
     punto_de_venta_id: int | None = None,
     pagina: int = 1,
     tamano: int | None = 10,
-) -> tuple[list[dict], list[PuntoDeVenta], int]:
+) -> tuple[list[dict], list[PuntoDeVenta], int, list[PuntoDeVenta]]:
     """
     Tabla pivotada: variantes × puntos de venta.
 
@@ -542,19 +543,27 @@ def consulta_cruzada(
     `punto_de_venta_id` angosta las COLUMNAS (no las filas): con un local
     elegido, la tabla compara ese local contra el CD en vez de mostrar
     todos los puntos de venta — el CD queda siempre porque es contra lo que
-    se compara cualquier local.
+    se compara cualquier local. Sin filtro, las Ubicaciones Especiales
+    (ej. Productos Fallados) quedan afuera de las columnas por defecto —
+    no son stock vendible — pero se pueden elegir igual: para eso están en
+    `opciones_locales`, la lista completa para el combo del filtro.
 
-    Retorna (filas_pivot, columnas, total_variantes).
+    Retorna (filas_pivot, columnas, total_variantes, opciones_locales).
     """
     from sqlalchemy import case as sa_case, literal
 
     # 1. Columnas: todos los PdV activos, CD primero, luego alpha por nombre.
-    # Con punto_de_venta_id, se acota a ese local + el/los CD.
+    # Con punto_de_venta_id, se acota a ese local + el/los CD. Sin filtro,
+    # las Ubicaciones Especiales quedan afuera (no cuentan como vendible).
     consulta_columnas = select(PuntoDeVenta).where(PuntoDeVenta.activo.is_(True))
     if punto_de_venta_id is not None:
         consulta_columnas = consulta_columnas.where(
             (PuntoDeVenta.tipo == TipoPuntoVenta.CD)
             | (PuntoDeVenta.id == punto_de_venta_id)
+        )
+    else:
+        consulta_columnas = consulta_columnas.where(
+            PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL
         )
 
     columnas = db.execute(
@@ -565,6 +574,17 @@ def consulta_cruzada(
     ).scalars().all()
 
     col_ids = [c.id for c in columnas]
+
+    # Opciones del combo de filtro: todo lo no-CD activo, especiales
+    # incluidas — independiente de qué columnas se estén mostrando ahora.
+    # Sirve para que el frontend arme el combo sin pedirle nada a
+    # /api/v1/puntos-de-venta (exige permiso de Configuración, que un
+    # perfil con solo Reportes no tiene).
+    opciones_locales = db.execute(
+        select(PuntoDeVenta)
+        .where(PuntoDeVenta.activo.is_(True), PuntoDeVenta.tipo != TipoPuntoVenta.CD)
+        .order_by(func.lower(PuntoDeVenta.nombre))
+    ).scalars().all()
 
     # 2. Variantes que cumplen los filtros
     consulta_variantes = (
@@ -610,7 +630,7 @@ def consulta_cruzada(
     variantes = db.execute(consulta_variantes).unique().scalars().all()
 
     if not variantes:
-        return [], list(columnas), total
+        return [], list(columnas), total, list(opciones_locales)
 
     # 3. Stock de esas variantes en todos los PdV (una sola query)
     variante_ids = [v.id for v in variantes]
@@ -639,7 +659,7 @@ def consulta_cruzada(
             "stocks": pivot[v.id],
         })
 
-    return resultado, list(columnas), total
+    return resultado, list(columnas), total, list(opciones_locales)
 
 
 def listar_movimientos(

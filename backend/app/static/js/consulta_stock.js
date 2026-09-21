@@ -4,7 +4,7 @@ function consultaStock() {
         filas:      [],  // [{variante_id, codigo_completo, verificador, descripcion, descripcion_sufijo, stocks}]
         categorias: [],
         proveedores: [],
-        puntosDeVenta: [],  // opciones del filtro (sin el CD, que ya se ve siempre)
+        puntosDeVenta: [],  // opciones del filtro (sin CD; especiales incluidas)
         total:    0,
         pagina:   1,
         tamano:   10,
@@ -34,13 +34,12 @@ function consultaStock() {
                 this.filas    = datos.filas;
                 this.total    = datos.total;
 
-                // Las opciones del filtro salen de la respuesta SIN filtrar
-                // por punto_de_venta_id (Principio 2: no hay un endpoint de
-                // puntos de venta accesible con solo permiso de Reportes).
-                // Se capturan una sola vez, la primera vez que se ve todo.
-                if (!this.filtros.punto_de_venta_id && !this.puntosDeVenta.length) {
-                    this.puntosDeVenta = datos.columnas.filter((c) => c.tipo !== 'cd');
-                }
+                // Las opciones del filtro las manda el backend aparte de
+                // `columnas` (Principio 2: no hay un endpoint de puntos de
+                // venta accesible con solo permiso de Reportes) — incluyen
+                // las Ubicaciones Especiales, que nunca están en `columnas`
+                // por defecto.
+                this.puntosDeVenta = datos.opciones_locales;
             } finally {
                 this.cargando = false;
             }

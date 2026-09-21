@@ -153,7 +153,7 @@
     {% if puede_remitir %}
     <div class="fixed bottom-[5.5rem] right-5 z-40">
         <button type="button"
-                @click="abrirAlta()"
+                @click="abrirAltaMobile()"
                 class="flex items-center gap-2 h-[3rem] px-4 bg-accent text-white
                        text-sm font-semibold rounded-full shadow-lg hover:opacity-90">
             {{ icono('mas', clases='w-4 h-4') }}
@@ -324,22 +324,22 @@
 
             <p class="text-xl font-semibold text-texto text-center mb-5">Armar envío</p>
 
+            {# Origen fijo: desde el celular siempre se manda desde el local
+               del propio dispositivo — no hay nada que elegir. #}
             <label class="block text-sm text-texto mb-1">Origen</label>
-            <select x-model="alta.punto_venta_origen_id"
-                    class="w-full h-boton border border-borde rounded-input px-3 text-base mb-3">
-                <option value="">Seleccionar origen…</option>
-                <template x-for="p in puntosOrigen()" :key="p.id">
-                    <option :value="p.id" x-text="p.nombre"></option>
-                </template>
-            </select>
+            <p class="w-full h-boton border border-borde rounded-input px-3 mb-3
+                      flex items-center text-base text-texto-muted bg-surface-alt"
+               x-text="puntosOrigen()[0]?.nombre || 'Sin local asignado'"></p>
 
+            {# Solo CD o Ubicaciones Especiales: entre locales de venta no
+               se arman remitos desde acá. #}
             <label class="block text-sm text-texto mb-1">Destino</label>
             <select x-model="alta.punto_venta_destino_id"
                     :disabled="!alta.punto_venta_origen_id"
                     class="w-full h-boton border border-borde rounded-input px-3 text-base mb-3
                            disabled:opacity-50">
                 <option value="">Seleccionar destino…</option>
-                <template x-for="p in puntosDestino()" :key="p.id">
+                <template x-for="p in puntosDestinoMobile()" :key="p.id">
                     <option :value="p.id" x-text="p.nombre"></option>
                 </template>
             </select>

@@ -19,7 +19,7 @@ from app.core.device_deps import get_current_device
 from app.core.device_scope import DeviceScope, get_device_scope
 from app.core.permisos import Modulo, Recurso, requiere_permiso
 from app.core.utils import ip_de_request
-from app.models.punto_de_venta import PuntoDeVenta
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.stock import TipoMovimiento
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.stock import (
@@ -125,7 +125,7 @@ def consulta(
     Tabla pivotada: una fila por variante, una columna por punto de venta.
     Sin aislamiento por dispositivo: es un reporte global.
     """
-    filas, columnas, total = servicio.consulta_cruzada(
+    filas, columnas, total, opciones_locales = servicio.consulta_cruzada(
         db,
         busqueda=busqueda,
         categoria_id=categoria_id,
@@ -140,6 +140,7 @@ def consulta(
         total=total,
         pagina=pagina,
         tamano=tamano,
+        opciones_locales=[ConsultaStockColumna.model_validate(c) for c in opciones_locales],
     )
 
 
@@ -162,7 +163,7 @@ def consulta_exportar(
     """
     from app.reports.consulta_stock_excel import generar_xls_consulta_stock
 
-    filas, columnas, _total = servicio.consulta_cruzada(
+    filas, columnas, _total, _opciones_locales = servicio.consulta_cruzada(
         db,
         busqueda=busqueda,
         categoria_id=categoria_id,
@@ -200,6 +201,12 @@ def alertas(
     summary="Ubicaciones sobre las que se puede operar",
 )
 def ubicaciones(
+    incluir_especiales: bool = Query(
+        default=False,
+        description="Suma las Ubicaciones Especiales (ej. Productos Fallados) a "
+        "la lista. Solo lo usa el selector de origen/destino de Remitos — el "
+        "resto de las pantallas de stock las deja afuera a propósito.",
+    ),
     db: Session = Depends(get_db),
     scope: DeviceScope = Depends(get_device_scope),
     _=Depends(requiere_permiso(Modulo.STOCK, "ver")),
@@ -213,17 +220,29 @@ def ubicaciones(
     de la ubicación ya viajan en cada fila de stock.
 
     Viene ya acotado por el dispositivo: para un vendedor la lista tiene
-    exactamente su local, así que la pantalla no puede ofrecerle otro.
+    exactamente su local, así que la pantalla no puede ofrecerle otro. La
+    excepción es Remitos (`incluir_especiales=True`, el único que lo pide):
+    ahí un vendedor tiene que poder ver el CD y las Ubicaciones Especiales
+    como destino posible además de su propio local — si no, el combo de
+    destino quedaría siempre vacío y nunca podría armar un envío.
 
     Solo las activas: no se manda ni se cuenta mercadería en una ubicación
     dada de baja.
     """
     consulta = select(PuntoDeVenta).where(PuntoDeVenta.activo.is_(True))
+    if not incluir_especiales:
+        consulta = consulta.where(PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL)
 
     if scope.restringido:
         if scope.sin_asignacion:
             return []
-        consulta = consulta.where(PuntoDeVenta.id == scope.punto_de_venta_id)
+        if incluir_especiales:
+            consulta = consulta.where(
+                (PuntoDeVenta.id == scope.punto_de_venta_id)
+                | (PuntoDeVenta.tipo.in_([TipoPuntoVenta.CD, TipoPuntoVenta.ESPECIAL]))
+            )
+        else:
+            consulta = consulta.where(PuntoDeVenta.id == scope.punto_de_venta_id)
 
     return list(db.execute(consulta.order_by(PuntoDeVenta.codigo)).scalars().all())
 

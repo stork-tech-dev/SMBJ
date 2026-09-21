@@ -34,6 +34,7 @@
                 <option value="cd">Centro de Distribución</option>
                 <option value="local">Local</option>
                 <option value="online">Online</option>
+                <option value="especial">Ubicación Especial</option>
             </select>
             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
         </div>
@@ -126,6 +127,12 @@
                             <option value="cd">Centro de Distribución</option>
                             <option value="local">Local</option>
                             <option value="online">Online</option>
+                            {# Solo la Cuenta Maestra puede crear/convertir una:
+                               el service lo exige igual, esto es para no
+                               ofrecer una opción que siempre termina en 403. #}
+                            {% if es_maestra %}
+                            <option value="especial">Ubicación Especial</option>
+                            {% endif %}
                         </select>
                         <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">{{ icono('chevron') }}</span>
                     </div>
