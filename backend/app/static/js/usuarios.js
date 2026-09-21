@@ -45,6 +45,7 @@ function abmUsuarios() {
             fecha_nacimiento: '',
             celular: '',
             local_asignado_id: '',
+            es_autorizador: false,
         },
 
         // Sección "Accesos permitidos": catálogo plano de permisos, con lo
@@ -168,6 +169,7 @@ function abmUsuarios() {
                 rol_id: this.rolesAsignables[0]?.id || '', password: '',
                 activo: true,
                 fecha_nacimiento: '', celular: '', local_asignado_id: '',
+                es_autorizador: false,
             };
             this.cargarAccesos();
         },
@@ -187,6 +189,7 @@ function abmUsuarios() {
                 fecha_nacimiento: usuario.fecha_nacimiento || '',
                 celular: usuario.celular || '',
                 local_asignado_id: usuario.local_asignado_id || '',
+                es_autorizador: usuario.es_autorizador,
             };
             this.asegurarPuntoDeVentaActual(usuario);
             this.cargarAccesos();
@@ -291,7 +294,13 @@ function abmUsuarios() {
                         ? Number(this.form.local_asignado_id)
                         : null,
                 };
-                if (esAlta) cuerpo.username = this.form.username;
+                if (esAlta) {
+                    cuerpo.username = this.form.username;
+                } else {
+                    // Autorizador solo se edita: de alta el usuario recién
+                    // existe después de este mismo guardado.
+                    cuerpo.es_autorizador = this.form.es_autorizador;
+                }
                 // En edición, contraseña vacía = no cambiarla.
                 if (this.form.password) cuerpo.password = this.form.password;
 

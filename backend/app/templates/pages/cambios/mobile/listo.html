@@ -1,0 +1,36 @@
+{# Nuevo cambio — mobile, paso 4: cambio confirmado. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% block contenido_mobile %}
+<div x-data="cambioListo()" x-init="init()">
+
+    <p x-show="cargando" class="mt-16 text-center text-sm text-texto-disabled">Cargando…</p>
+
+    <template x-if="!cargando && cambio">
+        <div class="mt-10 text-center">
+            <div class="text-success text-5xl">✓</div>
+            <h2 class="mt-3 text-xl font-black text-welcome">Cambio confirmado</h2>
+
+            <template x-if="cambio.codigo_cambio_nuevo">
+                <div class="mt-6">
+                    <p class="text-sm text-texto-muted">
+                        Anotá este código en el ticket de cambio:
+                    </p>
+                    <p class="mt-2 text-4xl font-mono font-black tracking-widest text-primary"
+                       x-text="cambio.codigo_cambio_nuevo"></p>
+                </div>
+            </template>
+
+            <a href="/ventas"
+               class="mt-8 inline-flex h-boton px-8 items-center justify-center rounded-input
+                      bg-primary text-white text-base font-medium hover:bg-primary-hover">
+                Volver al inicio
+            </a>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/cambios_mobile.js') }}"></script>
+{% endblock %}

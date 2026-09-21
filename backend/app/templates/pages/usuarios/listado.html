@@ -364,6 +364,20 @@
                     </div>
                 </div>
 
+                {% if es_maestra %}
+                {# Autorizador de cambios: lista aparte del árbol de permisos,
+                   la administra solo Cuenta Maestra (Principio de que esto no
+                   es un permiso de rol, es un flag por persona). Solo en
+                   edición: de alta el usuario recién existe después de
+                   guardar. #}
+                <label x-show="form.id" x-cloak
+                       class="mt-5 flex items-center gap-2 min-h-toque text-sm font-light
+                              text-texto-header cursor-pointer">
+                    <input type="checkbox" class="acceso-check" x-model="form.es_autorizador">
+                    <span>Autorizador de cambios (por falla)</span>
+                </label>
+                {% endif %}
+
                 {# --- Accesos permitidos --- #}
                 <p class="mt-8 text-sm font-semibold text-texto-header">Accesos permitidos:</p>
 

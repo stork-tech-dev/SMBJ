@@ -9,6 +9,7 @@
 const URL_CAMBIOS    = '/api/v1/cambios';
 const URL_VARIANTES  = '/api/v1/productos/variantes';
 const URL_MEDIOS_CFG = '/api/v1/configuracion/medios-de-pago';
+const URL_AUTORIZADORES = '/api/v1/usuarios/autorizadores';
 
 
 // ── Listado ─────────────────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ function nuevoCambio(codigoInicial = '') {
         resultado:      {},
 
         medios: [],
+        autorizadores: [],
 
         pesos: (v) => window.pesos(v),
 
@@ -135,6 +137,12 @@ function nuevoCambio(codigoInicial = '') {
             try {
                 const resp = await fetch(URL_MEDIOS_CFG, { credentials: 'same-origin' });
                 if (resp.ok) this.medios = await resp.json();
+            } catch (_) { /* no bloquea */ }
+
+            // Cargar autorizadores para el cambio por falla
+            try {
+                const resp = await fetch(URL_AUTORIZADORES, { credentials: 'same-origin' });
+                if (resp.ok) this.autorizadores = await resp.json();
             } catch (_) { /* no bloquea */ }
         },
 

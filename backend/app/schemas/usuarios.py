@@ -70,6 +70,8 @@ class UsuarioEditar(BaseModel):
     fecha_nacimiento: date | None = None
     celular: Celular = None
     local_asignado_id: int | None = None
+    # Solo Cuenta Maestra puede cambiarlo (validado en el service).
+    es_autorizador: bool | None = None
 
 
 class LocalResumen(BaseModel):
@@ -80,6 +82,18 @@ class LocalResumen(BaseModel):
     elegirlo. El resto de los campos del punto de venta —tipo, código,
     estado— se piden a su propio endpoint cuando hacen falta, y no viajan
     duplicados en cada fila del listado de usuarios.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+
+
+class AutorizadorResumen(BaseModel):
+    """
+    Usuario con `es_autorizador=True`, para el selector de autorizador de un
+    cambio por falla. Solo `id` y `nombre`, mismo criterio que `LocalResumen`.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -102,6 +116,7 @@ class UsuarioResponse(BaseModel):
     rol_id: int
     rol: RolResponse
     activo: bool
+    es_autorizador: bool
     # Fecha cruda en ISO: el formato dd/mm/yyyy lo arma el frontend.
     fecha_nacimiento: date | None
     celular: str | None

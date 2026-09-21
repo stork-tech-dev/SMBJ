@@ -74,10 +74,23 @@
             </div>
 
             <div x-show="form.tipo === 'falla'" class="flex flex-col gap-1">
-                <label class="text-sm font-semibold text-texto-header">ID del autorizador</label>
-                <input x-model.number="form.autorizador_id" type="number" min="1"
-                       placeholder="ID del supervisor que autoriza"
-                       class="campo-linea">
+                <label class="text-sm font-semibold text-texto-header">Autorizador</label>
+                <div class="relative">
+                    <select x-model.number="form.autorizador_id"
+                            class="campo-linea appearance-none pr-10 w-full">
+                        <option value="">Seleccionar…</option>
+                        <template x-for="a in autorizadores" :key="a.id">
+                            <option :value="a.id" x-text="a.nombre"></option>
+                        </template>
+                    </select>
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        {{ icono('chevron') }}
+                    </span>
+                </div>
+                <p x-show="!autorizadores.length" class="text-xs text-texto-muted">
+                    No hay usuarios marcados como autorizadores. Los administra
+                    Cuenta Maestra desde Usuarios.
+                </p>
             </div>
 
             <div class="flex flex-col gap-1">

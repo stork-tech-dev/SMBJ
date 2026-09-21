@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.codigos import codigo_es_valido
 from app.core.device_scope import DeviceScope
+from app.core.permisos import ROL_VENDEDOR
 from app.core.utils import ahora_db, redondear, redondear_hacia_abajo
 from app.models.cliente import TipoPunto
 from app.models.dispositivo import Dispositivo
@@ -50,7 +51,7 @@ from app.services import promociones as servicio_promociones
 from app.services import senas as servicio_senas
 from app.services import stock as servicio_stock
 from app.services.roles import NoEncontrado, ReglaDeNegocio
-from app.services.turnos import verificar_bloqueo_turno
+from app.services.turnos import obtener_turno_activo, verificar_bloqueo_turno
 
 # Alfabeto del código de cambio. Sin I, O, 0 ni 1: la vendedora lo copia a
 # mano al ticket de papel y después alguien lo tipea para hacer el cambio.
@@ -1074,6 +1075,12 @@ def anular_venta(
     Todo en la misma transacción, por el mismo motivo que la confirmación:
     revertir el stock sin revertir los puntos deja al cliente con puntos de
     una compra que no existió.
+
+    El permiso `venta.anular` lo tienen tanto Supervisor como Vendedor, pero
+    con alcance distinto (eso no lo puede expresar la tabla de permisos):
+    Supervisor anula cualquier venta, sin límite; Vendedor solo las del
+    turno abierto actual de ese local — ni de un turno anterior, ni de un
+    local sin turno abierto.
     """
     if venta.estado == EstadoVenta.ANULADA:
         raise ReglaDeNegocio(f"La venta {venta.numero} ya está anulada")
@@ -1082,6 +1089,14 @@ def anular_venta(
             f"La venta {venta.numero} está {venta.estado.value}: solo se anulan las "
             "confirmadas"
         )
+
+    if autor.rol is not None and autor.rol.nombre == ROL_VENDEDOR:
+        turno_activo = obtener_turno_activo(venta.punto_de_venta_id, db)
+        if turno_activo is None or venta.created_at < turno_activo.fecha_apertura:
+            raise ReglaDeNegocio(
+                f"La venta {venta.numero} no pertenece al turno abierto de este "
+                "local: un Vendedor solo puede anular ventas del turno activo."
+            )
 
     antes = snapshot(venta)
 

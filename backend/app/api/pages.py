@@ -1069,6 +1069,12 @@ _PANTALLAS_MOBILE = {
         "volver": "/ventas",
         "activa": "stock",
     },
+    "/ventas/anular": {
+        "plantilla": "pages/ventas/mobile/anular.html",
+        "titulo": "Anular Venta",
+        "volver": "/ventas",
+        "activa": "inicio",
+    },
 }
 
 
@@ -1212,11 +1218,32 @@ async def cambios_listado(
     db: Session = Depends(get_db),
     usuario=Depends(requiere_sesion),
 ):
-    """Historial de cambios de producto."""
+    """Historial de cambios de producto. Solo existe en escritorio."""
     return templates.TemplateResponse(
         request,
         "pages/cambios/desktop/listado.html",
         contexto_base(request, db, usuario, titulo="Cambios de Producto", ruta_activa="/ventas"),
+    )
+
+
+def _contexto_cambios(request, db, usuario, titulo, **extra):
+    """
+    Contexto de las pantallas de Cambios, mobile y escritorio.
+
+    Cambios cuelga del mismo permiso que Ventas (no hay un módulo propio),
+    así que reusa `_dispositivo_de_request`/`_es_dispositivo_de_local` en vez
+    de duplicar esa lectura de cookie.
+    """
+    from app.core.device_scope import get_punto_de_venta_scope
+
+    scope = get_punto_de_venta_scope(usuario, _dispositivo_de_request(request, db))
+    return contexto_base(
+        request, db, usuario,
+        titulo=titulo,
+        ruta_activa="/ventas",
+        # El wizard mobile no pide el local a mano: lo toma de acá.
+        punto_de_venta_id_num=scope.punto_de_venta_id or 0,
+        **extra,
     )
 
 
@@ -1227,7 +1254,24 @@ async def cambios_nuevo(
     db: Session = Depends(get_db),
     usuario=Depends(requiere_sesion),
 ):
-    """Wizard de nuevo cambio. Acepta ?codigo= para pre-llenar el código."""
+    """
+    Wizard de nuevo cambio, paso 0. Acepta ?codigo= para pre-llenar el
+    código de cambio.
+
+    Desde un celular de local sirve el paso 0 mobile; desde cualquier otro
+    equipo, el wizard de una sola página de escritorio — mismo criterio que
+    `/ventas`.
+    """
+    dispositivo = _dispositivo_de_request(request, db)
+    if _es_dispositivo_de_local(dispositivo):
+        return templates.TemplateResponse(
+            request,
+            "pages/cambios/mobile/tipo.html",
+            _contexto_cambios(
+                request, db, usuario, "Nuevo Cambio",
+                volver_url="/ventas", codigo_inicial=codigo,
+            ),
+        )
     return templates.TemplateResponse(
         request,
         "pages/cambios/desktop/nuevo.html",
@@ -1238,3 +1282,53 @@ async def cambios_nuevo(
             codigo_inicial=codigo,
         ),
     )
+
+
+# Los cuatro pasos siguientes del wizard son SOLO mobile, mismo criterio que
+# `_PANTALLAS_MOBILE` de ventas: el `id` del cambio viaja en la URL porque
+# acá no hay un "cambio en curso" del que tirar como sí existe para ventas.
+_PANTALLAS_MOBILE_CAMBIOS = {
+    "/cambios/nuevo/devueltos": {
+        "plantilla": "pages/cambios/mobile/devueltos.html",
+        "titulo": "Ítems Devueltos",
+        "volver": "/cambios/nuevo",
+    },
+    "/cambios/nuevo/nuevos": {
+        "plantilla": "pages/cambios/mobile/nuevos.html",
+        "titulo": "Ítems Nuevos",
+        "volver": "/cambios/nuevo/devueltos",
+    },
+    "/cambios/nuevo/confirmar": {
+        "plantilla": "pages/cambios/mobile/confirmar.html",
+        "titulo": "Confirmar Cambio",
+        "volver": "/cambios/nuevo/nuevos",
+    },
+    "/cambios/nuevo/listo": {
+        "plantilla": "pages/cambios/mobile/listo.html",
+        "titulo": "Cambio Confirmado",
+        "volver": "/ventas",
+    },
+}
+
+
+def _registrar_pantallas_mobile_cambios() -> None:
+    for ruta, pantalla in _PANTALLAS_MOBILE_CAMBIOS.items():
+
+        def _pagina(
+            request: Request,
+            db: Session = Depends(get_db),
+            usuario=Depends(requiere_sesion),
+            _p: dict = pantalla,
+        ):
+            if not _es_dispositivo_de_local(_dispositivo_de_request(request, db)):
+                return RedirectResponse("/cambios/nuevo", status_code=303)
+            return templates.TemplateResponse(
+                request,
+                _p["plantilla"],
+                _contexto_cambios(request, db, usuario, _p["titulo"], volver_url=_p["volver"]),
+            )
+
+        router.get(ruta, response_class=HTMLResponse, name=f"mobile{ruta}")(_pagina)
+
+
+_registrar_pantallas_mobile_cambios()

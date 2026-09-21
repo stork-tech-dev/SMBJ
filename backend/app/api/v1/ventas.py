@@ -700,7 +700,8 @@ def anular(
     autor=Depends(requiere_permiso(Modulo.VENTAS, "eliminar", Recurso.VENTA_ANULAR)),
 ):
     """
-    Solo Supervisor y Dueño (permiso `venta.anular`).
+    Supervisor y Dueño: cualquier venta. Vendedor: solo las del turno
+    abierto actual de su local (lo valida `anular_venta`, no este permiso).
 
     Devuelve el stock, saca los puntos y repone el saldo de las señas usadas.
     La fila NO se borra: la venta ocurrió, y la caja de ese día tiene que

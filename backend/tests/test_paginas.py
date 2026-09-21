@@ -2591,8 +2591,9 @@ def test_el_descuento_se_elige_de_una_lista_y_no_se_escribe(
     # Los porcentajes son botones alimentados por la lista del backend.
     assert 'x-for="p in porcentajes"' in html
     assert 'x-model="descuento.porcentaje"' not in html
-    # Y el motivo va primero: el porcentaje queda deshabilitado sin él.
-    assert ':disabled="!descuento.motivo_id"' in html
+    # Y el motivo va primero: el porcentaje queda deshabilitado sin él (y
+    # sin porcentaje elegido, aunque haya motivo).
+    assert ':disabled="!descuento.motivo_id || !descuento.porcentaje"' in html
 
 
 def test_las_pantallas_de_ventas_no_calculan_precios():

@@ -1,11 +1,19 @@
 """Anulaciones y cambios de producto
 
-Revision ID: 0029
-Revises: 0027
+Revision ID: 0029b
+Revises: 0029
 Create Date: 2026-09-07
 
 Agrega `codigo_cambio_activo` a la tabla `ventas` y crea las tablas del
 módulo de cambios: `cambios`, `cambio_items_devueltos`, `cambio_items_nuevos`.
+
+Nace como "0029" en su propia rama, en paralelo con
+`0029_promociones_porcentaje_sucursales.py` en `testing`. Al mergear las dos
+ramas quedaron dos migraciones distintas con el mismo id — Alembic no
+tolera eso ("MultipleHeads" al pedir `head`, rompe cualquier deploy nuevo y
+la base de tests). Se renombra a "0029b", mismo criterio que
+`0024b_fotos_por_variante.py` para el mismo tipo de choque, sin tocar el
+contenido: encadena después de la otra "0029" en vez de al lado.
 """
 
 from typing import Sequence, Union
@@ -14,8 +22,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0029"
-down_revision: Union[str, None] = "0027"
+revision: str = "0029b"
+down_revision: Union[str, None] = "0029"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

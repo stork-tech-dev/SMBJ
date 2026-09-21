@@ -214,6 +214,12 @@ BEGIN
         ('supervisor',   'ventas',    'venta.anular',           FALSE, FALSE, FALSE, TRUE),
         ('supervisor',   'tesoreria', 'caja.arqueo',            FALSE, TRUE,  FALSE, FALSE),
         ('vendedor',     'ventas',    'venta.descuento',        FALSE, TRUE,  FALSE, FALSE),
+        -- El Vendedor también anula, pero solo ventas del turno activo de
+        -- su local (sesión 08): esta fila da el mismo permiso que el del
+        -- Supervisor, la restricción de alcance la aplica anular_venta()
+        -- en código, porque la tabla de permisos no distingue "mismo
+        -- recurso, alcance distinto según el rol".
+        ('vendedor',     'ventas',    'venta.anular',           FALSE, FALSE, FALSE, TRUE),
         -- Bajas de stock: Distribución en el CD, Supervisor y Vendedor en su
         -- local. Cuelgan del módulo 'stock' desde la migración 0022.
         ('distribucion', 'stock',     'stock.baja',             FALSE, TRUE,  FALSE, FALSE),

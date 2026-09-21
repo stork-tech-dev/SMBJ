@@ -84,6 +84,29 @@ window.toast = function (mensaje, tipo = 'info', duracion = 4000) {
 };
 
 /**
+ * Llamada a la API con el manejo de error de las pantallas mobile: el
+ * `detail` del backend es un mensaje pensado para quien está usando la
+ * pantalla, así que se muestra tal cual en vez de un "error 409".
+ *
+ * Vive acá porque la usan ventas_mobile.js y cambios_mobile.js — dos flujos
+ * distintos con el mismo manejo de error (Principio 2).
+ */
+window.pedir = async function (url, opciones = {}) {
+    const resp = await fetch(url, {
+        credentials: 'same-origin',
+        ...opciones,
+        headers: opciones.body
+            ? { 'Content-Type': 'application/json', ...(opciones.headers || {}) }
+            : opciones.headers,
+    });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || 'No se pudo completar la operación');
+    }
+    return resp.status === 204 ? null : resp.json();
+};
+
+/**
  * Texto comparable: sin mayúsculas y sin acentos.
  *
  * Se descompone en NFD para separar la letra de su tilde y se borran los

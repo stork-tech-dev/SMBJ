@@ -183,6 +183,23 @@ def listar_usuarios(
     return list(resultados), total
 
 
+def listar_autorizadores(db: Session) -> list[Usuario]:
+    """
+    Usuarios activos con `es_autorizador=True`, para el selector de
+    autorizador de un cambio por falla.
+    """
+    return list(
+        db.execute(
+            select(Usuario)
+            .where(Usuario.activo.is_(True), Usuario.es_autorizador.is_(True))
+            .order_by(Usuario.nombre)
+        )
+        .unique()
+        .scalars()
+        .all()
+    )
+
+
 def crear_usuario(
     db: Session,
     autor: Usuario,
@@ -268,6 +285,7 @@ def editar_usuario(
     fecha_nacimiento: date | None = None,
     celular: str | None = None,
     local_asignado_id: int | None = None,
+    es_autorizador: bool | None = None,
     editar_fecha_nacimiento: bool = False,
     editar_celular: bool = False,
     editar_local: bool = False,
@@ -332,6 +350,17 @@ def editar_usuario(
         usuario.password_hash = hash_password(password)
         usuario.ultimo_acceso = None  # vuelve a exigir cambio en el próximo login
         revocar_sesiones_de_usuario(db, usuario.id)
+
+    # Solo se exige Cuenta Maestra si realmente se está CAMBIANDO el valor:
+    # así un Supervisor puede seguir editando el resto de los campos de un
+    # Vendedor sin que este, que ni siquiera muestra en su pantalla, se lo
+    # bloquee.
+    if es_autorizador is not None and es_autorizador != usuario.es_autorizador:
+        if autor.rol is None or autor.rol.nombre != ROL_CUENTA_MAESTRA:
+            raise ReglaDeNegocio(
+                "Solo la Cuenta Maestra puede cambiar quién autoriza cambios"
+            )
+        usuario.es_autorizador = es_autorizador
 
     usuario.updated_at = ahora_db()
     db.flush()

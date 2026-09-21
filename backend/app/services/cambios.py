@@ -70,6 +70,44 @@ def _material_de_variante(db: Session, variante: Variante) -> Categoria | None:
     return cat if cat.nivel == 1 else None
 
 
+def _venta_item_disponible(db: Session, cambio: Cambio, variante_id: int) -> int:
+    """
+    El ítem de la venta de origen para esta variante que todavía no se usó
+    en otro cambio no cancelado.
+
+    El frontend nunca manda `venta_item_id`: el buscador de producto del
+    wizard es el catálogo general (`/productos/variantes`), que no sabe
+    nada de la venta de origen. Se resuelve acá porque el service sí tiene
+    los dos datos (la venta y la variante elegida) y evita que se devuelva
+    dos veces la misma unidad física cuando la venta tenía la variante
+    repetida (ej. compró dos anillos iguales).
+    """
+    ya_usados = (
+        select(CambioItemDevuelto.venta_item_id)
+        .join(Cambio, CambioItemDevuelto.cambio_id == Cambio.id)
+        .where(
+            CambioItemDevuelto.venta_item_id.is_not(None),
+            Cambio.estado != EstadoCambio.CANCELADO,
+        )
+    )
+    disponible = db.execute(
+        select(VentaItem.id)
+        .where(
+            VentaItem.venta_id == cambio.venta_origen_id,
+            VentaItem.variante_id == variante_id,
+            VentaItem.id.not_in(ya_usados),
+        )
+        .order_by(VentaItem.id)
+        .limit(1)
+    ).scalar_one_or_none()
+    if disponible is None:
+        raise ReglaDeNegocio(
+            "No se encontró en la venta de origen un ítem de esa variante "
+            "disponible para devolver (puede que ya se haya devuelto)."
+        )
+    return disponible
+
+
 def _mismo_material(mat_a: Categoria | None, mat_b: Categoria | None) -> bool:
     if mat_a is None or mat_b is None:
         return False
@@ -344,8 +382,11 @@ def agregar_item_devuelto(
     """
     Agrega un ítem devuelto al cambio pendiente.
 
-    Para tipos comun/promocion: venta_item_id es obligatorio (valida que
-    pertenezca a la venta origen). Para falla: puede ser None.
+    Para tipos comun/promocion/gift_card_fisica: hace falta el ítem de venta
+    original. Si no llega `venta_item_id` (el buscador de producto del
+    wizard no lo conoce, ver `_venta_item_disponible`), se resuelve solo
+    buscándolo en la venta de origen. Para falla: siempre None, no hay
+    venta de origen.
 
     Retorna (item, avisos) — avisos incluye "ya fue cambiado N veces" si aplica.
     """
@@ -358,9 +399,7 @@ def agregar_item_devuelto(
 
     if cambio.tipo in (TipoCambio.COMUN, TipoCambio.PROMOCION, TipoCambio.GIFT_CARD_FISICA):
         if venta_item_id is None:
-            raise ReglaDeNegocio(
-                f"El cambio '{cambio.tipo.value}' requiere el ítem de venta original"
-            )
+            venta_item_id = _venta_item_disponible(db, cambio, variante_id)
         venta_item = db.get(VentaItem, venta_item_id)
         if venta_item is None:
             raise NoEncontrado("Ítem de venta no encontrado")

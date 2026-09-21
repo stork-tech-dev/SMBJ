@@ -19,24 +19,12 @@
 const API_VENTAS = '/api/v1/ventas';
 const API_CLIENTES = '/api/v1/clientes';
 const API_STOCK = '/api/v1/stock';
+const API_TURNOS = '/api/v1/turnos';
 
-/* Llamada a la API con el manejo de error del sistema: el `detail` del
-   backend es un mensaje pensado para la vendedora, así que se muestra tal
-   cual en vez de un "error 409". */
-async function pedir(url, opciones = {}) {
-    const resp = await fetch(url, {
-        credentials: 'same-origin',
-        ...opciones,
-        headers: opciones.body
-            ? { 'Content-Type': 'application/json', ...(opciones.headers || {}) }
-            : opciones.headers,
-    });
-    if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || 'No se pudo completar la operación');
-    }
-    return resp.status === 204 ? null : resp.json();
-}
+// Implementación compartida en app.js (Principio 2): la usa también
+// cambios_mobile.js. Resuelta en el momento de llamar y no acá arriba:
+// este script no lleva `defer` y corre antes que app.js.
+const pedir = (url, opciones) => window.pedir(url, opciones);
 
 /* Lo que comparten las pantallas del flujo: la venta en curso y el formato
    de importes. */
@@ -684,6 +672,71 @@ function consultaStockMobile(puntoDeVentaId) {
                 window.toast(e.message, 'error');
             } finally {
                 this.agregando = false;
+            }
+        },
+    };
+}
+
+/* ==========================================================================
+   Pantalla 8 — Anular venta
+   ========================================================================== */
+
+function anularVenta(puntoDeVentaId) {
+    return {
+        puntoDeVentaId: Number(puntoDeVentaId) || 0,
+        turno: null,
+        ventas: [],
+        cargando: false,
+
+        pesos: (v) => window.pesos(v),
+
+        anulacion: { abierta: false, enviando: false, venta: null, motivo: '', entendido: false },
+
+        async cargar() {
+            this.cargando = true;
+            try {
+                // Sin turno abierto no hay nada para anular: el backend lo
+                // rechazaría igual, pero mejor no ofrecer una lista vacía de
+                // ventas que después van a rebotar todas.
+                this.turno = await pedir(`${API_TURNOS}/activo`);
+                if (!this.turno) {
+                    this.ventas = [];
+                    return;
+                }
+
+                const params = new URLSearchParams({
+                    punto_de_venta_id: this.puntoDeVentaId,
+                    estado: 'confirmada',
+                    fecha_desde: this.turno.fecha_apertura.slice(0, 10),
+                    tamano: 50,
+                });
+                const datos = await pedir(`${API_VENTAS}?${params}`);
+                this.ventas = datos.resultados;
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        pedirAnulacion(v) {
+            this.anulacion = { abierta: true, enviando: false, venta: v, motivo: '', entendido: false };
+        },
+
+        async anular() {
+            this.anulacion.enviando = true;
+            try {
+                await pedir(`${API_VENTAS}/${this.anulacion.venta.id}/anular`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ motivo: this.anulacion.motivo || null }),
+                });
+                this.anulacion.abierta = false;
+                window.toast('Venta anulada: stock y puntos revertidos', 'exito');
+                this.cargar();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.anulacion.enviando = false;
             }
         },
     };
