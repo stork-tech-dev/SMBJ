@@ -23,6 +23,12 @@ class TipoPuntoVenta(str, enum.Enum):
     CD = "cd"
     LOCAL = "local"
     ONLINE = "online"
+    # Un lugar donde el producto existe físicamente pero NO cuenta como
+    # stock vendible (ej. "Productos Fallados"). Solo aparece como origen o
+    # destino de un remito y como opción de filtro en /consulta-stock; en
+    # todo lo demás queda excluida (ver `_consulta_base` en
+    # app/services/stock.py y los column_property de Variante).
+    ESPECIAL = "especial"
 
 
 class PuntoDeVenta(Base):

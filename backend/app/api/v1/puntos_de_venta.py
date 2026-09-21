@@ -24,6 +24,10 @@ from app.services.roles import NoEncontrado, ReglaDeNegocio
 router = APIRouter(prefix="/puntos-de-venta", tags=["puntos-de-venta"])
 
 
+def _403(exc):
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+
+
 def _404(exc):
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
@@ -35,7 +39,7 @@ def _409(exc):
 @router.get("", response_model=list[PuntoResponse], summary="Listado de puntos de venta")
 def listar(
     nombre: str | None = Query(default=None),
-    tipo: str | None = Query(default=None, pattern="^(cd|local|online)$"),
+    tipo: str | None = Query(default=None, pattern="^(cd|local|online|especial)$"),
     activo: bool | None = Query(default=None),
     db: Session = Depends(get_db),
     _=Depends(requiere_permiso(Modulo.CONFIGURACION, "ver")),
@@ -61,6 +65,8 @@ def crear(
             codigo=datos.codigo,
             ip_origen=ip_de_request(request),
         )
+    except servicio.SinPermiso as exc:
+        raise _403(exc) from exc
     except ReglaDeNegocio as exc:
         raise _409(exc) from exc
 
@@ -88,6 +94,8 @@ def editar(
         )
     except NoEncontrado as exc:
         raise _404(exc) from exc
+    except servicio.SinPermiso as exc:
+        raise _403(exc) from exc
     except ReglaDeNegocio as exc:
         raise _409(exc) from exc
 

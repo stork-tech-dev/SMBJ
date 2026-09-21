@@ -126,7 +126,11 @@ function abmRemitos({ puntoFijo = null } = {}) {
             // Del módulo de stock y no de Configuración: un vendedor no tiene
             // ese permiso, y sin esto no podría armar ni recibir nada. Vienen
             // ya acotadas por el dispositivo.
-            const resp = await fetch('/api/v1/stock/ubicaciones', {
+            //
+            // `incluir_especiales`: Remitos es la única pantalla donde una
+            // Ubicación Especial (ej. Productos Fallados) puede elegirse
+            // como origen o destino.
+            const resp = await fetch('/api/v1/stock/ubicaciones?incluir_especiales=true', {
                 credentials: 'same-origin',
             });
             if (resp.ok) this.puntos = await resp.json();
@@ -155,7 +159,31 @@ function abmRemitos({ puntoFijo = null } = {}) {
             return this.puntos.filter((p) => p.id !== origen);
         },
 
+        /**
+         * Destino de la hoja "Armar envío" del celular: solo el CD o una
+         * Ubicación Especial — entre locales de venta no se arman remitos.
+         * Distinta de `puntosDestino()` (la del escritorio, sin esa
+         * restricción) para no tocar ese flujo.
+         */
+        puntosDestinoMobile() {
+            const origen = Number(this.alta.punto_venta_origen_id);
+            return this.puntos.filter(
+                (p) => p.id !== origen && (p.tipo === 'cd' || p.tipo === 'especial')
+            );
+        },
+
         /* --- Armar el envío --- */
+
+        /**
+         * Abre la hoja del celular con el CD ya preseleccionado como
+         * destino — es el caso más común, y ella lo puede cambiar igual a
+         * cualquier Ubicación Especial (`puntosDestinoMobile()`).
+         */
+        abrirAltaMobile() {
+            this.abrirAlta();
+            const cd = this.puntosDestinoMobile().find((p) => p.tipo === 'cd');
+            if (cd) this.alta.punto_venta_destino_id = cd.id;
+        },
 
         abrirAlta() {
             this.alta = {

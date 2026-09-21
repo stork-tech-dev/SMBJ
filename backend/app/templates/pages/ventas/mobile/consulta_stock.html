@@ -11,8 +11,53 @@
 {% from "components/icons.html" import icono %}
 {% from "components/miniatura.html" import miniatura %}
 
+{# Fila de resultado, para no repetirla entre "mi sucursal" y "otras
+   sucursales" (Principio 2). #}
+{% macro fila_stock() %}
+<li class="py-3 flex items-center gap-3">
+    <div class="min-w-0 flex-1">
+        {# Descripción del producto + la de la variante (si no es la BASE):
+           "Zapatilla Lona — Roja", no solo "Zapatilla Lona". #}
+        <p class="text-base font-medium truncate"
+           x-text="(f.variante?.producto?.descripcion || '—')
+                   + (f.variante?.descripcion_sufijo ? ' — ' + f.variante.descripcion_sufijo : '')"></p>
+        <p class="text-xs text-texto-muted truncate">
+            <span class="font-mono"
+                  x-text="(f.variante?.codigo_completo || '') + (f.variante?.verificador || '')"></span>
+            <span x-text="' · ' + (f.punto_de_venta?.nombre || '')"></span>
+        </p>
+        {# Con el descuento propio del producto ya aplicado — el mismo
+           número que termina cobrando el carrito. El de lista tachado al
+           lado y el nuevo en verde, mismo criterio visual que el carrito:
+           es la señal de que hay un descuento corriendo, si no el número
+           cambiado pasa desapercibido. #}
+        <p class="text-xs">
+            <span x-show="f.precio_con_descuento < f.variante?.producto?.precio_venta" x-cloak
+                  class="line-through text-texto-disabled"
+                  x-text="pesos(f.variante?.producto?.precio_venta)"></span>
+            <span :class="f.precio_con_descuento < f.variante?.producto?.precio_venta
+                           ? 'text-success font-semibold' : 'text-texto-muted'"
+                  x-text="pesos(f.precio_con_descuento)"></span>
+        </p>
+    </div>
+
+    {{ miniatura('f.variante?.foto_url', tamano='w-10 h-10') }}
+
+    <div class="text-right shrink-0">
+        {# Lo DISPONIBLE (stock real menos lo que ya está en mi carrito),
+           no el stock real a secas: si ya lo estoy vendiendo, no es lo que
+           queda. En rojo contra `stock_minimo` ya resuelto por el backend
+           (qué mínimo aplica depende del tipo de local). #}
+        <p class="text-lg font-black tabular-nums"
+           :class="disponible(f) <= f.stock_minimo ? 'text-danger' : 'text-texto'"
+           x-text="disponible(f)"></p>
+        <p class="text-[0.625rem] text-texto-disabled">unidades</p>
+    </div>
+</li>
+{% endmacro %}
+
 {% block contenido_mobile %}
-<div x-data="consultaStockMobile()" x-init="cargar()">
+<div x-data="consultaStockMobile({{ punto_de_venta_id_num | default(0) }})" x-init="cargar()">
 
     {% if sin_asignacion %}
     <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
@@ -50,35 +95,41 @@
         <span x-text="total === 1 ? 'resultado' : 'resultados'"></span>
     </p>
 
+    {# Primero la sucursal del vendedor (si tiene algo), después el resto
+       separado por título: es la pregunta en dos tiempos — "¿tenemos
+       esto ACÁ?" y, si no, "¿dónde sí?". Sin `puntoDeVentaId` (roles que
+       ya ven todos los locales) no hay "mía" que separar: todo entra en
+       `misFilas` y `otrasFilas` queda vacío. #}
     <ul class="mt-2 divide-y divide-borde">
-        <template x-for="f in filas" :key="f.id">
-            <li class="py-3 flex items-center gap-3">
-                <div class="min-w-0 flex-1">
-                    <p class="text-base font-medium truncate"
-                       x-text="f.variante?.producto?.descripcion || '—'"></p>
-                    <p class="text-xs text-texto-muted truncate">
-                        <span class="font-mono"
-                              x-text="(f.variante?.codigo_completo || '') + (f.variante?.verificador || '')"></span>
-                        <span x-text="' · ' + (f.punto_de_venta?.nombre || '')"></span>
-                    </p>
-                    <p class="text-xs text-texto-muted"
-                       x-text="pesos(f.variante?.producto?.precio_venta)"></p>
-                </div>
-
-                {{ miniatura('f.variante?.foto_url', tamano='w-10 h-10') }}
-
-                <div class="text-right shrink-0">
-                    {# En rojo cuando está en el mínimo o por debajo: la regla
-                       de qué mínimo aplica depende del tipo de local y la
-                       resuelve el backend. #}
-                    <p class="text-lg font-black tabular-nums"
-                       :class="f.bajo_minimo ? 'text-danger' : 'text-texto'"
-                       x-text="f.cantidad"></p>
-                    <p class="text-[0.625rem] text-texto-disabled">unidades</p>
-                </div>
-            </li>
+        <template x-for="f in misFilas" :key="f.id">
+            {{ fila_stock() }}
         </template>
     </ul>
+
+    {% if puede_vender %}
+    {# Solo cuando la búsqueda resolvió a UN único producto con stock acá:
+       con más de uno agregar sería adivinar cuál quiere la vendedora. #}
+    <button type="button" @click="agregarAlCarrito()" x-show="puedeAgregar" x-cloak
+            :disabled="agregando"
+            class="mt-4 w-full h-boton rounded-input bg-primary text-white text-sm
+                   font-semibold disabled:opacity-60">
+        <span x-show="!agregando">Agregar al carrito de compra</span>
+        <span x-show="agregando" x-cloak>Agregando…</span>
+    </button>
+    {% endif %}
+
+    <template x-if="otrasFilas.length">
+        <div class="mt-6">
+            <p class="px-1 text-xs font-semibold text-texto-disabled uppercase tracking-wide">
+                Otras Sucursales
+            </p>
+            <ul class="mt-2 divide-y divide-borde">
+                <template x-for="f in otrasFilas" :key="f.id">
+                    {{ fila_stock() }}
+                </template>
+            </ul>
+        </div>
+    </template>
 
     <p x-show="!filas.length && !cargando" x-cloak
        class="mt-16 text-center text-sm text-texto-disabled">

@@ -84,15 +84,9 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
 
         /* --- Categoría en cascada --- */
 
+        // Implementación compartida en app.js (Principio 2).
         rutaDeIds(categoriaId) {
-            const porId = new Map(this.categorias.map((c) => [c.id, c]));
-            const ids = [];
-            let actual = porId.get(Number(categoriaId));
-            for (let i = 0; i < 5 && actual; i++) {
-                ids.unshift(actual.id);
-                actual = actual.parent_id ? porId.get(actual.parent_id) : null;
-            }
-            return ids;
+            return window.rutaDeIds(this.categorias, categoriaId);
         },
 
         opcionesCategoria(nivel) {

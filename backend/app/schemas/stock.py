@@ -62,6 +62,19 @@ class StockResponse(BaseModel):
     updated_at: datetime
     variante: VarianteEnStock
     punto_de_venta: PuntoResumen
+    # Precio de lista con el descuento propio del producto ya aplicado —
+    # mismo cálculo que usa el carrito real (`agregar_item`), para que el
+    # precio de esta consulta y el que se termina cobrando sean el mismo
+    # número. No incluye promociones (2x1, 3x2, % por promo): esas dependen
+    # de qué más hay en el carrito y no tienen "precio de una unidad" fuera
+    # de él.
+    precio_con_descuento: Decimal
+    # Unidades de esta variante que el usuario que pide el listado ya tiene
+    # en SU venta en curso en esta ubicación. 0 salvo que se pida con
+    # `restar_carrito=True` (ver `listar_stock`). No es el stock real —
+    # la columna `stock.cantidad` no se toca — es para que la pantalla de
+    # consulta no ofrezca vender lo que ya se está vendiendo.
+    reservado_carrito: int = 0
 
 
 class StockMinimos(BaseModel):
@@ -159,13 +172,21 @@ class ResumenStock(BaseModel):
 
 
 class ConsultaStockColumna(BaseModel):
-    """Un punto de venta como columna de la tabla cruzada."""
+    """
+    Un punto de venta como columna de la tabla cruzada.
+
+    `tipo` viaja para que el filtro de "Puntos de Venta" pueda armar sus
+    opciones sin el CD (que ya se muestra siempre) sin pedirle nada a
+    /api/v1/puntos-de-venta — ese endpoint exige permiso de Configuración,
+    que un perfil con solo Reportes no tiene.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     codigo: str
     nombre: str
+    tipo: str
 
 
 class ConsultaStockFila(BaseModel):
@@ -186,3 +207,8 @@ class ConsultaStockResponse(BaseModel):
     total: int
     pagina: int
     tamano: int
+    # Todas las ubicaciones no-CD activas (Ubicaciones Especiales incluidas),
+    # para el combo de filtro — independiente de qué haya en `columnas` en
+    # este momento. Sin esto el combo no podría ofrecer una Ubicación
+    # Especial: por defecto nunca está en `columnas`.
+    opciones_locales: list[ConsultaStockColumna]

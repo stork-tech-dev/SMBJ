@@ -98,6 +98,52 @@ const normalizarTexto = (valor) =>
         .toLowerCase();
 
 /**
+ * Los ids desde la raíz hasta una categoría dada, ella incluida.
+ *
+ * `categorias` es la lista plana completa (con `parent_id`) que cada
+ * pantalla ya tiene cargada en memoria: recorrer hacia arriba no cuesta
+ * ninguna consulta. El árbol tiene 5 niveles como máximo; el tope corta
+ * igual por si un dato quedara inconsistente. Devuelve vacío si la
+ * categoría no está en la lista recibida.
+ *
+ * Vive acá y no en cada pantalla porque la necesitan productos, stock, la
+ * consulta de stock, auditoría, el formulario de producto y promociones:
+ * copiada en cada una, un ajuste no llegaría a todas por igual (Principio 2).
+ */
+window.rutaDeIds = function (categorias, categoriaId) {
+    const porId = new Map(categorias.map((c) => [c.id, c]));
+    const ids = [];
+
+    let actual = porId.get(Number(categoriaId));
+    for (let i = 0; i < 5 && actual; i++) {
+        ids.unshift(actual.id);
+        actual = actual.parent_id ? porId.get(actual.parent_id) : null;
+    }
+    return ids;
+};
+
+/**
+ * Camino completo de una categoría: "Calzado - Zapatillas - Deportivas".
+ *
+ * Se arma acá y no en la API porque la lista de categorías ya está cargada
+ * en el cliente con el `parent_id` de cada nodo, mientras que pedirle la
+ * ruta al backend por cada fila de un listado sería un N+1. Además el
+ * separador es presentación, y la API devuelve datos crudos (Principio 1).
+ *
+ * Si el catálogo todavía no llegó, devuelve el nombre suelto de `categoria`;
+ * al llegar, Alpine vuelve a renderizar con la ruta completa.
+ */
+window.rutaCategoria = function (categorias, categoria) {
+    if (!categoria) return '—';
+
+    const ids = window.rutaDeIds(categorias, categoria.id);
+    if (!ids.length) return categoria.nombre || '—';
+
+    const porId = new Map(categorias.map((c) => [c.id, c]));
+    return ids.map((id) => porId.get(id).nombre).join(' - ');
+};
+
+/**
  * Estado de un combobox: un campo con su lista desplegable propia. Lo usa el
  * macro `components/combobox.html`.
  *

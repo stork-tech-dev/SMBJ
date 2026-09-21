@@ -700,6 +700,23 @@ def buscar_similares(
     return list(filas)
 
 
+def condiciones_codigo_variante(texto: str) -> list[Any]:
+    """
+    Condiciones para matchear `Variante.codigo_completo` contra un texto
+    libre tipeado o escaneado: parcial (ilike) tal cual, y exacto SIN el
+    dígito verificador cuando el texto lo incluye y valida.
+
+    `texto` ya tiene que venir `.strip().upper()`. Un solo lugar para este
+    criterio (Principio 2): lo usan `listar_variantes()` acá abajo y
+    `listar_stock()` / `consulta_cruzada()` en `app/services/stock.py`.
+    """
+    condiciones: list[Any] = [Variante.codigo_completo.ilike(f"%{texto}%")]
+    if codigo_es_valido(texto):
+        # El dígito no se persiste: la columna guarda el cuerpo.
+        condiciones.append(Variante.codigo_completo == texto[:-1])
+    return condiciones
+
+
 def listar_variantes(
     db: Session,
     busqueda: str | None = None,
@@ -740,28 +757,18 @@ def listar_variantes(
         texto = busqueda.strip().upper()
         patron = f"%{texto}%"
 
-        # Las tres formas se buscan SIEMPRE, y el código exacto se suma
-        # cuando corresponde. Antes eran excluyentes —o código, o texto— y
-        # eso hacía desaparecer resultados: un SKU también puede pasar la
-        # validación del dígito por casualidad (le pasa a 1 de cada 11), y
-        # ahí el buscador lo leía como etiqueta, le sacaba el último carácter
-        # y comparaba contra un código que no existe. Tipear `AA009` no
-        # devolvía nada, sin ninguna señal de por qué.
-        condiciones: list[Any] = [
-            Variante.codigo_completo.ilike(patron),
+        # Las tres formas se buscan SIEMPRE, y el código exacto (sin el
+        # dígito verificador) se suma cuando corresponde vía
+        # `condiciones_codigo_variante`. Antes eran excluyentes —o código,
+        # o texto— y eso hacía desaparecer resultados: un SKU también puede
+        # pasar la validación del dígito por casualidad (le pasa a 1 de
+        # cada 11), y ahí el buscador lo leía como etiqueta, le sacaba el
+        # último carácter y comparaba contra un código que no existe.
+        # Tipear `AA009` no devolvía nada, sin ninguna señal de por qué.
+        condiciones: list[Any] = condiciones_codigo_variante(texto) + [
             Producto.sku.ilike(patron),
             Producto.descripcion.ilike(patron),
         ]
-
-        if codigo_es_valido(texto):
-            # El dígito no se persiste: la columna guarda el cuerpo.
-            #
-            # Sumar esta condición no relaja nada: el texto de un código
-            # válido no aparece como subcadena de ningún código guardado
-            # —al guardado le falta justamente el dígito— ni de un SKU ni de
-            # una descripción, así que el lector sigue resolviendo a la
-            # única fila de esa etiqueta.
-            condiciones.append(Variante.codigo_completo == texto[:-1])
 
         consulta = consulta.where(or_(*condiciones))
 
@@ -778,16 +785,12 @@ def listar_variantes(
         consulta = consulta.where(Producto.activo.is_(activo))
     if stock_cero:
         # Variantes con stock total = 0, excluyendo productos con stock
-        # infinito (esos nunca están "sin stock").
-        from app.models.stock import Stock
-
-        subq_stock = (
-            select(func.coalesce(func.sum(Stock.cantidad), 0))
-            .where(Stock.variante_id == Variante.id)
-            .correlate(Variante)
-            .scalar_subquery()
+        # infinito (esos nunca están "sin stock"). `Variante.stock_total`
+        # ya excluye las Ubicaciones Especiales (Principio 2: un solo
+        # lugar decide qué cuenta como stock vendible).
+        consulta = consulta.where(
+            Variante.stock_total == 0, Producto.stock_infinito.is_(False)
         )
-        consulta = consulta.where(subq_stock == 0, Producto.stock_infinito.is_(False))
 
     # Sobre el precio EFECTIVO: filtrar por `Producto.precio_venta` dejaría
     # afuera justamente a las variantes que tienen precio propio, que son

@@ -106,45 +106,80 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
     if efectivo_medio:
         retiros = _retiros_efectivo_del_turno(turno_id, db)
 
-    # Construir items agrupados
+    # Construir items agrupados.
+    # Se siembra primero con TODOS los medios activos en $0 para que la
+    # vendedora siempre pueda declarar Efectivo/Débito/etc. aunque no hayan
+    # tenido ventas en este turno puntual — si no, esas filas desaparecían
+    # de la pantalla de cierre en vez de mostrarse en $0.
     grupos: dict[str, dict] = {}  # key → item acumulado
+
+    medios_activos = db.execute(
+        select(MedioDePago).where(MedioDePago.activo.is_(True))
+    ).scalars().all()
+
+    for medio in medios_activos:
+        cfg_tuple = config_por_medio.get(medio.id)
+        if cfg_tuple and cfg_tuple[0].agrupa_en_terminal and cfg_tuple[0].grupo_terminal:
+            cfg = cfg_tuple[0]
+            key = f"grupo:{cfg.grupo_terminal}"
+            grupos.setdefault(key, {
+                "medio_de_pago_id": None,
+                "medio_nombre": cfg.grupo_terminal,
+                "grupo_terminal": cfg.grupo_terminal,
+                "monto_esperado": Decimal("0"),
+                "es_informativo": cfg.es_informativo,
+            })
+            continue
+
+        es_informativo = cfg_tuple[0].es_informativo if cfg_tuple else False
+        key = f"medio:{medio.id}"
+        grupos[key] = {
+            "medio_de_pago_id": medio.id,
+            "medio_nombre": medio.nombre,
+            "grupo_terminal": None,
+            "monto_esperado": Decimal("0"),
+            "es_informativo": es_informativo,
+        }
 
     for medio_id, monto in pagos.items():
         cfg_tuple = config_por_medio.get(medio_id)
         if not cfg_tuple:
-            # Sin configuración → arquear individual con defaults
-            medio = db.get(MedioDePago, medio_id)
             key = f"medio:{medio_id}"
-            grupos[key] = {
-                "medio_de_pago_id": medio_id,
-                "medio_nombre": medio.nombre if medio else f"Medio #{medio_id}",
-                "grupo_terminal": None,
-                "monto_esperado": monto,
-                "es_informativo": False,
-            }
+            if key not in grupos:
+                # Medio sin configuración ni activo (caso borde: pagos de un
+                # medio ya desactivado) → arquear individual con defaults.
+                medio = db.get(MedioDePago, medio_id)
+                grupos[key] = {
+                    "medio_de_pago_id": medio_id,
+                    "medio_nombre": medio.nombre if medio else f"Medio #{medio_id}",
+                    "grupo_terminal": None,
+                    "monto_esperado": Decimal("0"),
+                    "es_informativo": False,
+                }
+            grupos[key]["monto_esperado"] += monto
             continue
 
         cfg, medio = cfg_tuple
         if cfg.agrupa_en_terminal and cfg.grupo_terminal:
             key = f"grupo:{cfg.grupo_terminal}"
-            if key not in grupos:
-                grupos[key] = {
-                    "medio_de_pago_id": None,
-                    "medio_nombre": cfg.grupo_terminal,
-                    "grupo_terminal": cfg.grupo_terminal,
-                    "monto_esperado": Decimal("0"),
-                    "es_informativo": cfg.es_informativo,
-                }
+            grupos.setdefault(key, {
+                "medio_de_pago_id": None,
+                "medio_nombre": cfg.grupo_terminal,
+                "grupo_terminal": cfg.grupo_terminal,
+                "monto_esperado": Decimal("0"),
+                "es_informativo": cfg.es_informativo,
+            })
             grupos[key]["monto_esperado"] += monto
         else:
             key = f"medio:{medio_id}"
-            grupos[key] = {
+            grupos.setdefault(key, {
                 "medio_de_pago_id": medio_id,
                 "medio_nombre": medio.nombre,
                 "grupo_terminal": None,
-                "monto_esperado": monto,
+                "monto_esperado": Decimal("0"),
                 "es_informativo": cfg.es_informativo,
-            }
+            })
+            grupos[key]["monto_esperado"] += monto
 
     # Aplicar descuento de retiros al efectivo
     if efectivo_medio:

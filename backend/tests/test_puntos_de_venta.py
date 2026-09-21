@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_VENDEDOR, Modulo
+from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO, ROL_VENDEDOR, Modulo
 from app.models.punto_de_venta import TipoPuntoVenta
 from app.services import puntos_de_venta as servicio
 from app.services.roles import ReglaDeNegocio
@@ -142,3 +142,57 @@ def test_endpoint_alta_y_listado(client, crear_usuario, roles, dar_permiso, logi
     listado = client.get("/api/v1/puntos-de-venta?tipo=local", headers=headers)
     assert listado.status_code == 200
     assert len(listado.json()) == 1
+
+
+# ============================================================================
+# UBICACIONES ESPECIALES — solo la Cuenta Maestra las crea o las convierte
+# ============================================================================
+
+
+def test_crear_ubicacion_especial_requiere_cuenta_maestra(db, autor, crear_usuario):
+    """El Dueño puede crear puntos de venta en general, pero no este tipo."""
+    dueno = crear_usuario("dueno", ROL_DUENO)
+
+    with pytest.raises(servicio.SinPermiso, match="Cuenta Maestra"):
+        servicio.crear_punto(db, dueno, "Productos Fallados", TipoPuntoVenta.ESPECIAL, "FALL2")
+
+    punto = servicio.crear_punto(db, autor, "Productos Rotos", TipoPuntoVenta.ESPECIAL, "ROTOS")
+    assert punto.tipo == TipoPuntoVenta.ESPECIAL
+
+
+def test_convertir_a_ubicacion_especial_tambien_requiere_cuenta_maestra(
+    db, autor, crear_usuario
+):
+    """Editar el tipo de un punto ya creado es la puerta de atrás de crear uno."""
+    dueno = crear_usuario("dueno", ROL_DUENO)
+    local = servicio.crear_punto(db, autor, "Local X", TipoPuntoVenta.LOCAL, "LX")
+
+    with pytest.raises(servicio.SinPermiso, match="Cuenta Maestra"):
+        servicio.editar_punto(db, dueno, local.id, tipo=TipoPuntoVenta.ESPECIAL)
+
+    servicio.editar_punto(db, autor, local.id, tipo=TipoPuntoVenta.ESPECIAL)
+    assert local.tipo == TipoPuntoVenta.ESPECIAL
+
+
+def test_endpoint_crear_ubicacion_especial_403_para_dueno(
+    client, crear_usuario, roles, dar_permiso, login
+):
+    """Extremo a extremo: el Dueño con permiso de Configuración igual choca acá."""
+    crear_usuario("dueno", ROL_DUENO)
+    dar_permiso(rol_id=roles[ROL_DUENO].id, modulo=Modulo.CONFIGURACION, ver=True, crear=True)
+    headers = login("dueno")
+
+    resp = client.post(
+        "/api/v1/puntos-de-venta",
+        json={"nombre": "Productos Fallados", "tipo": "especial", "codigo": "FALL3"},
+        headers=headers,
+    )
+    assert resp.status_code == 403
+
+    crear_usuario("admin2", ROL_CUENTA_MAESTRA)
+    resp_cm = client.post(
+        "/api/v1/puntos-de-venta",
+        json={"nombre": "Productos Fallados", "tipo": "especial", "codigo": "FALL3"},
+        headers=login("admin2"),
+    )
+    assert resp_cm.status_code == 201

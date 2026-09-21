@@ -10,11 +10,16 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
+from app.core.permisos import ROL_CUENTA_MAESTRA
 from app.core.utils import ahora_db, normalizar_texto
 from app.models.dispositivo import Dispositivo
 from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
+
+
+class SinPermiso(Exception):
+    """El autor no puede crear este tipo de punto de venta. El router devuelve 403."""
 
 
 def obtener_punto(db: Session, punto_id: int) -> PuntoDeVenta:
@@ -116,6 +121,16 @@ def crear_punto(
     if tipo == TipoPuntoVenta.CD and _existe_cd(db):
         raise ReglaDeNegocio("Ya existe un Centro de Distribución")
 
+    # Una Ubicación Especial no cuenta como stock vendible: crearla es una
+    # decisión de catálogo más sensible que un local nuevo, así que queda
+    # solo para la Cuenta Maestra aunque el resto del alta sea de
+    # Configuración. Editar una ya creada sigue abierto a quien ya podía
+    # (Dueño incluido) — la restricción es solo sobre el alta.
+    if tipo == TipoPuntoVenta.ESPECIAL and (
+        autor.rol is None or autor.rol.nombre != ROL_CUENTA_MAESTRA
+    ):
+        raise SinPermiso("Solo la Cuenta Maestra puede crear una Ubicación Especial")
+
     codigo_limpio = _validar_codigo(db, codigo)
 
     punto = PuntoDeVenta(
@@ -163,6 +178,15 @@ def editar_punto(
     if tipo is not None and tipo != punto.tipo:
         if tipo == TipoPuntoVenta.CD and _existe_cd(db, excluir_id=punto.id):
             raise ReglaDeNegocio("Ya existe un Centro de Distribución")
+        # Convertir un punto existente en Ubicación Especial equivale a
+        # crear uno: misma restricción que en `crear_punto`, si no la
+        # edición sería la puerta de atrás para saltearla.
+        if tipo == TipoPuntoVenta.ESPECIAL and (
+            autor.rol is None or autor.rol.nombre != ROL_CUENTA_MAESTRA
+        ):
+            raise SinPermiso(
+                "Solo la Cuenta Maestra puede convertir un punto de venta en Ubicación Especial"
+            )
         punto.tipo = tipo
 
     if codigo is not None:
