@@ -159,10 +159,20 @@ SECCIONES_STOCK = [
         "modulo": Modulo.COMPRAS,
     },
     {
-        "nombre": "Movimientos de Stock",
+        "nombre": "Stock mínimo y descuentos de stock",
         "descripcion": "Lo que hay en cada ubicación, minimos y bajas",
         "url": "/stock",
         "modulo": Modulo.STOCK,
+    },
+    {
+        "nombre": "Stock por Local",
+        "descripcion": "Stock de todos los productos en todos los locales",
+        "url": "/consulta-stock",
+        # Permiso de Reportes y no de Stock: es el mismo que exige
+        # GET /api/v1/stock/consulta (app/api/v1/stock.py). Mostrar la
+        # tarjeta acá y validar con otro módulo la dejaría visible para
+        # quien igual se choca con un 403 al abrirla.
+        "modulo": Modulo.REPORTES,
     },
     {
         "nombre": "Remitos",
@@ -177,6 +187,14 @@ SECCIONES_STOCK = [
         "modulo": Modulo.STOCK,
     },
 ]
+
+
+RUTA_HUB_REPORTES = "/reportes"
+
+# Vacía por ahora: el único reporte que había ("Consulta Stock") se movió a
+# Gestión de Stock como "Stock por Local" (ver SECCIONES_STOCK). Se deja la
+# lista y el hub en pie para el próximo reporte que se agregue.
+SECCIONES_REPORTES: list[dict] = []
 
 
 def usuario_de_pagina(request: Request, db: Session = Depends(get_db)):
@@ -269,6 +287,12 @@ def secciones_stock(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Gestión de Stock visibles para el usuario."""
     es_maestra = _es_maestra(usuario)
     return [s for s in SECCIONES_STOCK if _visible(db, usuario, s, es_maestra)]
+
+
+def secciones_reportes(db: Session, usuario) -> list[dict]:
+    """Tarjetas del hub de Reportes visibles para el usuario."""
+    es_maestra = _es_maestra(usuario)
+    return [s for s in SECCIONES_REPORTES if _visible(db, usuario, s, es_maestra)]
 
 
 def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
@@ -516,7 +540,6 @@ async def configuracion(
 # vez de dar 404. Cuando cada módulo se implemente, su entrada sale de acá
 # y pasa a tener su propia ruta.
 MODULOS_PENDIENTES = {
-    "/reportes": "Reportes",
     "/ajustes": "Ajustes",
 }
 
@@ -595,7 +618,12 @@ async def puntos_de_venta(
         request,
         "pages/puntos_de_venta/listado.html",
         contexto_base(
-            request, db, usuario, titulo="Puntos de venta", ruta_activa="/configuracion"
+            request, db, usuario, titulo="Puntos de venta", ruta_activa="/configuracion",
+            # Solo la Cuenta Maestra puede crear una Ubicación Especial —
+            # esconder la opción no es la barrera (el service la valida
+            # igual), pero ofrecerla a quien siempre va a chocar con un 403
+            # es peor que no ofrecerla.
+            es_maestra=_es_maestra(usuario),
         ),
     )
 
@@ -608,6 +636,27 @@ async def dispositivos(
         request,
         "pages/dispositivos/listado.html",
         contexto_base(request, db, usuario, titulo="Dispositivos", ruta_activa="/configuracion"),
+    )
+
+
+# ============================================================================
+# REPORTES
+# ============================================================================
+
+
+@router.get(RUTA_HUB_REPORTES, response_class=HTMLResponse)
+async def reportes(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return templates.TemplateResponse(
+        request,
+        "pages/reportes/hub.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Reportes",
+            ruta_activa=RUTA_HUB_REPORTES,
+            secciones=secciones_reportes(db, usuario),
+        ),
     )
 
 
@@ -639,6 +688,26 @@ async def gestion_de_stock(
             titulo="Gestión de Stock",
             ruta_activa=RUTA_HUB_STOCK,
             secciones=secciones_stock(db, usuario),
+        ),
+    )
+
+
+@router.get("/consulta-stock", response_class=HTMLResponse)
+async def consulta_stock(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """Tabla cruzada de stock (todos los productos x todos los locales).
+
+    Vive con permiso de Reportes (ver `SECCIONES_STOCK`) aunque cuelga del
+    hub de Gestión de Stock: es donde tiene más sentido para quien la usa.
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/stock/consulta_stock.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Stock por Local",
+            ruta_activa=RUTA_HUB_STOCK,
         ),
     )
 
@@ -768,7 +837,7 @@ async def stock(
     return templates.TemplateResponse(
         request,
         "pages/stock/listado.html",
-        _contexto_stock(request, db, usuario, "Movimientos de Stock", RUTA_HUB_STOCK),
+        _contexto_stock(request, db, usuario, "Stock mínimo y descuentos de stock", RUTA_HUB_STOCK),
     )
 
 

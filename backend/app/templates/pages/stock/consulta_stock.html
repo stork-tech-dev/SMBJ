@@ -1,0 +1,148 @@
+{# Tabla cruzada de stock: filas = variantes, columnas = puntos de venta.
+   Los datos salen de /api/v1/stock/consulta: esta página no consulta la base
+   (Principio 1). #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/paginacion.html" import paginacion %}
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="consultaStock()" x-init="cargarCatalogos(); cargar()">
+
+    {% call encabezado('Stock por Local', volver_url='/gestion-de-stock',
+                       volver_texto='Gestión de Stock') %}
+        {# Link directo: el navegador dispara la descarga solo, sin JS de por
+           medio. Trae TODO lo que matchea los filtros activos, no solo la
+           página en pantalla (el endpoint no pagina). #}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
+
+    {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-8">
+        <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
+        <input id="f-texto" type="text" x-model="filtros.busqueda"
+               @input.debounce.400ms="pagina = 1; cargar()"
+               placeholder="Código, SKU o descripción"
+               class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input text-texto
+                      placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <div class="w-full sm:w-[16rem]">
+            {{ combobox('f-categoria', 'categorias', 'rutaCategoria(o)',
+                        'filtros.categoria_id',
+                        etiqueta='Categoría', label_oculto=true,
+                        placeholder='Categoría',
+                        vacio='Todas las categorías',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[12.5rem]">
+            {{ combobox('f-proveedor', 'proveedores', 'o.nombre',
+                        'filtros.proveedor_id',
+                        etiqueta='Proveedor', label_oculto=true,
+                        placeholder='Proveedor',
+                        vacio='Todos los proveedores',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto-de-venta', 'puntosDeVenta', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Punto de Venta', label_oculto=true,
+                        placeholder='Punto de Venta',
+                        vacio='Todos los locales',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">
+            Limpiar filtros
+        </button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'variante encontrada' : 'variantes encontradas'"></span>
+        </p>
+    </div>
+
+    {# ---------- Tabla cruzada ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap">
+                            Código
+                        </th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">
+                            Descripción
+                        </th>
+                        {# Una columna por punto de venta: CD primero, luego alpha.
+                           El título es el código corto; el nombre completo va en
+                           el tooltip para no romper el ancho de la tabla. #}
+                        <template x-for="col in columnas" :key="col.id">
+                            <th class="px-4 pt-8 pb-4 text-center text-base font-semibold text-texto-disabled whitespace-nowrap"
+                                :title="col.nombre"
+                                x-text="col.codigo"></th>
+                        </template>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="fila in filas" :key="fila.variante_id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]">
+                            <td class="px-8 py-3 align-middle whitespace-nowrap">
+                                <span class="font-mono font-medium"
+                                      x-text="fila.codigo_completo + fila.verificador"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle font-medium">
+                                <span x-text="fila.descripcion"></span>
+                                <span x-show="fila.descripcion_sufijo" x-cloak
+                                      class="ml-2 text-xs text-texto-muted"
+                                      x-text="fila.descripcion_sufijo"></span>
+                            </td>
+                            <template x-for="col in columnas" :key="col.id">
+                                <td class="px-4 py-3 align-middle text-center tabular-nums whitespace-nowrap"
+                                    x-text="fila.stocks[col.id] ?? 0"></td>
+                            </template>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!filas.length && !cargando">
+                        <td :colspan="2 + columnas.length"
+                            class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {{ paginacion() }}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/consulta_stock.js"></script>
+{% endblock %}

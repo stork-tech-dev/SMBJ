@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Computed,
     DateTime,
     Enum,
     ForeignKey,
@@ -196,9 +197,15 @@ class Arqueo(Base):
     )
     total_esperado: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     total_declarado: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    # GENERATED ALWAYS AS (total_declarado - total_esperado) STORED
-    # Se define solo en la migración; el ORM solo la lee.
-    diferencia: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    # GENERATED ALWAYS AS (total_declarado - total_esperado) STORED.
+    # Computed() es necesario, no solo el comentario: sin él, SQLAlchemy
+    # manda la columna en el INSERT igual (con NULL) y Postgres lo rechaza
+    # por ser una columna generada.
+    diferencia: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        Computed("total_declarado - total_esperado", persisted=True),
+        nullable=False,
+    )
     notificacion_enviada: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
@@ -230,8 +237,13 @@ class ArqueoItem(Base):
     grupo_terminal: Mapped[str | None] = mapped_column(String, nullable=True)
     monto_esperado: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     monto_declarado: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    # GENERATED ALWAYS AS (monto_declarado - monto_esperado) STORED
-    diferencia: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    # GENERATED ALWAYS AS (monto_declarado - monto_esperado) STORED. Ver el
+    # comentario de Arqueo.diferencia: Computed() es obligatorio, no cosmético.
+    diferencia: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        Computed("monto_declarado - monto_esperado", persisted=True),
+        nullable=False,
+    )
     # TRUE = solo informativo, no suma al total del arqueo.
     es_informativo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"

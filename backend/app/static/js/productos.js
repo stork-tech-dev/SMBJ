@@ -94,48 +94,16 @@ function abmProductos() {
 
         /* --- Categorías --- */
 
-        /**
-         * Camino completo de una categoría: "Calzado - Zapatillas - Deportivas".
-         *
-         * Se arma acá y no en la API porque `categorias` ya está cargado en
-         * memoria con el `parent_id` de cada nodo: recorrer hacia arriba no
-         * cuesta ninguna consulta, mientras que pedirle la ruta al backend
-         * por cada fila del listado sería un N+1. Además el separador es
-         * presentación, y la API devuelve datos crudos (Principio 1).
-         *
-         * Si el catálogo todavía no llegó, devuelve el nombre suelto; al
-         * llegar, Alpine vuelve a renderizar con la ruta completa.
-         */
+        // Camino completo de una categoría: "Calzado - Zapatillas - Deportivas".
+        // Implementación compartida en app.js (Principio 2): la usan también
+        // stock, consulta de stock, auditoría, el formulario de producto y
+        // promociones.
         rutaCategoria(categoria) {
-            if (!categoria) return '—';
-
-            const ids = this.rutaDeIds(categoria.id);
-            if (!ids.length) return categoria.nombre || '—';
-
-            const porId = new Map(this.categorias.map((c) => [c.id, c]));
-            return ids.map((id) => porId.get(id).nombre).join(' - ');
+            return window.rutaCategoria(this.categorias, categoria);
         },
 
-        /**
-         * Los ids desde la raíz hasta la categoría dada, ella incluida.
-         *
-         * Es el mismo recorrido hacia arriba que necesitan el camino escrito
-         * del listado y la cascada de selects del formulario, escrito una
-         * sola vez (Principio 2). Devuelve vacío si la categoría no está en
-         * el catálogo cargado.
-         */
         rutaDeIds(categoriaId) {
-            const porId = new Map(this.categorias.map((c) => [c.id, c]));
-            const ids = [];
-
-            let actual = porId.get(Number(categoriaId));
-            // El árbol tiene 5 niveles como máximo; el tope corta igual por
-            // si un dato quedara inconsistente.
-            for (let i = 0; i < 5 && actual; i++) {
-                ids.unshift(actual.id);
-                actual = actual.parent_id ? porId.get(actual.parent_id) : null;
-            }
-            return ids;
+            return window.rutaDeIds(this.categorias, categoriaId);
         },
 
         /* --- Carga --- */

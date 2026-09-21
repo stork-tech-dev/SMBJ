@@ -209,10 +209,9 @@ def producto_escaneado(
         raise _404(exc) from exc
 
     producto = variante.producto
-    foto = next(
-        (f.url for f in producto.fotos if f.es_principal),
-        producto.fotos[0].url if producto.fotos else None,
-    )
+    # foto_url del modelo ya implementa el fallback correcto:
+    # fotos propias de la variante → fotos del producto → None.
+    foto = variante.foto_url
 
     # El precio de la etiqueta: el de lista con el descuento propio del
     # producto ya aplicado. Se calcula con la MISMA función que usa el

@@ -89,17 +89,10 @@ function abmAuditorias({ puntoFijo = null } = {}) {
             return (auditoria?.items || []).filter((i) => i.diferencia !== 0).length;
         },
 
+        // Camino completo de una categoría. Implementación compartida en
+        // app.js (Principio 2).
         rutaCategoria(categoria) {
-            if (!categoria) return '—';
-            const porId = new Map(this.categorias.map((c) => [c.id, c]));
-            const tramos = [];
-            let actual = porId.get(categoria.id);
-            if (!actual) return categoria.nombre || '—';
-            for (let i = 0; i < 5 && actual; i++) {
-                tramos.unshift(actual.nombre);
-                actual = actual.parent_id ? porId.get(actual.parent_id) : null;
-            }
-            return tramos.join(' - ');
+            return window.rutaCategoria(this.categorias, categoria);
         },
 
         puntosPosibles() {

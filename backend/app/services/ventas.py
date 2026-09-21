@@ -32,12 +32,12 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.codigos import codigo_es_valido
 from app.core.device_scope import DeviceScope
-from app.core.utils import ahora_db, redondear
+from app.core.utils import ahora_db, redondear, redondear_hacia_abajo
 from app.models.cliente import TipoPunto
 from app.models.dispositivo import Dispositivo
 from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.producto import Variante
-from app.models.promocion import Promocion
+from app.models.promocion import Promocion, TipoPromocion
 from app.models.sena import Sena
 from app.models.stock import TipoMovimiento
 from app.models.usuario import Usuario
@@ -58,7 +58,7 @@ from app.services.turnos import verificar_bloqueo_turno
 _ALFABETO_CAMBIO = "".join(
     c for c in (string.ascii_uppercase + string.digits) if c not in "IO01"
 )
-LARGO_CODIGO_CAMBIO = 8
+LARGO_CODIGO_CAMBIO = 4
 
 # Cuántos medios de pago admite una venta. Dos: efectivo + tarjeta cubre lo
 # que pasa en el mostrador, y con tres la pantalla del celular se vuelve
@@ -84,7 +84,7 @@ def _siguiente_numero(db: Session) -> str:
 
 def generar_codigo_cambio(db: Session) -> str:
     """
-    Código alfanumérico de 8 caracteres, único, para el ticket de cambio.
+    Código alfanumérico de 4 caracteres, único, para el ticket de cambio.
 
     No se imprime: en los locales no hay impresoras conectadas al sistema.
     La vendedora lo copia a mano al ticket de papel, y por eso el alfabeto
@@ -641,9 +641,22 @@ def _recalcular(
     venta.promocion_id = elegida.id if elegida else None
 
     if elegida is not None:
-        for item in _items_alcanzados(db, venta, elegida):
-            item.en_promocion = True
-            item.precio_final = Decimal("0")
+        if elegida.tipo == TipoPromocion.PORCENTAJE:
+            pct = Decimal(str(elegida.porcentaje_descuento)) / Decimal("100")
+            redondeo = _redondeo(db)
+            for item in _candidatos_alcanzados(db, venta, elegida):
+                item.en_promocion = True
+                # `precio_unitario` ya tiene el descuento del producto aplicado
+                # (paso 1 de _recalcular). Se aplica el % de promo encima.
+                # Candidatos excluyen ítems con descuento_item, así que solo
+                # hay que bajar el precio_unitario.
+                item.precio_final = redondear_hacia_abajo(
+                    Decimal(item.precio_unitario) * (Decimal("1") - pct), redondeo
+                )
+        else:
+            for item in _items_alcanzados(db, venta, elegida):
+                item.en_promocion = True
+                item.precio_final = Decimal("0")
 
     # ---- 3. Importes -----------------------------------------------------
     venta.subtotal = redondear(sum((Decimal(i.precio_lista) for i in venta.items), Decimal("0")))
@@ -671,22 +684,46 @@ def _suma_pagos(venta: Venta) -> Decimal:
     return redondear(sum((Decimal(p.monto) for p in venta.pagos), Decimal("0")))
 
 
+def _candidatos_alcanzados(
+    db: Session, venta: Venta, promocion: Promocion
+) -> list[VentaItem]:
+    """
+    Los ítems del carrito que el alcance de la promoción cubre.
+
+    No incluye ítems con descuento manual: promoción y descuento son
+    excluyentes sobre la misma unidad.
+    """
+    productos = servicio_promociones.productos_alcanzados(db, promocion)
+    return [
+        i
+        for i in venta.items
+        if (productos is None or i.variante.producto_id in productos)
+        and Decimal(i.descuento_item) == 0
+    ]
+
+
 def _items_alcanzados(db: Session, venta: Venta, promocion: Promocion) -> list[VentaItem]:
     """
-    Las unidades que la promoción deja en $0.
+    Las unidades que la promoción deja en $0 (solo para tipos de grupo).
 
     Un ítem con descuento aplicado queda AFUERA del agrupamiento, no solo sin
     regalo: si entrara, ocuparía un lugar en un grupo y podría empujar fuera
     de la promoción a otro que sí tenía derecho. Promoción y descuento son
     excluyentes, y esta es la mitad de esa regla que no está en el CHECK.
     """
-    productos = servicio_promociones.productos_alcanzados(db, promocion)
-    candidatos = [
-        i
-        for i in venta.items
-        if i.variante.producto_id in productos and Decimal(i.descuento_item) == 0
-    ]
+    candidatos = _candidatos_alcanzados(db, venta, promocion)
     return servicio_promociones.elegir_unidades_gratis(candidatos, promocion)
+
+
+def _ahorro_promocion(db: Session, venta: Venta, promocion: Promocion) -> Decimal:
+    """Cuánto ahorra el cliente con esta promoción en este carrito."""
+    if promocion.tipo == TipoPromocion.PORCENTAJE:
+        pct = Decimal(str(promocion.porcentaje_descuento)) / Decimal("100")
+        candidatos = _candidatos_alcanzados(db, venta, promocion)
+        return sum((Decimal(i.precio_final) * pct for i in candidatos), Decimal("0"))
+    else:
+        gratis = _items_alcanzados(db, venta, promocion)
+        return sum((Decimal(i.precio_final) for i in gratis), Decimal("0"))
 
 
 def _mejor_promocion(db: Session, venta: Venta) -> Promocion | None:
@@ -698,9 +735,12 @@ def _mejor_promocion(db: Session, venta: Venta) -> Promocion | None:
     Con empate gana la de menor id, que es la más vieja — un criterio
     estable, para que el mismo carrito dé siempre el mismo detalle.
 
-    Devuelve None si ninguna deja algo en $0: marcar una promoción que no
-    regala nada haría que el ticket dijera que hubo promoción cuando no la
-    hubo.
+    Las restricciones de sucursal se evalúan acá (el PdV se conoce desde que
+    se abre la venta). Las restricciones de medio de pago no se evalúan en
+    esta etapa: los pagos se cargan al confirmar, no en el carrito.
+
+    Devuelve None si ninguna aporta ahorro: marcar una promoción que no
+    beneficia nada haría que el ticket dijera que hubo promoción cuando no.
     """
     if not venta.items:
         return None
@@ -709,8 +749,12 @@ def _mejor_promocion(db: Session, venta: Venta) -> Promocion | None:
     mejor_ahorro = Decimal("0")
 
     for promocion in servicio_promociones.promociones_aplicables(db, venta.cliente_id):
-        gratis = _items_alcanzados(db, venta, promocion)
-        ahorro = sum((Decimal(i.precio_final) for i in gratis), Decimal("0"))
+        # Filtrar por sucursal. El medio de pago es None (desconocido aún).
+        if not servicio_promociones.aplica_en_contexto(
+            promocion, venta.punto_de_venta_id, medio_de_pago_id=None
+        ):
+            continue
+        ahorro = _ahorro_promocion(db, venta, promocion)
         if ahorro > mejor_ahorro or (
             ahorro == mejor_ahorro and ahorro > 0 and mejor is not None
             and promocion.id < mejor.id

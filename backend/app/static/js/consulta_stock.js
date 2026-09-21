@@ -1,0 +1,92 @@
+function consultaStock() {
+    return {
+        columnas:   [],  // [{id, codigo, nombre, tipo}] — CD primero, luego alpha
+        filas:      [],  // [{variante_id, codigo_completo, verificador, descripcion, descripcion_sufijo, stocks}]
+        categorias: [],
+        proveedores: [],
+        puntosDeVenta: [],  // opciones del filtro (sin CD; especiales incluidas)
+        total:    0,
+        pagina:   1,
+        tamano:   10,
+        cargando: false,
+
+        filtros: {
+            busqueda:         '',
+            categoria_id:     '',
+            proveedor_id:     '',
+            punto_de_venta_id: '',
+        },
+
+        async cargar() {
+            this.cargando = true;
+            try {
+                const params = new URLSearchParams({ pagina: this.pagina, tamano: this.tamano });
+                if (this.filtros.busqueda)          params.set('busqueda', this.filtros.busqueda);
+                if (this.filtros.categoria_id)      params.set('categoria_id', this.filtros.categoria_id);
+                if (this.filtros.proveedor_id)      params.set('proveedor_id', this.filtros.proveedor_id);
+                if (this.filtros.punto_de_venta_id) params.set('punto_de_venta_id', this.filtros.punto_de_venta_id);
+
+                const resp = await fetch('/api/v1/stock/consulta?' + params, { credentials: 'same-origin' });
+                if (!resp.ok) throw new Error(await resp.text());
+                const datos = await resp.json();
+
+                this.columnas = datos.columnas;
+                this.filas    = datos.filas;
+                this.total    = datos.total;
+
+                // Las opciones del filtro las manda el backend aparte de
+                // `columnas` (Principio 2: no hay un endpoint de puntos de
+                // venta accesible con solo permiso de Reportes) — incluyen
+                // las Ubicaciones Especiales, que nunca están en `columnas`
+                // por defecto.
+                this.puntosDeVenta = datos.opciones_locales;
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        // /api/v1/categorias y /api/v1/proveedores devuelven un array plano,
+        // no paginado (a diferencia de /stock/consulta): sin `.resultados`.
+        async cargarCatalogos() {
+            const [cats, provs] = await Promise.all([
+                fetch('/api/v1/categorias', { credentials: 'same-origin' }),
+                fetch('/api/v1/proveedores', { credentials: 'same-origin' }),
+            ]);
+            if (cats.ok) this.categorias = await cats.json();
+            if (provs.ok) {
+                // Solo los activos: igual criterio que el filtro de /productos.
+                this.proveedores = (await provs.json()).filter((p) => p.estado === 'activo');
+            }
+        },
+
+        // Camino completo de una categoría: "Joyas - Anillos - Plata".
+        // Implementación compartida en app.js (Principio 2).
+        rutaCategoria(categoria) {
+            return window.rutaCategoria(this.categorias, categoria);
+        },
+
+        /** Los ids desde la raíz hasta la categoría dada, ella incluida. */
+        rutaDeIds(categoriaId) {
+            return window.rutaDeIds(this.categorias, categoriaId);
+        },
+
+        limpiar() {
+            this.filtros = {
+                busqueda: '', categoria_id: '', proveedor_id: '', punto_de_venta_id: '',
+            };
+            this.pagina  = 1;
+            this.cargar();
+        },
+
+        // Mismos filtros que `cargar()`, sin paginar: el endpoint de
+        // exportación trae todo lo que matchea, no solo la página visible.
+        urlExportar() {
+            const params = new URLSearchParams();
+            if (this.filtros.busqueda)          params.set('busqueda', this.filtros.busqueda);
+            if (this.filtros.categoria_id)      params.set('categoria_id', this.filtros.categoria_id);
+            if (this.filtros.proveedor_id)      params.set('proveedor_id', this.filtros.proveedor_id);
+            if (this.filtros.punto_de_venta_id) params.set('punto_de_venta_id', this.filtros.punto_de_venta_id);
+            return '/api/v1/stock/consulta/exportar?' + params;
+        },
+    };
+}

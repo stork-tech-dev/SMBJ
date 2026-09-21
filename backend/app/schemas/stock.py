@@ -62,6 +62,19 @@ class StockResponse(BaseModel):
     updated_at: datetime
     variante: VarianteEnStock
     punto_de_venta: PuntoResumen
+    # Precio de lista con el descuento propio del producto ya aplicado —
+    # mismo cálculo que usa el carrito real (`agregar_item`), para que el
+    # precio de esta consulta y el que se termina cobrando sean el mismo
+    # número. No incluye promociones (2x1, 3x2, % por promo): esas dependen
+    # de qué más hay en el carrito y no tienen "precio de una unidad" fuera
+    # de él.
+    precio_con_descuento: Decimal
+    # Unidades de esta variante que el usuario que pide el listado ya tiene
+    # en SU venta en curso en esta ubicación. 0 salvo que se pida con
+    # `restar_carrito=True` (ver `listar_stock`). No es el stock real —
+    # la columna `stock.cantidad` no se toca — es para que la pantalla de
+    # consulta no ofrezca vender lo que ya se está vendiendo.
+    reservado_carrito: int = 0
 
 
 class StockMinimos(BaseModel):
@@ -151,3 +164,51 @@ class ResumenStock(BaseModel):
     unidades: int
     alertas: int
     valorizado: Decimal
+
+
+# ---------------------------------------------------------------------------
+# Consulta cruzada (reporte de stock por ubicación)
+# ---------------------------------------------------------------------------
+
+
+class ConsultaStockColumna(BaseModel):
+    """
+    Un punto de venta como columna de la tabla cruzada.
+
+    `tipo` viaja para que el filtro de "Puntos de Venta" pueda armar sus
+    opciones sin el CD (que ya se muestra siempre) sin pedirle nada a
+    /api/v1/puntos-de-venta — ese endpoint exige permiso de Configuración,
+    que un perfil con solo Reportes no tiene.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    nombre: str
+    tipo: str
+
+
+class ConsultaStockFila(BaseModel):
+    """Una variante como fila: sus datos fijos + el stock por ubicación."""
+
+    variante_id: int
+    codigo_completo: str
+    verificador: str
+    descripcion: str
+    descripcion_sufijo: str | None
+    # Claves son los id de punto_de_venta; ausente en el dict = 0 (sin fila de stock aún)
+    stocks: dict[int, int]
+
+
+class ConsultaStockResponse(BaseModel):
+    columnas: list[ConsultaStockColumna]   # CD primero, luego alpha por nombre
+    filas: list[ConsultaStockFila]
+    total: int
+    pagina: int
+    tamano: int
+    # Todas las ubicaciones no-CD activas (Ubicaciones Especiales incluidas),
+    # para el combo de filtro — independiente de qué haya en `columnas` en
+    # este momento. Sin esto el combo no podría ofrecer una Ubicación
+    # Especial: por defecto nunca está en `columnas`.
+    opciones_locales: list[ConsultaStockColumna]

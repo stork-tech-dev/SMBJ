@@ -17,7 +17,7 @@ invertir el sentido de una operación.
 
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -362,6 +362,7 @@ def _consulta_base(scope: DeviceScope):
         .join(PuntoDeVenta, PuntoDeVenta.id == Stock.punto_de_venta_id)
         .join(Variante, Variante.id == Stock.variante_id)
         .join(Producto, Producto.id == Variante.producto_id)
+        .where(PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL)
         .options(
             joinedload(Stock.punto_de_venta),
             joinedload(Stock.variante).joinedload(Variante.producto),
@@ -387,11 +388,32 @@ def listar_stock(
     busqueda: str | None = None,
     solo_bajo_minimo: bool = False,
     incluir_sin_stock: bool = True,
+    todos_los_locales: bool = False,
+    usuario_id: int | None = None,
+    punto_de_venta_dispositivo: int | None = None,
     pagina: int = 1,
     tamano: int = 50,
 ) -> tuple[list[Stock], int]:
-    """Filtros del Principio 5, todos resueltos en el backend."""
-    consulta = _consulta_base(scope)
+    """
+    Filtros del Principio 5, todos resueltos en el backend.
+
+    `todos_los_locales=True` es la única excepción al aislamiento por
+    dispositivo de todo el módulo: una vendedora consultando si OTRO local
+    tiene stock para el cliente que tiene enfrente ("acá no hay, ¿dónde
+    sí?"). Es de solo lectura — no toca `DeviceScope.exigir()`, que sigue
+    bloqueando cualquier baja, remito o movimiento sobre un local ajeno
+    exactamente igual que siempre.
+
+    `usuario_id` + `punto_de_venta_dispositivo` (los dos juntos, o ninguno)
+    calculan `StockResponse.reservado_carrito`: cuánto de cada variante ya
+    tiene ESE usuario en SU venta en curso en ESA ubicación. No toca
+    `Stock.cantidad` — la columna sigue siendo el stock real, así la
+    pantalla general de stock no se ve afectada; es dato adicional para que
+    la consulta de stock del celular no ofrezca vender lo que ya se está
+    vendiendo.
+    """
+    consulta_scope = DeviceScope(restringido=False) if todos_los_locales else scope
+    consulta = _consulta_base(consulta_scope)
 
     if punto_de_venta_id is not None:
         # Si un vendedor pide otra ubicación, el scope ya la descartó arriba;
@@ -405,12 +427,19 @@ def listar_stock(
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
     if busqueda:
         # Las mismas tres formas de nombrar un artículo que el listado de
-        # productos: código de etiqueta, SKU o parte de la descripción.
-        patron = f"%{busqueda.strip()}%"
+        # productos: código de etiqueta (con o sin dígito verificador), SKU
+        # o parte de la descripción — mismo criterio, un solo lugar
+        # (Principio 2: `condiciones_codigo_variante`).
+        from app.services.productos import condiciones_codigo_variante
+
+        texto = busqueda.strip().upper()
+        patron = f"%{texto}%"
         consulta = consulta.where(
-            Variante.codigo_completo.ilike(patron)
-            | Producto.sku.ilike(patron)
-            | Producto.descripcion.ilike(patron)
+            or_(
+                *condiciones_codigo_variante(texto),
+                Producto.sku.ilike(patron),
+                Producto.descripcion.ilike(patron),
+            )
         )
     if solo_bajo_minimo:
         consulta = consulta.where(Stock.cantidad <= _minimo_sql())
@@ -433,7 +462,43 @@ def listar_stock(
         .scalars()
         .all()
     )
-    return list(filas), total
+    filas = list(filas)
+
+    # Precio con el descuento propio del producto ya aplicado — mismo
+    # cálculo que `agregar_item` en ventas.py, para que el precio de esta
+    # consulta y el que se termina cobrando sean el mismo número.
+    from app.services import configuracion as servicio_configuracion
+    from app.services import descuentos as servicio_descuentos
+
+    config = servicio_configuracion.obtener_configuracion(db)
+    redondeo = Decimal(config.redondeo) if config else Decimal("1")
+
+    # Lo que el usuario ya tiene en SU carrito en curso en esa ubicación
+    # puntual, variante por variante.
+    reservas: dict[int, int] = {}
+    if usuario_id is not None and punto_de_venta_dispositivo is not None:
+        from app.services.ventas import venta_en_curso
+
+        venta = venta_en_curso(db, usuario_id, punto_de_venta_dispositivo)
+        if venta is not None:
+            for item in venta.items:
+                reservas[item.variante_id] = reservas.get(item.variante_id, 0) + 1
+
+    for fila in filas:
+        producto = fila.variante.producto
+        fila.precio_con_descuento = servicio_descuentos.aplicar_descuentos(
+            Decimal(fila.variante.precio_venta_efectivo),
+            Decimal(producto.descuento_producto),
+            Decimal("0"),
+            redondeo,
+        )
+        fila.reservado_carrito = (
+            reservas.get(fila.variante_id, 0)
+            if fila.punto_de_venta_id == punto_de_venta_dispositivo
+            else 0
+        )
+
+    return filas, total
 
 
 def alertas(db: Session, scope: DeviceScope, limite: int = 200) -> list[Stock]:
@@ -454,6 +519,147 @@ def alertas(db: Session, scope: DeviceScope, limite: int = 200) -> list[Stock]:
         .limit(limite)
     )
     return list(db.execute(consulta).unique().scalars().all())
+
+
+def consulta_cruzada(
+    db: Session,
+    busqueda: str | None = None,
+    categoria_id: int | None = None,
+    proveedor_id: int | None = None,
+    punto_de_venta_id: int | None = None,
+    pagina: int = 1,
+    tamano: int | None = 10,
+) -> tuple[list[dict], list[PuntoDeVenta], int, list[PuntoDeVenta]]:
+    """
+    Tabla pivotada: variantes × puntos de venta.
+
+    Sin aislamiento por dispositivo: es una vista de reporting global para
+    roles con acceso al módulo REPORTES.
+
+    `tamano=None` trae todas las filas que matchean los filtros, sin
+    paginar: lo usa la exportación a Excel, que necesita el total filtrado
+    y no solo la página que se ve en pantalla.
+
+    `punto_de_venta_id` angosta las COLUMNAS (no las filas): con un local
+    elegido, la tabla compara ese local contra el CD en vez de mostrar
+    todos los puntos de venta — el CD queda siempre porque es contra lo que
+    se compara cualquier local. Sin filtro, las Ubicaciones Especiales
+    (ej. Productos Fallados) quedan afuera de las columnas por defecto —
+    no son stock vendible — pero se pueden elegir igual: para eso están en
+    `opciones_locales`, la lista completa para el combo del filtro.
+
+    Retorna (filas_pivot, columnas, total_variantes, opciones_locales).
+    """
+    from sqlalchemy import case as sa_case, literal
+
+    # 1. Columnas: todos los PdV activos, CD primero, luego alpha por nombre.
+    # Con punto_de_venta_id, se acota a ese local + el/los CD. Sin filtro,
+    # las Ubicaciones Especiales quedan afuera (no cuentan como vendible).
+    consulta_columnas = select(PuntoDeVenta).where(PuntoDeVenta.activo.is_(True))
+    if punto_de_venta_id is not None:
+        consulta_columnas = consulta_columnas.where(
+            (PuntoDeVenta.tipo == TipoPuntoVenta.CD)
+            | (PuntoDeVenta.id == punto_de_venta_id)
+        )
+    else:
+        consulta_columnas = consulta_columnas.where(
+            PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL
+        )
+
+    columnas = db.execute(
+        consulta_columnas.order_by(
+            sa_case((PuntoDeVenta.tipo == TipoPuntoVenta.CD, literal(0)), else_=literal(1)),
+            func.lower(PuntoDeVenta.nombre),
+        )
+    ).scalars().all()
+
+    col_ids = [c.id for c in columnas]
+
+    # Opciones del combo de filtro: todo lo no-CD activo, especiales
+    # incluidas — independiente de qué columnas se estén mostrando ahora.
+    # Sirve para que el frontend arme el combo sin pedirle nada a
+    # /api/v1/puntos-de-venta (exige permiso de Configuración, que un
+    # perfil con solo Reportes no tiene).
+    opciones_locales = db.execute(
+        select(PuntoDeVenta)
+        .where(PuntoDeVenta.activo.is_(True), PuntoDeVenta.tipo != TipoPuntoVenta.CD)
+        .order_by(func.lower(PuntoDeVenta.nombre))
+    ).scalars().all()
+
+    # 2. Variantes que cumplen los filtros
+    consulta_variantes = (
+        select(Variante)
+        .join(Producto, Producto.id == Variante.producto_id)
+        .where(Producto.activo.is_(True))
+        .options(joinedload(Variante.producto))
+    )
+    if busqueda:
+        # Mismo criterio que `listar_stock` (Principio 2): código de
+        # etiqueta con o sin dígito verificador, SKU o descripción.
+        from app.services.productos import condiciones_codigo_variante
+
+        texto = busqueda.strip().upper()
+        patron = f"%{texto}%"
+        consulta_variantes = consulta_variantes.where(
+            or_(
+                *condiciones_codigo_variante(texto),
+                Producto.sku.ilike(patron),
+                Producto.descripcion.ilike(patron),
+            )
+        )
+    if categoria_id is not None:
+        from app.services.categorias import rama_de_ids
+        consulta_variantes = consulta_variantes.where(
+            Producto.categoria_id.in_(rama_de_ids(db, categoria_id))
+        )
+    if proveedor_id is not None:
+        consulta_variantes = consulta_variantes.where(
+            Producto.proveedor_id == proveedor_id
+        )
+
+    total = db.execute(
+        select(func.count()).select_from(consulta_variantes.order_by(None).subquery())
+    ).scalar_one()
+
+    consulta_variantes = consulta_variantes.order_by(
+        func.lower(Producto.descripcion), Variante.codigo_completo
+    )
+    if tamano is not None:
+        consulta_variantes = consulta_variantes.limit(tamano).offset((pagina - 1) * tamano)
+
+    variantes = db.execute(consulta_variantes).unique().scalars().all()
+
+    if not variantes:
+        return [], list(columnas), total, list(opciones_locales)
+
+    # 3. Stock de esas variantes en todos los PdV (una sola query)
+    variante_ids = [v.id for v in variantes]
+    filas_stock = db.execute(
+        select(Stock.variante_id, Stock.punto_de_venta_id, Stock.cantidad)
+        .where(
+            Stock.variante_id.in_(variante_ids),
+            Stock.punto_de_venta_id.in_(col_ids),
+        )
+    ).all()
+
+    # 4. Pivot en Python: {variante_id: {punto_id: cantidad}}
+    pivot: dict[int, dict[int, int]] = {v.id: {} for v in variantes}
+    for fila in filas_stock:
+        pivot[fila.variante_id][fila.punto_de_venta_id] = fila.cantidad
+
+    # 5. Armar las filas resultado
+    resultado = []
+    for v in variantes:
+        resultado.append({
+            "variante_id": v.id,
+            "codigo_completo": v.codigo_completo,
+            "verificador": v.verificador,
+            "descripcion": v.producto.descripcion,
+            "descripcion_sufijo": None if v.es_base else v.descripcion_sufijo,
+            "stocks": pivot[v.id],
+        })
+
+    return resultado, list(columnas), total, list(opciones_locales)
 
 
 def listar_movimientos(

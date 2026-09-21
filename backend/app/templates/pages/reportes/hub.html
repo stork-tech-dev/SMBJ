@@ -1,0 +1,11 @@
+{# Página de menú del módulo de reportes: tarjetas hacia cada reporte. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/hub.html" import hub %}
+
+{% block contenido %}
+{% call encabezado('Reportes') %}{% endcall %}
+
+{{ hub(secciones, vacio='No hay reportes disponibles para tu perfil.') }}
+{% endblock %}

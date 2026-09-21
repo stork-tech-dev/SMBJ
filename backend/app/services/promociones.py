@@ -22,10 +22,12 @@ from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.utils import ahora_db, normalizar_texto, sin_tildes, sin_tildes_sql
-from app.models.cliente import ClientePromocion
 from app.models.categoria import Categoria
+from app.models.cliente import ClientePromocion
+from app.models.medio_pago import MedioDePago
 from app.models.producto import Producto
 from app.models.promocion import Promocion, PromocionAlcance, TipoAlcance, TipoPromocion
+from app.models.punto_de_venta import PuntoDeVenta
 from app.models.usuario import Usuario
 from app.services import categorias as servicio_categorias
 from app.services.roles import NoEncontrado, ReglaDeNegocio
@@ -91,27 +93,38 @@ def elegir_unidades_gratis(items: list, promocion: Promocion) -> list:
 # ============================================================================
 
 
-def productos_alcanzados(db: Session, promocion: Promocion) -> set[int]:
+def productos_alcanzados(db: Session, promocion: Promocion) -> set[int] | None:
     """
-    Los `producto_id` que la promoción cubre.
+    Los `producto_id` que la promoción cubre, o None si aplica a todo el catálogo.
 
     Se resuelve una vez por promoción y no una consulta por ítem: el carrito
     es chico pero la pantalla recalcula el total en cada escaneo, y una
     consulta por unidad por promoción se nota.
+
+    Devuelve None cuando el alcance es TODOS_PRODUCTOS o TODOS_CATEGORIAS para
+    no traer todo el catálogo a memoria: el llamador trata None como "aplica
+    a cualquier producto".
 
     Una categoría alcanza también a sus DESCENDIENTES: quien pone "Plata" en
     una promo espera que entren "Plata > Anillos" y "Plata > Cadenas". Lo
     contrario obligaría a cargar hoja por hoja y a acordarse de volver acá
     cada vez que se agrega una subcategoría.
     """
+    _TIPOS_TODOS = {TipoAlcance.TODOS_PRODUCTOS, TipoAlcance.TODOS_CATEGORIAS}
+    for alcance in promocion.alcances:
+        if alcance.tipo_alcance in _TIPOS_TODOS:
+            return None  # aplica a todo el catálogo
+
     ids_producto: set[int] = set()
     ids_categoria: set[int] = set()
 
     for alcance in promocion.alcances:
         if alcance.tipo_alcance == TipoAlcance.PRODUCTO:
             ids_producto.add(alcance.referencia_id)
-        else:
+        elif alcance.tipo_alcance == TipoAlcance.CATEGORIA:
             ids_categoria.update(servicio_categorias.rama_de_ids(db, alcance.referencia_id))
+        # PUNTO_DE_VENTA y MEDIO_DE_PAGO no definen productos: se evalúan
+        # por separado en aplica_en_contexto().
 
     if ids_categoria:
         filas = db.execute(
@@ -120,6 +133,46 @@ def productos_alcanzados(db: Session, promocion: Promocion) -> set[int]:
         ids_producto.update(filas)
 
     return ids_producto
+
+
+def aplica_en_contexto(
+    promocion: Promocion,
+    punto_de_venta_id: int | None,
+    medio_de_pago_id: int | None = None,
+) -> bool:
+    """
+    Si la promoción puede aplicar dado el contexto de la venta.
+
+    Evalúa los alcances de Sucursal y Medio de Pago. Si la promoción no tiene
+    alcances de ese tipo, no hay restricción. `referencia_id = 0` significa
+    "todos": siempre pasa. `medio_de_pago_id = None` (desconocido, carrito
+    en_curso) hace que las restricciones de medio de pago no bloqueen la
+    aplicación automática.
+    """
+    pdv_ids = {
+        a.referencia_id
+        for a in promocion.alcances
+        if a.tipo_alcance == TipoAlcance.PUNTO_DE_VENTA
+    }
+    medio_ids = {
+        a.referencia_id
+        for a in promocion.alcances
+        if a.tipo_alcance == TipoAlcance.MEDIO_DE_PAGO
+    }
+
+    # Sin restricción de sucursal → pasa.
+    # Restricción "todos" (0 en el set) → pasa siempre.
+    if pdv_ids and 0 not in pdv_ids:
+        if punto_de_venta_id is None or punto_de_venta_id not in pdv_ids:
+            return False
+
+    # Sin restricción de medio de pago → pasa.
+    # medio_de_pago_id desconocido en esta etapa → se deja pasar.
+    if medio_ids and 0 not in medio_ids and medio_de_pago_id is not None:
+        if medio_de_pago_id not in medio_ids:
+            return False
+
+    return True
 
 
 def promociones_aplicables(
@@ -223,22 +276,42 @@ def listar_promociones(
     return filas
 
 
+_TIPOS_SIN_REFERENCIA = frozenset({
+    TipoAlcance.TODOS_PRODUCTOS,
+    TipoAlcance.TODOS_CATEGORIAS,
+})
+
+
 def _validar_alcances(db: Session, alcances: list[dict]) -> None:
     """
     Que cada referencia exista de verdad.
 
-    `promocion_alcance.referencia_id` no lleva FK —apunta a dos tablas
-    distintas según el tipo—, así que la validación que la base no puede
-    hacer se hace acá. Sin esto, un id tipeado mal daría una promoción que
-    nunca aplica y nada avisaría por qué.
+    `promocion_alcance.referencia_id` no lleva FK —apunta a tablas distintas
+    según el tipo—, así que la validación que la base no puede hacer se hace
+    acá. Sin esto, un id tipeado mal daría una promoción que nunca aplica y
+    nada avisaría por qué.
+
+    Para los tipos "todos_*", `referencia_id = 0` y no hay nada que verificar.
     """
     for alcance in alcances:
         tipo = alcance["tipo_alcance"]
-        referencia = alcance["referencia_id"]
-        modelo = Producto if tipo == TipoAlcance.PRODUCTO else Categoria
-        if db.get(modelo, referencia) is None:
-            etiqueta = "producto" if tipo == TipoAlcance.PRODUCTO else "categoría"
-            raise ReglaDeNegocio(f"No existe el {etiqueta} {referencia}")
+        referencia = alcance.get("referencia_id", 0)
+
+        if tipo in _TIPOS_SIN_REFERENCIA:
+            continue  # referencia_id = 0: no apunta a nada concreto
+
+        if tipo == TipoAlcance.PRODUCTO:
+            if db.get(Producto, referencia) is None:
+                raise ReglaDeNegocio(f"No existe el producto {referencia}")
+        elif tipo == TipoAlcance.CATEGORIA:
+            if db.get(Categoria, referencia) is None:
+                raise ReglaDeNegocio(f"No existe la categoría {referencia}")
+        elif tipo == TipoAlcance.PUNTO_DE_VENTA:
+            if referencia != 0 and db.get(PuntoDeVenta, referencia) is None:
+                raise ReglaDeNegocio(f"No existe el punto de venta {referencia}")
+        elif tipo == TipoAlcance.MEDIO_DE_PAGO:
+            if referencia != 0 and db.get(MedioDePago, referencia) is None:
+                raise ReglaDeNegocio(f"No existe el medio de pago {referencia}")
 
 
 def _validar_nombre_unico(db: Session, nombre: str, excluir_id: int | None = None) -> None:
@@ -249,13 +322,30 @@ def _validar_nombre_unico(db: Session, nombre: str, excluir_id: int | None = Non
         raise ReglaDeNegocio(f"Ya existe una promoción '{nombre}'")
 
 
+def _validar_porcentaje(tipo: TipoPromocion, porcentaje: int | None) -> int | None:
+    """
+    Que el porcentaje sea coherente con el tipo.
+
+    PORCENTAJE requiere un número; los demás tipos lo ignoran (se guarda NULL).
+    """
+    if tipo == TipoPromocion.PORCENTAJE:
+        if not porcentaje:
+            raise ReglaDeNegocio(
+                "El porcentaje de descuento es obligatorio para el tipo Porcentaje"
+            )
+        return porcentaje
+    return None  # se ignora para los tipos de grupo
+
+
 def crear_promocion(
     db: Session,
     autor: Usuario,
     *,
     nombre: str,
+    nota: str | None = None,
     tipo: TipoPromocion,
     alcances: list[dict],
+    porcentaje_descuento: int | None = None,
     fecha_inicio: date | None = None,
     fecha_fin: date | None = None,
     ip_origen: str | None = None,
@@ -273,12 +363,16 @@ def crear_promocion(
         )
     _validar_alcances(db, alcances)
 
+    pct = _validar_porcentaje(tipo, porcentaje_descuento)
+
     if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
         raise ReglaDeNegocio("La fecha de fin no puede ser anterior a la de inicio")
 
     promocion = Promocion(
         nombre=limpio,
+        nota=nota or None,
         tipo=tipo,
+        porcentaje_descuento=pct,
         activo=True,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
@@ -330,8 +424,10 @@ def editar_promocion(
     promocion_id: int,
     *,
     nombre: str | None = None,
+    nota: str | None = None,
     tipo: TipoPromocion | None = None,
     alcances: list[dict] | None = None,
+    porcentaje_descuento: int | None = None,
     fecha_inicio: date | None = None,
     fecha_fin: date | None = None,
     editar_fechas: bool = False,
@@ -357,8 +453,19 @@ def editar_promocion(
         _validar_nombre_unico(db, limpio, excluir_id=promocion.id)
         promocion.nombre = limpio
 
+    if nota is not None:
+        promocion.nota = nota or None
+
     if tipo is not None:
+        tipo_efectivo = tipo
         promocion.tipo = tipo
+    else:
+        tipo_efectivo = promocion.tipo
+
+    # Si cambia el tipo o se manda porcentaje explícitamente, validar y aplicar.
+    if tipo is not None or porcentaje_descuento is not None:
+        pct = _validar_porcentaje(tipo_efectivo, porcentaje_descuento or promocion.porcentaje_descuento)
+        promocion.porcentaje_descuento = pct
 
     if editar_fechas:
         if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:

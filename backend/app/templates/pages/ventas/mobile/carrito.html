@@ -39,17 +39,24 @@
                 <template x-for="i in venta.items" :key="i.id">
                     <li class="py-3 flex items-start gap-3">
                         <div class="min-w-0 flex-1">
+                            {# Descripción del producto + la de la variante
+                               (si no es la BASE): "Zapatilla Lona — Roja". #}
                             <p class="text-base font-medium truncate"
-                               x-text="i.variante?.producto?.descripcion || '—'"></p>
-                            <p class="text-xs text-texto-muted truncate"
-                               x-text="i.variante?.producto?.categoria?.nombre || ''"></p>
+                               x-text="(i.variante?.producto?.descripcion || '—')
+                                       + (i.variante?.descripcion_sufijo ? ' — ' + i.variante.descripcion_sufijo : '')"></p>
+                            <p class="text-xs text-texto-muted truncate">
+                                <span x-text="i.variante?.producto?.categoria?.nombre || ''"></span>
+                                <span class="font-mono"
+                                      x-text="(i.variante?.producto?.categoria?.nombre ? ' · ' : '')
+                                              + (i.variante?.codigo_completo || '') + (i.variante?.verificador || '')"></span>
+                            </p>
 
                             <p class="text-xs mt-0.5">
-                                <span x-show="i.en_promocion" class="text-success font-semibold">
-                                    Promoción · sin cargo
-                                </span>
+                                <span x-show="i.en_promocion" class="text-success font-semibold"
+                                      x-text="'Promoción · ' + (venta.promocion?.nombre || 'sin cargo')"></span>
                                 <span x-show="Number(i.descuento_item) > 0" class="text-primary font-semibold"
-                                      x-text="Number(i.descuento_item) + '% de descuento'"></span>
+                                      x-text="'Descuento ' + Number(i.descuento_item) + '% · '
+                                              + (motivos.find(m => m.id === i.motivo_descuento_id)?.nombre || '')"></span>
                             </p>
                         </div>
 
@@ -91,9 +98,6 @@
             <p x-show="!venta.items.length" x-cloak
                class="py-16 text-center text-sm text-texto-disabled">
                 El carrito está vacío.
-                <a href="/ventas/nueva" class="block mt-2 text-primary font-semibold">
-                    Escanear un producto
-                </a>
             </p>
 
             {# ---------- Totales ---------- #}
@@ -124,7 +128,7 @@
                           text-base hover:border-primary hover:text-primary">
                     Seguir agregando
                 </a>
-                <button type="button" @click="descartar()" x-show="venta.items.length"
+                <button type="button" @click="descartar()"
                         class="h-boton rounded-input text-sm text-texto-muted
                                hover:text-danger">
                     Descartar la venta
@@ -177,15 +181,15 @@
                     </div>
                 </div>
 
-                {# Deshabilitado hasta que haya motivo: es el orden que pide
-                   el flujo, y dejarlo activo antes invitaría a elegir un
-                   porcentaje que después hay que volver a elegir. #}
-                <div class="flex flex-col gap-2" :class="!descuento.motivo_id && 'opacity-50'">
+                {# Lista de porcentajes: solo cuando el motivo no tiene sugerido.
+                   Si tiene sugerido, ese porcentaje se aplica directamente y
+                   la vendedora no necesita (ni puede) elegir otro. #}
+                <div x-show="descuento.motivo_id && descuento.elige_vendedora" x-cloak
+                     class="flex flex-col gap-2">
                     <span class="text-sm font-semibold text-texto-header">Porcentaje</span>
                     <div class="flex flex-wrap gap-2">
                         <template x-for="p in porcentajes" :key="p">
                             <button type="button" @click="descuento.porcentaje = p"
-                                    :disabled="!descuento.motivo_id"
                                     class="min-h-toque px-4 rounded-input border-2 text-base font-medium"
                                     :class="descuento.porcentaje === p
                                             ? 'border-primary bg-primary text-white'
@@ -197,6 +201,16 @@
                         El descuento del producto y el de la venta suman como máximo
                         <span x-text="tope + '%'"></span> por unidad.
                     </span>
+                </div>
+
+                {# Cuando el motivo tiene porcentaje sugerido: mostrar el valor
+                   que se va a aplicar, sin lista. #}
+                <div x-show="descuento.motivo_id && !descuento.elige_vendedora" x-cloak
+                     class="flex items-center gap-2 px-4 py-3 rounded-input bg-primary/10">
+                    <span class="text-sm text-texto-muted">Se aplica</span>
+                    <span class="text-base font-black text-primary"
+                          x-text="descuento.porcentaje + '%'"></span>
+                    <span class="text-sm text-texto-muted">de descuento</span>
                 </div>
 
                 <div class="grid gap-2">

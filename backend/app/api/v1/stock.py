@@ -10,19 +10,23 @@ dentro de cada handler porque un endpoint que se olvide del filtro no falla
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.device_deps import get_current_device
 from app.core.device_scope import DeviceScope, get_device_scope
 from app.core.permisos import Modulo, Recurso, requiere_permiso
 from app.core.utils import ip_de_request
-from app.models.punto_de_venta import PuntoDeVenta
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.stock import TipoMovimiento
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.stock import (
     BajaCrear,
+    ConsultaStockColumna,
+    ConsultaStockFila,
+    ConsultaStockResponse,
     IngresoCrear,
     MotivoBajaCrear,
     MotivoBajaEditar,
@@ -60,11 +64,23 @@ def listar(
     ),
     solo_bajo_minimo: bool = Query(default=False),
     incluir_sin_stock: bool = Query(default=True),
+    todos_los_locales: bool = Query(
+        default=False,
+        description="Solo lectura: ignora el aislamiento por dispositivo "
+        "para que una vendedora pueda ver cuánto hay en otros locales.",
+    ),
+    restar_carrito: bool = Query(
+        default=False,
+        description="Resta de la respuesta (campo reservado_carrito, no de "
+        "`cantidad`) lo que el usuario ya tiene en su propia venta en curso "
+        "en la ubicación de su dispositivo.",
+    ),
     pagina: int = Query(default=1, ge=1),
     tamano: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     scope: DeviceScope = Depends(get_device_scope),
-    _=Depends(requiere_permiso(Modulo.STOCK, "ver")),
+    dispositivo=Depends(get_current_device),
+    autor=Depends(requiere_permiso(Modulo.STOCK, "ver")),
 ):
     """
     Filtros del Principio 5, todos resueltos en el backend.
@@ -81,11 +97,84 @@ def listar(
         busqueda=busqueda,
         solo_bajo_minimo=solo_bajo_minimo,
         incluir_sin_stock=incluir_sin_stock,
+        todos_los_locales=todos_los_locales,
+        usuario_id=autor.id if restar_carrito else None,
+        punto_de_venta_dispositivo=(
+            dispositivo.punto_de_venta_id if restar_carrito and dispositivo else None
+        ),
         pagina=pagina,
         tamano=tamano,
     )
     return RespuestaPaginada[StockResponse](
         total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
+    )
+
+
+@router.get("/consulta", response_model=ConsultaStockResponse, summary="Consulta cruzada de stock")
+def consulta(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    pagina: int = Query(default=1, ge=1),
+    tamano: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """
+    Tabla pivotada: una fila por variante, una columna por punto de venta.
+    Sin aislamiento por dispositivo: es un reporte global.
+    """
+    filas, columnas, total, opciones_locales = servicio.consulta_cruzada(
+        db,
+        busqueda=busqueda,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        punto_de_venta_id=punto_de_venta_id,
+        pagina=pagina,
+        tamano=tamano,
+    )
+    return ConsultaStockResponse(
+        columnas=[ConsultaStockColumna.model_validate(c) for c in columnas],
+        filas=[ConsultaStockFila(**f) for f in filas],
+        total=total,
+        pagina=pagina,
+        tamano=tamano,
+        opciones_locales=[ConsultaStockColumna.model_validate(c) for c in opciones_locales],
+    )
+
+
+@router.get(
+    "/consulta/exportar",
+    response_class=Response,
+    summary="Exportar la consulta cruzada de stock a Excel",
+)
+def consulta_exportar(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """
+    Mismo filtro que `/consulta`, pero sin paginar: exporta todas las filas
+    que matchean, no solo la página que se ve en pantalla.
+    """
+    from app.reports.consulta_stock_excel import generar_xls_consulta_stock
+
+    filas, columnas, _total, _opciones_locales = servicio.consulta_cruzada(
+        db,
+        busqueda=busqueda,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        punto_de_venta_id=punto_de_venta_id,
+        tamano=None,
+    )
+    return Response(
+        content=generar_xls_consulta_stock(filas, columnas),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="stock-por-local.xlsx"'},
     )
 
 
@@ -112,6 +201,12 @@ def alertas(
     summary="Ubicaciones sobre las que se puede operar",
 )
 def ubicaciones(
+    incluir_especiales: bool = Query(
+        default=False,
+        description="Suma las Ubicaciones Especiales (ej. Productos Fallados) a "
+        "la lista. Solo lo usa el selector de origen/destino de Remitos — el "
+        "resto de las pantallas de stock las deja afuera a propósito.",
+    ),
     db: Session = Depends(get_db),
     scope: DeviceScope = Depends(get_device_scope),
     _=Depends(requiere_permiso(Modulo.STOCK, "ver")),
@@ -125,17 +220,29 @@ def ubicaciones(
     de la ubicación ya viajan en cada fila de stock.
 
     Viene ya acotado por el dispositivo: para un vendedor la lista tiene
-    exactamente su local, así que la pantalla no puede ofrecerle otro.
+    exactamente su local, así que la pantalla no puede ofrecerle otro. La
+    excepción es Remitos (`incluir_especiales=True`, el único que lo pide):
+    ahí un vendedor tiene que poder ver el CD y las Ubicaciones Especiales
+    como destino posible además de su propio local — si no, el combo de
+    destino quedaría siempre vacío y nunca podría armar un envío.
 
     Solo las activas: no se manda ni se cuenta mercadería en una ubicación
     dada de baja.
     """
     consulta = select(PuntoDeVenta).where(PuntoDeVenta.activo.is_(True))
+    if not incluir_especiales:
+        consulta = consulta.where(PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL)
 
     if scope.restringido:
         if scope.sin_asignacion:
             return []
-        consulta = consulta.where(PuntoDeVenta.id == scope.punto_de_venta_id)
+        if incluir_especiales:
+            consulta = consulta.where(
+                (PuntoDeVenta.id == scope.punto_de_venta_id)
+                | (PuntoDeVenta.tipo.in_([TipoPuntoVenta.CD, TipoPuntoVenta.ESPECIAL]))
+            )
+        else:
+            consulta = consulta.where(PuntoDeVenta.id == scope.punto_de_venta_id)
 
     return list(db.execute(consulta.order_by(PuntoDeVenta.codigo)).scalars().all())
 

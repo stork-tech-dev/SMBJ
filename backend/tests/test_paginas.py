@@ -1130,6 +1130,7 @@ def test_item_activo_del_sidebar_en_cada_pagina(client, crear_usuario, roles):
         "/remitos": "/gestion-de-stock",
         "/auditorias-inventario": "/gestion-de-stock",
         "/motivos-baja": "/gestion-de-stock",
+        "/consulta-stock": "/gestion-de-stock",
     }
 
     for url, item_esperado in rutas.items():
@@ -1580,6 +1581,7 @@ def test_toda_pantalla_es_alcanzable_desde_la_navegacion(client, crear_usuario):
         "/remitos": "/gestion-de-stock",
         "/auditorias-inventario": "/gestion-de-stock",
         "/motivos-baja": "/stock",
+        "/consulta-stock": "/gestion-de-stock",
         "/puntos-de-venta": "/configuracion",
         "/dispositivos": "/configuracion",
         "/usuarios": "/configuracion",
@@ -1875,7 +1877,7 @@ def test_los_modulos_pendientes_muestran_su_pantalla(client, crear_usuario):
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    for ruta, titulo in {"/reportes": "Reportes", "/ajustes": "Ajustes"}.items():
+    for ruta, titulo in {"/ajustes": "Ajustes"}.items():
         resp = client.get(ruta)
         assert resp.status_code == 200, ruta
         assert f">{titulo}</h1>" in resp.text, ruta

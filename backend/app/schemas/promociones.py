@@ -9,14 +9,14 @@ from app.models.promocion import TipoAlcance, TipoPromocion
 
 class AlcanceItem(BaseModel):
     """
-    Un producto o una categoría alcanzada.
+    Un producto, categoría, punto de venta o medio de pago alcanzado.
 
-    Una categoría alcanza también a sus descendientes: quien pone "Plata"
-    espera que entren "Plata > Anillos" y "Plata > Cadenas".
+    `referencia_id = 0` para los tipos "todos_*": no apunta a ninguna entidad
+    en particular; el service lo interpreta como "aplica a todos".
     """
 
     tipo_alcance: TipoAlcance
-    referencia_id: int
+    referencia_id: int = 0
 
 
 class AlcanceResponse(AlcanceItem):
@@ -30,7 +30,10 @@ class AlcanceResponse(AlcanceItem):
 
 class PromocionCrear(BaseModel):
     nombre: str = Field(min_length=1, max_length=100)
+    nota: str | None = Field(default=None, max_length=500)
     tipo: TipoPromocion
+    # Requerido para tipo PORCENTAJE; ignorado en los otros tipos.
+    porcentaje_descuento: int | None = Field(default=None, ge=1, le=75)
     alcances: list[AlcanceItem] = Field(
         min_length=1,
         description="Al menos uno: una promoción sin alcance no aplica a nada",
@@ -41,7 +44,9 @@ class PromocionCrear(BaseModel):
 
 class PromocionEditar(BaseModel):
     nombre: str | None = Field(default=None, min_length=1, max_length=100)
+    nota: str | None = None
     tipo: TipoPromocion | None = None
+    porcentaje_descuento: int | None = Field(default=None, ge=1, le=75)
     alcances: list[AlcanceItem] | None = Field(default=None, min_length=1)
     fecha_inicio: date | None = None
     fecha_fin: date | None = None
@@ -58,11 +63,14 @@ class PromocionResumen(BaseModel):
 
     id: int
     nombre: str
+    nota: str | None = None
     tipo: TipoPromocion
+    porcentaje_descuento: int | None = None
     activo: bool
 
 
 class PromocionResponse(PromocionResumen):
+    porcentaje_descuento: int | None = None
     fecha_inicio: date | None
     fecha_fin: date | None
     created_at: datetime
@@ -72,8 +80,9 @@ class PromocionResponse(PromocionResumen):
     # Derivados que el frontend no debería recalcular (Principio 1): si
     # rige HOY, y cuántas unidades entran y se pagan por grupo.
     vigente: bool = False
-    tamano_grupo: int = 0
-    pagas_por_grupo: int = 0
+    # None para tipo PORCENTAJE (no tiene grupos).
+    tamano_grupo: int | None = None
+    pagas_por_grupo: int | None = None
     # Si está asignada a clientes puntuales: con al menos uno deja de
     # ofrecerse en las ventas del resto.
     exclusiva_de_clientes: bool = False

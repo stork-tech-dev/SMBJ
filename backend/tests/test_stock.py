@@ -327,11 +327,11 @@ def test_un_numero_de_confirmacion_incorrecto_no_recibe_nada(
     assert servicio.cantidad_en(db, con_stock.id, local.id) == 0
 
 
-def test_recibir_menos_deja_el_remito_con_diferencia(db, autor, con_stock, cd, local):
+def test_recibir_menos_ajusta_el_origen(db, autor, con_stock, cd, local):
     """
-    Entra lo que llegó, no lo que se envió. Lo que falta NO vuelve al origen:
-    ya salió de ahí, y darlo por presente en los dos lados sería inventar
-    mercadería.
+    Cuando se recibe menos de lo enviado la diferencia vuelve al origen: el
+    impacto neto en el sistema es lo que se recibió efectivamente, no lo que
+    se despachó. Sin el ajuste, esas unidades desaparecerían del sistema.
     """
     remito = servicio_remitos.crear_remito(
         db, autor, LIBRE,
@@ -348,24 +348,34 @@ def test_recibir_menos_deja_el_remito_con_diferencia(db, autor, con_stock, cd, l
 
     assert remito.estado == EstadoRemito.CON_DIFERENCIA
     assert servicio.cantidad_en(db, con_stock.id, local.id) == 28
-    assert servicio.cantidad_en(db, con_stock.id, cd.id) == 70
+    # Las 2 unidades faltantes vuelven al origen: el sistema queda balanceado.
+    assert servicio.cantidad_en(db, con_stock.id, cd.id) == 72
     assert remito.items[0].diferencia == -2
 
 
-def test_no_se_puede_recibir_mas_de_lo_enviado(db, autor, con_stock, cd, local):
+def test_recibir_mas_ajusta_el_origen(db, autor, con_stock, cd, local):
+    """
+    Cuando se recibe más de lo enviado, la diferencia extra se descuenta del
+    origen: el impacto neto es lo que llegó efectivamente al destino.
+    """
     remito = servicio_remitos.crear_remito(
         db, autor, LIBRE,
         punto_venta_origen_id=cd.id,
         punto_venta_destino_id=local.id,
         items=[{"variante_id": con_stock.id, "cantidad": 10}],
     )
+    servicio_remitos.confirmar_recepcion(
+        db, autor, LIBRE, remito.id,
+        numero_confirmacion=remito.numero,
+        recibidos={con_stock.id: 11},
+    )
+    db.flush()
 
-    with pytest.raises(ReglaDeNegocio, match="no puede recibirse más"):
-        servicio_remitos.confirmar_recepcion(
-            db, autor, LIBRE, remito.id,
-            numero_confirmacion=remito.numero,
-            recibidos={con_stock.id: 11},
-        )
+    assert remito.estado == EstadoRemito.CON_DIFERENCIA
+    assert servicio.cantidad_en(db, con_stock.id, local.id) == 11
+    # 1 unidad extra descontada del origen (100 - 10 al despachar - 1 de ajuste)
+    assert servicio.cantidad_en(db, con_stock.id, cd.id) == 89
+    assert remito.items[0].diferencia == 1
 
 
 def test_un_remito_confirmado_no_se_confirma_dos_veces(db, autor, con_stock, cd, local):
@@ -859,6 +869,68 @@ def test_el_listado_de_stock_se_filtra_al_local_del_vendedor(
     assert filas[0].punto_de_venta_id == local.id
 
 
+def test_todos_los_locales_es_la_excepcion_de_solo_lectura(
+    db, autor, variante, cd, local, otro_local
+):
+    """
+    La vendedora restringida a un local puede pedir explícitamente ver los
+    demás (y el CD) — es la única excepción de lectura al aislamiento por
+    dispositivo. Sin el flag sigue viendo solo el suyo (test de arriba).
+    """
+    for punto in (cd, local, otro_local):
+        servicio.aplicar_movimiento(
+            db, autor,
+            tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+            variante_id=variante.id,
+            cantidad=10,
+            punto_venta_destino_id=punto.id,
+        )
+    db.flush()
+
+    filas, total = servicio.listar_stock(
+        db, DeviceScope(restringido=True, punto_de_venta_id=local.id),
+        todos_los_locales=True,
+    )
+
+    assert total == 3
+    assert {f.punto_de_venta_id for f in filas} == {cd.id, local.id, otro_local.id}
+
+
+def test_api_todos_los_locales_le_muestra_al_vendedor_otros_locales(
+    client, db, crear_usuario, dar_permiso, roles, autor, variante, cd, local, otro_local,
+):
+    """Extremo a extremo: un vendedor real, logueado, con su dispositivo."""
+    from app.core.permisos import Modulo
+    from app.models.dispositivo import Dispositivo
+
+    for punto in (cd, local, otro_local):
+        servicio.aplicar_movimiento(
+            db, autor,
+            tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+            variante_id=variante.id,
+            cantidad=10,
+            punto_venta_destino_id=punto.id,
+        )
+    db.flush()
+
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.STOCK, ver=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Mostrador", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    sin_flag = client.get("/api/v1/stock").json()
+    assert sin_flag["total"] == 1
+
+    con_flag = client.get("/api/v1/stock", params={"todos_los_locales": "true"}).json()
+    assert con_flag["total"] == 3
+    puntos = {fila["punto_de_venta"]["id"] for fila in con_flag["resultados"]}
+    assert puntos == {cd.id, local.id, otro_local.id}
+
+
 def test_el_listado_de_stock_de_un_vendedor_sin_asignacion_viene_vacio(
     db, autor, con_stock
 ):
@@ -1086,3 +1158,392 @@ def test_una_variante_inexistente_no_mueve_stock(db, autor, cd):
             cantidad=1,
             punto_venta_destino_id=cd.id,
         )
+
+
+# ============================================================================
+# CONSULTA CRUZADA Y SU EXPORTACIÓN A EXCEL
+# ============================================================================
+
+
+@pytest.fixture
+def otra_variante(db, autor, config, cd):
+    """Un segundo producto, con stock, para distinguirlo por búsqueda."""
+    categoria = servicio_categorias.crear_categoria(db, autor, nombre="Ropa")
+    proveedor = servicio_proveedores.crear_proveedor(
+        db, autor, nombre="Textil del Este", dolar_actual=Decimal("1000")
+    )
+    producto = servicio_productos.crear_producto(
+        db, autor,
+        categoria_id=categoria.id,
+        proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"),
+        descripcion="Campera de cuero",
+    )
+    db.flush()
+    variante = producto.variantes[0]
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id,
+        cantidad=7,
+        punto_venta_destino_id=cd.id,
+    )
+    db.flush()
+    return variante
+
+
+def test_consulta_cruzada_sin_paginar_trae_todo(db, con_stock, otra_variante):
+    """
+    `tamano=None` es lo que usa la exportación: tiene que traer TODAS las
+    filas que matchean, no solo una página — a diferencia del listado en
+    pantalla, que sí pagina.
+    """
+    filas, _columnas, total, _opciones = servicio.consulta_cruzada(db, tamano=None)
+
+    assert total == 2
+    assert len(filas) == 2
+    codigos = {f["codigo_completo"] for f in filas}
+    assert con_stock.codigo_completo in codigos
+    assert otra_variante.codigo_completo in codigos
+
+
+def test_consulta_cruzada_sin_paginar_respeta_filtros(db, con_stock, otra_variante):
+    """El export no ignora los filtros activos: solo trae lo que matchea."""
+    filas, _columnas, total, _opciones = servicio.consulta_cruzada(
+        db, busqueda="campera", tamano=None
+    )
+
+    assert total == 1
+    assert filas[0]["codigo_completo"] == otra_variante.codigo_completo
+
+
+def test_exportar_consulta_stock_devuelve_xlsx_con_todas_las_filas(
+    client, login, autor, con_stock, otra_variante, cd,
+):
+    """
+    Extremo a extremo: el endpoint de exportación devuelve un .xlsx real,
+    con encabezado Código/Descripción + una columna por local, y sin
+    paginar (las dos variantes, no solo una página de 10).
+    """
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    headers = login(autor.username)
+    resp = client.get("/api/v1/stock/consulta/exportar", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "attachment" in resp.headers["content-disposition"]
+
+    wb = load_workbook(BytesIO(resp.content))
+    hoja = wb.active
+    filas = list(hoja.iter_rows(values_only=True))
+
+    assert filas[0][:2] == ("Código", "Descripción")
+    assert cd.nombre in filas[0]
+    # La celda de código lleva codigo_completo + verificador pegados, igual
+    # que el export de Auditoría de Stock.
+    codigos = {fila[0] for fila in filas[1:]}
+    assert any(c.startswith(con_stock.codigo_completo) for c in codigos)
+    assert any(c.startswith(otra_variante.codigo_completo) for c in codigos)
+
+
+def test_exportar_consulta_stock_respeta_busqueda(client, login, autor, con_stock, otra_variante):
+    """El botón "Exportar" del filtro activo no trae de más."""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    headers = login(autor.username)
+    resp = client.get(
+        "/api/v1/stock/consulta/exportar", params={"busqueda": "campera"}, headers=headers
+    )
+
+    wb = load_workbook(BytesIO(resp.content))
+    filas = list(wb.active.iter_rows(values_only=True))
+
+    assert len(filas) == 2  # encabezado + 1 fila
+    assert filas[1][0].startswith(otra_variante.codigo_completo)
+
+
+def test_consulta_cruzada_con_punto_de_venta_angosta_columnas_no_filas(
+    db, con_stock, otra_variante, cd, local,
+):
+    """
+    Elegir un local en el filtro acota las COLUMNAS a CD + ese local — pero
+    las filas de productos son las mismas que sin filtro (el filtro no
+    oculta productos, solo columnas de stock).
+    """
+    sin_filtro, _c, _t, _o = servicio.consulta_cruzada(db, tamano=None)
+    con_filtro, columnas, total, _opciones = servicio.consulta_cruzada(
+        db, punto_de_venta_id=local.id, tamano=None
+    )
+
+    assert {c.id for c in columnas} == {cd.id, local.id}
+    assert total == len(sin_filtro) == len(con_filtro)
+
+
+def test_consulta_api_respeta_filtro_punto_de_venta(
+    client, login, autor, con_stock, cd, local, otro_local,
+):
+    """El JSON que consume la pantalla también angosta columnas, no filas."""
+    headers = login(autor.username)
+    resp = client.get(
+        "/api/v1/stock/consulta",
+        params={"punto_de_venta_id": local.id},
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    datos = resp.json()
+    ids_columnas = {c["id"] for c in datos["columnas"]}
+    assert ids_columnas == {cd.id, local.id}
+    assert otro_local.id not in ids_columnas
+
+
+def test_exportar_consulta_stock_respeta_punto_de_venta(
+    client, login, autor, con_stock, cd, local, otro_local,
+):
+    """Mismo criterio en la exportación: el Excel solo trae CD + el local elegido."""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    headers = login(autor.username)
+    resp = client.get(
+        "/api/v1/stock/consulta/exportar",
+        params={"punto_de_venta_id": local.id},
+        headers=headers,
+    )
+
+    wb = load_workbook(BytesIO(resp.content))
+    encabezado = next(wb.active.iter_rows(values_only=True))
+
+    assert encabezado[2:] == (cd.nombre, local.nombre)
+    assert otro_local.nombre not in encabezado
+
+
+def test_listar_stock_busqueda_con_el_digito_verificador_incluido(db, con_stock, cd):
+    """
+    El caso del lector: entrega el código CON dígito verificador, y la
+    columna guarda el cuerpo sin él. Antes de este fix, `listar_stock`
+    solo comparaba contra `codigo_completo` y este código no aparecía.
+    """
+    filas, total = servicio.listar_stock(
+        db, LIBRE, busqueda=con_stock.codigo_con_verificador
+    )
+
+    assert total == 1
+    assert filas[0].variante_id == con_stock.id
+
+
+def test_listar_stock_busqueda_sin_el_digito_verificador_sigue_andando(db, con_stock, cd):
+    """El código sin verificador (como ya funcionaba) no se rompe con el fix."""
+    filas, total = servicio.listar_stock(db, LIBRE, busqueda=con_stock.codigo_completo)
+
+    assert total == 1
+    assert filas[0].variante_id == con_stock.id
+
+
+def test_consulta_cruzada_busqueda_con_el_digito_verificador_incluido(db, con_stock):
+    """Mismo caso que `listar_stock`, ahora en la tabla cruzada / export a Excel."""
+    filas, _columnas, total, _opciones = servicio.consulta_cruzada(
+        db, busqueda=con_stock.codigo_con_verificador, tamano=None
+    )
+
+    assert total == 1
+    assert filas[0]["codigo_completo"] == con_stock.codigo_completo
+
+
+# ============================================================================
+# PRECIO CON DESCUENTO Y STOCK RESERVADO EN CARRITO
+# ============================================================================
+
+
+def test_listar_stock_incluye_precio_con_descuento(db, con_stock):
+    """
+    Mismo cálculo que usa el carrito real (`agregar_item`): el precio de
+    esta consulta y el que se termina cobrando tienen que ser el mismo
+    número.
+    """
+    from app.services import descuentos as servicio_descuentos
+
+    producto = con_stock.producto
+    producto.descuento_producto = Decimal("10")
+    db.flush()
+
+    filas, _total = servicio.listar_stock(db, LIBRE, busqueda=con_stock.codigo_completo)
+
+    esperado = servicio_descuentos.aplicar_descuentos(
+        Decimal(con_stock.precio_venta_efectivo),
+        Decimal("10"),
+        Decimal("0"),
+        Decimal("1000.00"),  # redondeo del fixture `config`
+    )
+    assert filas[0].precio_con_descuento == esperado
+    assert filas[0].precio_con_descuento < producto.precio_venta
+
+
+def test_listar_stock_sin_restar_carrito_no_calcula_reservado(db, con_stock, autor, cd):
+    """Comportamiento por defecto (pantalla general de Stock): sin pedirlo, 0."""
+    filas, _total = servicio.listar_stock(db, LIBRE, busqueda=con_stock.codigo_completo)
+
+    assert filas[0].reservado_carrito == 0
+    assert filas[0].cantidad == 100  # el stock real, sin tocar
+
+
+def test_listar_stock_restar_carrito_resta_lo_reservado(db, autor, con_stock, cd):
+    """
+    Lo que ya está en el carrito en curso del usuario NO se toca en
+    `cantidad` (el stock real sigue igual), pero se informa aparte para que
+    la consulta de stock no ofrezca vender lo que ya se está vendiendo.
+    """
+    from app.core.device_scope import DeviceScope
+    from app.services import ventas as servicio_ventas
+
+    dispositivo = _dispositivo(db, True, cd.id)
+    scope = DeviceScope(restringido=True, punto_de_venta_id=cd.id)
+    venta = servicio_ventas.iniciar_venta(db, autor, dispositivo, scope)
+    servicio_ventas.agregar_item(db, autor, venta, variante_id=con_stock.id)
+    db.flush()
+
+    filas, _total = servicio.listar_stock(
+        db, LIBRE, busqueda=con_stock.codigo_completo,
+        usuario_id=autor.id, punto_de_venta_dispositivo=cd.id,
+    )
+
+    assert filas[0].cantidad == 100
+    assert filas[0].reservado_carrito == 1
+
+
+# ============================================================================
+# UBICACIONES ESPECIALES — no cuentan como stock vendible
+# ============================================================================
+
+
+def test_listar_stock_excluye_ubicaciones_especiales(
+    db, autor, variante, crear_punto_de_venta,
+):
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id,
+        cantidad=5,
+        punto_venta_destino_id=especial.id,
+    )
+    db.flush()
+
+    filas, total = servicio.listar_stock(db, LIBRE, busqueda=variante.codigo_completo)
+
+    assert total == 0
+    assert all(f.punto_de_venta_id != especial.id for f in filas)
+
+
+def test_stock_total_excluye_ubicaciones_especiales(
+    db, autor, con_stock, crear_punto_de_venta,
+):
+    """`Variante.stock_total` es lo que ve la vendedora como "cuánto hay"."""
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+    db.refresh(con_stock)  # `stock_total` quedó cacheado en 0 desde antes del movimiento
+    assert con_stock.stock_total == 100
+
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=con_stock.id,
+        cantidad=5,
+        punto_venta_destino_id=especial.id,
+    )
+    db.flush()
+    db.refresh(con_stock)
+
+    assert con_stock.stock_total == 100  # los 5 fallados no suman
+
+
+def test_consulta_cruzada_excluye_especiales_por_defecto_pero_las_ofrece_como_filtro(
+    db, con_stock, cd, crear_punto_de_venta,
+):
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+
+    _filas, columnas, _total, opciones = servicio.consulta_cruzada(db, tamano=None)
+    assert especial.id not in {c.id for c in columnas}
+    assert especial.id in {o.id for o in opciones}
+    assert cd.id not in {o.id for o in opciones}  # el CD nunca es una "opción"
+
+    _filas2, columnas2, _total2, _opciones2 = servicio.consulta_cruzada(
+        db, punto_de_venta_id=especial.id, tamano=None
+    )
+    assert {c.id for c in columnas2} == {cd.id, especial.id}
+
+
+# ============================================================================
+# ARMAR ENVÍOS DESDE EL CELULAR — origen fijo, destino CD/Especiales
+# ============================================================================
+
+
+def test_vendedor_restringido_puede_remitir_a_ubicacion_especial(
+    db, autor, con_stock, local, crear_punto_de_venta,
+):
+    """
+    El caso real: un vendedor atado a su local manda productos fallados al
+    CD o a una Ubicación Especial — el mismo `crear_remito` de siempre, con
+    un `scope` restringido al local de origen.
+    """
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+    servicio.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=con_stock.id,
+        cantidad=10,
+        punto_venta_destino_id=local.id,
+    )
+    db.flush()
+
+    scope = DeviceScope(restringido=True, punto_de_venta_id=local.id)
+    remito = servicio_remitos.crear_remito(
+        db, autor, scope,
+        punto_venta_origen_id=local.id,
+        punto_venta_destino_id=especial.id,
+        items=[{"variante_id": con_stock.id, "cantidad": 3}],
+    )
+    db.flush()
+
+    assert remito.punto_venta_destino_id == especial.id
+    assert servicio.cantidad_en(db, con_stock.id, local.id) == 7
+
+
+def test_endpoint_ubicaciones_incluir_especiales_para_vendedor_restringido(
+    client, db, crear_usuario, dar_permiso, roles, local, cd, otro_local,
+    crear_punto_de_venta,
+):
+    """
+    Sin esto el combo de destino de "Armar envío" en el celular queda
+    siempre vacío: el endpoint recortaba TODO a la ubicación propia, sin
+    dejar ver el CD ni las Ubicaciones Especiales.
+    """
+    from app.core.permisos import Modulo
+    from app.models.dispositivo import Dispositivo
+
+    especial = crear_punto_de_venta("FALLX", "Fallados de prueba", TipoPuntoVenta.ESPECIAL)
+
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.STOCK, ver=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Mostrador", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    resp = client.get("/api/v1/stock/ubicaciones", params={"incluir_especiales": "true"})
+    assert resp.status_code == 200
+    nombres = {p["nombre"] for p in resp.json()}
+
+    # >=: además de mis fixtures, puede aparecer la "Productos Fallados" del
+    # seed de la migración 0032 — es otra Ubicación Especial activa más.
+    assert nombres >= {local.nombre, cd.nombre, especial.nombre}
+    assert otro_local.nombre not in nombres

@@ -250,6 +250,12 @@ function carritoVenta(puedeDescontar = false) {
         /* --- Descuento --- */
 
         abrirDescuento(item) {
+            // Si el ítem ya tiene motivo, determinar si ese motivo tiene sugerido.
+            const motivoActual = item.motivo_descuento_id
+                ? this.motivos.find((m) => m.id === item.motivo_descuento_id)
+                : null;
+            const elige = !motivoActual || motivoActual.porcentaje_sugerido === null;
+
             this.descuento = {
                 abierto: true,
                 item_id: item.id,
@@ -257,16 +263,27 @@ function carritoVenta(puedeDescontar = false) {
                 motivo_id: item.motivo_descuento_id || '',
                 porcentaje: Number(item.descuento_item) || null,
                 tenia: Number(item.descuento_item) > 0,
+                // TRUE cuando el motivo no tiene sugerido: la vendedora elige de la lista.
+                elige_vendedora: elige,
             };
         },
 
-        /* Al elegir el motivo se preselecciona su porcentaje sugerido. Que la
-           vendedora pueda cambiarlo no es un agujero: es el caso "hoy hacemos
-           30 en vez de 20", y el backend registra que se apartó. */
+        /* Al elegir el motivo:
+           - Si tiene porcentaje sugerido → se aplica directamente, sin lista.
+           - Si no tiene sugerido → la vendedora elige de la lista. */
         alElegirMotivo() {
             const motivo = this.motivos.find((m) => m.id === Number(this.descuento.motivo_id));
-            if (motivo && motivo.porcentaje_sugerido !== null) {
+            if (!motivo) {
+                this.descuento.elige_vendedora = true;
+                this.descuento.porcentaje = null;
+                return;
+            }
+            if (motivo.porcentaje_sugerido !== null) {
                 this.descuento.porcentaje = Number(motivo.porcentaje_sugerido);
+                this.descuento.elige_vendedora = false;
+            } else {
+                this.descuento.porcentaje = null;
+                this.descuento.elige_vendedora = true;
             }
         },
 
@@ -553,8 +570,11 @@ function finalizarVenta() {
    Pantalla 7 — Consulta de stock
    ========================================================================== */
 
-function consultaStockMobile() {
+function consultaStockMobile(puntoDeVentaId) {
     return {
+        // 0 para los roles sin dispositivo de local asignado (ven todo por
+        // defecto): ahí no hay "mi sucursal" que separar del resto.
+        puntoDeVentaId: Number(puntoDeVentaId) || 0,
         filas: [],
         total: 0,
         pagina: 1,
@@ -564,6 +584,34 @@ function consultaStockMobile() {
         filtros: { busqueda: '' },
 
         pesos: (v) => window.pesos(v),
+
+        // La sucursal propia primero; el resto abajo bajo "Otras Sucursales"
+        // (ver el template). Es partición para MOSTRAR lo ya traído, no un
+        // filtro nuevo: el filtro real es `todos_los_locales` en `cargar()`.
+        get misFilas() {
+            if (!this.puntoDeVentaId) return this.filas;
+            return this.filas.filter((f) => f.punto_de_venta?.id === this.puntoDeVentaId);
+        },
+        get otrasFilas() {
+            if (!this.puntoDeVentaId) return [];
+            return this.filas.filter((f) => f.punto_de_venta?.id !== this.puntoDeVentaId);
+        },
+
+        // Lo que realmente queda para vender: el stock real menos lo que ya
+        // está en MI carrito en curso (`reservado_carrito`, del backend).
+        // Nunca negativo — dos vendedoras del mismo equipo no deberían
+        // darse, pero si pasara, no hay "menos cero" que mostrar.
+        disponible(f) {
+            return Math.max(0, f.cantidad - (f.reservado_carrito || 0));
+        },
+
+        // Un solo botón, no uno por fila: solo tiene sentido cuando la
+        // búsqueda resolvió a UN único producto con stock DISPONIBLE acá —
+        // con más de uno agregar sería adivinar cuál quiere la vendedora.
+        agregando: false,
+        get puedeAgregar() {
+            return this.misFilas.length === 1 && this.disponible(this.misFilas[0]) > 0;
+        },
 
         async cargar() {
             this.cargando = true;
@@ -577,8 +625,14 @@ function consultaStockMobile() {
                 });
                 if (this.filtros.busqueda) params.set('busqueda', this.filtros.busqueda);
 
-                // Un vendedor ya viene acotado a su local por el dispositivo:
-                // el parámetro solo importa para los roles que ven todo.
+                // Sin esto, un vendedor atado a un local por su dispositivo
+                // no puede ver el stock de otro ni del CD: es la única
+                // excepción de solo lectura a ese aislamiento.
+                params.set('todos_los_locales', this.todosLosLocales ? 'true' : 'false');
+                // Para que `disponible()` descuente lo que ya está en mi
+                // propio carrito en curso.
+                params.set('restar_carrito', 'true');
+
                 const datos = await pedir(`${API_STOCK}?${params}`);
 
                 // Acumula al pasar de página: en el celular es "ver más", no
@@ -600,6 +654,37 @@ function consultaStockMobile() {
         verMas() {
             this.pagina += 1;
             this.cargar();
+        },
+
+        // Mismo criterio que `nuevaVenta().iniciar()`: abre la venta en
+        // curso de este equipo o recupera la que ya había, nunca una
+        // segunda. Se queda en esta pantalla después de agregar — la
+        // vendedora puede seguir consultando otros productos sin perder
+        // la búsqueda.
+        async agregarAlCarrito() {
+            if (!this.puedeAgregar) return;
+
+            this.agregando = true;
+            try {
+                const venta = await pedir(API_VENTAS, { method: 'POST', body: '{}' });
+                const datos = await pedir(`${API_VENTAS}/${venta.id}/items`, {
+                    method: 'POST',
+                    body: JSON.stringify({ variante_id: this.misFilas[0].variante.id }),
+                });
+                if (datos.aviso) window.toast(datos.aviso, 'error');
+                else window.toast('Agregado al carrito', 'exito');
+
+                // Refresca `reservado_carrito`: sin esto, el botón seguiría
+                // ofreciendo agregar de más allá de lo que real queda
+                // disponible en el local. `buscar()` no se puede esperar
+                // (no devuelve su promesa), así que se repite acá.
+                this.pagina = 1;
+                await this.cargar();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.agregando = false;
+            }
         },
     };
 }

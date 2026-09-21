@@ -22,8 +22,16 @@ from app.schemas.stock import PuntoResumen, VarianteEnStock
 # ============================================================================
 
 
+class RestriccionItem(BaseModel):
+    """Una restricción de sucursal o medio de pago para un motivo."""
+
+    tipo: str  # 'punto_de_venta' | 'medio_de_pago'
+    referencia_id: int
+
+
 class MotivoDescuentoCrear(BaseModel):
     nombre: str = Field(min_length=1, max_length=100)
+    nota: str | None = Field(default=None, max_length=500)
     porcentaje_sugerido: Decimal | None = Field(
         default=None,
         description="Se preselecciona al elegir el motivo. NULL = la vendedora elige",
@@ -32,13 +40,20 @@ class MotivoDescuentoCrear(BaseModel):
         default=False,
         description="Ofrece los planes sin interés aunque la venta no llegue al mínimo",
     )
+    fecha_inicio: date | None = None
+    fecha_fin: date | None = None
+    restricciones: list[RestriccionItem] = Field(default_factory=list)
 
 
 class MotivoDescuentoEditar(BaseModel):
     nombre: str | None = Field(default=None, min_length=1, max_length=100)
+    nota: str | None = None
     porcentaje_sugerido: Decimal | None = None
     habilita_cuotas_sin_interes: bool | None = None
     activo: bool | None = None
+    fecha_inicio: date | None = None
+    fecha_fin: date | None = None
+    restricciones: list[RestriccionItem] | None = None
 
 
 class MotivoDescuentoResponse(BaseModel):
@@ -46,9 +61,30 @@ class MotivoDescuentoResponse(BaseModel):
 
     id: int
     nombre: str
+    nota: str | None
     porcentaje_sugerido: Decimal | None
     habilita_cuotas_sin_interes: bool
     activo: bool
+    fecha_inicio: date | None
+    fecha_fin: date | None
+    restricciones: list[RestriccionItem]
+
+    @classmethod
+    def from_orm_motivo(cls, motivo) -> "MotivoDescuentoResponse":
+        return cls(
+            id=motivo.id,
+            nombre=motivo.nombre,
+            nota=motivo.nota,
+            porcentaje_sugerido=motivo.porcentaje_sugerido,
+            habilita_cuotas_sin_interes=motivo.habilita_cuotas_sin_interes,
+            activo=motivo.activo,
+            fecha_inicio=motivo.fecha_inicio,
+            fecha_fin=motivo.fecha_fin,
+            restricciones=[
+                RestriccionItem(tipo=r.tipo, referencia_id=r.referencia_id)
+                for r in motivo.restricciones
+            ],
+        )
 
 
 class EstadoCambio(BaseModel):

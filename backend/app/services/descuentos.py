@@ -36,7 +36,7 @@ from app.core.utils import (
     sin_tildes_sql,
 )
 from app.models.usuario import Usuario
-from app.models.venta import MotivoDescuento
+from app.models.venta import MotivoDescuento, MotivoRestriccion
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
 # Lo único que la vendedora puede elegir. De 5 en 5 y hasta 50: la lista es
@@ -246,19 +246,45 @@ def _validar_nombre_unico(db: Session, nombre: str, excluir_id: int | None = Non
         raise ReglaDeNegocio(f"Ya existe un motivo de descuento '{nombre}'")
 
 
+def _sincronizar_restricciones(
+    db: Session, motivo: MotivoDescuento, restricciones: list[dict]
+) -> None:
+    """Reemplaza las restricciones del motivo por la lista recibida."""
+    # Borrar todas las actuales (cascade-delete las elimina al hacer flush)
+    motivo.restricciones.clear()
+    db.flush()
+    for r in restricciones:
+        motivo.restricciones.append(
+            MotivoRestriccion(
+                motivo_id=motivo.id,
+                tipo=r["tipo"],
+                referencia_id=r["referencia_id"],
+            )
+        )
+
+
 def crear_motivo(
     db: Session,
     autor: Usuario,
     *,
     nombre: str,
+    nota: str | None = None,
     porcentaje_sugerido: Decimal | None = None,
     habilita_cuotas_sin_interes: bool = False,
+    fecha_inicio=None,
+    fecha_fin=None,
+    restricciones: list[dict] | None = None,
     ip_origen: str | None = None,
 ) -> MotivoDescuento:
+    from datetime import date as date_type
+
     limpio = normalizar_texto(nombre)
     if not limpio:
         raise ReglaDeNegocio("El nombre del motivo es obligatorio")
     _validar_nombre_unico(db, limpio)
+
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise ReglaDeNegocio("La fecha de inicio no puede ser posterior a la fecha de fin")
 
     # El sugerido pasa por la MISMA lista que la vendedora: un motivo
     # cargado con 12% sería un porcentaje libre entrando por la puerta de
@@ -267,13 +293,20 @@ def crear_motivo(
 
     motivo = MotivoDescuento(
         nombre=limpio,
+        nota=nota or None,
         porcentaje_sugerido=sugerido,
         habilita_cuotas_sin_interes=habilita_cuotas_sin_interes,
         activo=True,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
         created_at=ahora_db(),
     )
     db.add(motivo)
     db.flush()
+
+    if restricciones:
+        _sincronizar_restricciones(db, motivo, restricciones)
+        db.flush()
 
     registrar_auditoria(
         db,
@@ -293,10 +326,14 @@ def editar_motivo(
     motivo_id: int,
     *,
     nombre: str | None = None,
+    nota: str | None = None,
     porcentaje_sugerido: Decimal | None = None,
     editar_sugerido: bool = False,
     habilita_cuotas_sin_interes: bool | None = None,
     activo: bool | None = None,
+    fecha_inicio=None,
+    fecha_fin=None,
+    restricciones: list[dict] | None = None,
     ip_origen: str | None = None,
 ) -> MotivoDescuento:
     """
@@ -319,6 +356,9 @@ def editar_motivo(
         _validar_nombre_unico(db, limpio, excluir_id=motivo.id)
         motivo.nombre = limpio
 
+    if nota is not None:
+        motivo.nota = nota or None
+
     if editar_sugerido:
         motivo.porcentaje_sugerido = (
             None if porcentaje_sugerido is None else validar_porcentaje(porcentaje_sugerido)
@@ -329,6 +369,19 @@ def editar_motivo(
 
     if activo is not None:
         motivo.activo = activo
+
+    if fecha_inicio is not None or fecha_fin is not None:
+        nuevo_inicio = fecha_inicio if fecha_inicio is not None else motivo.fecha_inicio
+        nuevo_fin = fecha_fin if fecha_fin is not None else motivo.fecha_fin
+        if nuevo_inicio and nuevo_fin and nuevo_inicio > nuevo_fin:
+            raise ReglaDeNegocio("La fecha de inicio no puede ser posterior a la fecha de fin")
+        if fecha_inicio is not None:
+            motivo.fecha_inicio = fecha_inicio
+        if fecha_fin is not None:
+            motivo.fecha_fin = fecha_fin
+
+    if restricciones is not None:
+        _sincronizar_restricciones(db, motivo, restricciones)
 
     db.flush()
 

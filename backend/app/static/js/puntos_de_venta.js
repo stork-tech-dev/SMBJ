@@ -14,13 +14,17 @@ function abmPuntos() {
         baja: { abierta: false, punto: null, titulo: '', mensaje: '', advertencia: '' },
 
         etiquetaTipo(t) {
-            return { cd: 'Centro de Distribución', local: 'Local', online: 'Online' }[t] || t;
+            return {
+                cd: 'Centro de Distribución', local: 'Local', online: 'Online',
+                especial: 'Ubicación Especial',
+            }[t] || t;
         },
         badgeTipo(t) {
             return {
                 cd: 'bg-primary/15 text-primary',
                 local: 'bg-accent text-white',
                 online: 'bg-success/15 text-success',
+                especial: 'bg-danger/15 text-danger',
             }[t] || 'bg-surface-alt text-texto-muted';
         },
 

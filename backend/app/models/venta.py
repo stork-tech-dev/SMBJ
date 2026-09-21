@@ -15,7 +15,7 @@ barata de cada grupo, y con un contador esa unidad no existiría como fila.
 """
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -23,6 +23,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -30,6 +31,7 @@ from sqlalchemy import (
     Numeric,
     SmallInteger,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -86,6 +88,9 @@ class MotivoDescuento(Base):
 
     nombre: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
+    # Texto libre con aclaraciones internas (no se muestra a clientes).
+    nota: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     porcentaje_sugerido: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     # Habilita los planes sin interés aunque la venta no llegue al monto
@@ -99,8 +104,16 @@ class MotivoDescuento(Base):
         Boolean, nullable=False, server_default="true", index=True
     )
 
+    # Vigencia opcional. NULL = sin límite de ese lado.
+    fecha_inicio: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_fin: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+
+    restricciones: Mapped[list["MotivoRestriccion"]] = relationship(
+        back_populates="motivo", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -109,10 +122,47 @@ class MotivoDescuento(Base):
             " OR (porcentaje_sugerido > 0 AND porcentaje_sugerido <= 100)",
             name="ck_motivos_descuento_porcentaje_rango",
         ),
+        CheckConstraint(
+            "fecha_inicio IS NULL OR fecha_fin IS NULL OR fecha_inicio <= fecha_fin",
+            name="ck_motivos_descuento_vigencia_coherente",
+        ),
     )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
         return f"<MotivoDescuento {self.id} {self.nombre}>"
+
+
+class MotivoRestriccion(Base):
+    """
+    Restricción de sucursal o medio de pago para un motivo de descuento.
+
+    Mismo patrón que PromocionAlcance. Vacío = aplica en todos lados.
+    `tipo` es 'punto_de_venta' o 'medio_de_pago'. `referencia_id` apunta
+    al PuntoDeVenta o MedioDePago correspondiente.
+    """
+
+    __tablename__ = "motivo_restriccion"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    motivo_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("motivos_descuento.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # 'punto_de_venta' | 'medio_de_pago'
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    referencia_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    motivo: Mapped["MotivoDescuento"] = relationship(back_populates="restricciones")
+
+    __table_args__ = (
+        UniqueConstraint("motivo_id", "tipo", "referencia_id", name="uq_motivo_restriccion"),
+        CheckConstraint(
+            "tipo IN ('punto_de_venta', 'medio_de_pago')",
+            name="ck_motivo_restriccion_tipo",
+        ),
+    )
 
 
 class Venta(Base):

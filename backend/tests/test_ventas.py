@@ -598,7 +598,7 @@ def test_confirmar_descuenta_stock_y_genera_codigo(
     assert servicio_stock.cantidad_en(db, variante.id, local.id) == 3
 
     assert venta.codigo_cambio is not None
-    assert len(venta.codigo_cambio) == 8
+    assert len(venta.codigo_cambio) == 4
     # Sin caracteres que se confundan al leer una letra escrita a mano.
     assert not set(venta.codigo_cambio) & set("IO01")
 
