@@ -74,6 +74,16 @@ La tabla muestra todos los usuarios del sistema.
 
 ---
 
+## Autorizador de cambios (solo Cuenta Maestra)
+
+Al editar un usuario, la Cuenta Maestra ve un casillero adicional: **"Autorizador de cambios (por falla)"**.
+
+Marcarlo agrega a esa persona a la lista de la que se elige el autorizador cuando alguien hace un **cambio por falla** en el módulo de Ventas (ver el manual de Ventas). Puede ser cualquier rol, no hace falta que sea Supervisor o Dueño.
+
+> Este casillero solo lo ve y lo puede tocar la Cuenta Maestra. Al crear un usuario nuevo no está disponible todavía — hay que guardarlo primero y después editarlo para marcarlo.
+
+---
+
 ## Activar y desactivar usuarios
 
 Un usuario inactivo no puede iniciar sesión.
