@@ -14,7 +14,7 @@ confirmación se guardan o se descartan juntos.
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -27,6 +27,7 @@ from app.schemas.comunes import MensajeResponse, RespuestaPaginada
 from app.schemas.medios_pago import MedioDisponible, PlanCuotasResponse
 from app.schemas.cambios import VentaParaCambioResponse
 from app.schemas.ventas import (
+    AnalisisVentasResponse,
     ClienteAsociar,
     DescuentoAplicar,
     ItemAgregadoResponse,
@@ -45,6 +46,7 @@ from app.schemas.promociones import PromocionResumen
 from app.services import descuentos as servicio_descuentos
 from app.services import medios_pago as servicio_medios
 from app.services import promociones as servicio_promociones
+from app.services import stock as servicio_stock
 from app.services import ventas as servicio
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -329,6 +331,79 @@ def buscar_para_cambio(
             items=items,
         ))
     return resultado
+
+
+@router.get(
+    "/analisis-productos",
+    response_model=AnalisisVentasResponse,
+    summary="Reporte: análisis de ventas por producto",
+)
+def analisis_productos(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    pagina: int = Query(default=1, ge=1),
+    tamano: int = Query(default=20, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """
+    Productos con al menos una venta confirmada en los últimos 90 días, con
+    cuánto vendieron en 30/90 días y su primera y última venta (todo el
+    historial). Sin aislamiento por dispositivo: es un reporte global.
+
+    Declarado ANTES de `GET /{venta_id}`: si no, FastAPI intentaría leer
+    "analisis-productos" como un id numérico y devolvería 422 (mismo
+    criterio que `/usuarios/autorizadores` en `api/v1/usuarios.py`).
+    """
+    resultados, total = servicio.analisis_por_producto(
+        db,
+        punto_de_venta_id=punto_de_venta_id,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        busqueda=busqueda,
+        pagina=pagina,
+        tamano=tamano,
+    )
+    return AnalisisVentasResponse(
+        resultados=resultados,
+        total=total,
+        pagina=pagina,
+        tamano=tamano,
+        opciones_locales=servicio_stock.opciones_locales(db),
+    )
+
+
+@router.get(
+    "/analisis-productos/exportar",
+    response_class=Response,
+    summary="Exportar a Excel el análisis de ventas por producto",
+)
+def analisis_productos_exportar(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """Mismo filtro que `/analisis-productos`, sin paginar."""
+    from app.reports.analisis_ventas_excel import generar_xls_analisis_ventas
+
+    resultados, _total = servicio.analisis_por_producto(
+        db,
+        punto_de_venta_id=punto_de_venta_id,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        busqueda=busqueda,
+        tamano=None,
+    )
+    return Response(
+        content=generar_xls_analisis_ventas(resultados),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="analisis-ventas-por-producto.xlsx"'},
+    )
 
 
 @router.get("/{venta_id}", response_model=VentaResponse, summary="Detalle de venta")

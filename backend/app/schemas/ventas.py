@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.venta import EstadoVenta
 from app.schemas.clientes import ClienteResumen
+from app.schemas.stock import PuntoResumen
 from app.schemas.promociones import PromocionResumen
 from app.schemas.stock import PuntoResumen, VarianteEnStock
 
@@ -307,3 +308,38 @@ class VentaEnCursoResponse(BaseModel):
     """
 
     venta: VentaResumen | None = None
+
+
+# ---------------------------------------------------------------------------
+# Reporte: análisis de ventas por producto
+# ---------------------------------------------------------------------------
+
+
+class AnalisisProductoFila(BaseModel):
+    """
+    Una variante y cuánto vendió. Las fechas son sobre TODO el historial de
+    ventas confirmadas (con los filtros de ubicación/categoría/proveedor
+    aplicados), no solo la ventana de 90 días que define qué filas entran.
+    """
+
+    variante_id: int
+    codigo_completo: str
+    verificador: str
+    descripcion: str
+    descripcion_sufijo: str | None
+    categoria_nombre: str
+    proveedor_nombre: str
+    cantidad_30_dias: int
+    cantidad_90_dias: int
+    fecha_primera_venta: datetime
+    fecha_ultima_venta: datetime
+
+
+class AnalisisVentasResponse(BaseModel):
+    resultados: list[AnalisisProductoFila]
+    total: int
+    pagina: int
+    tamano: int
+    # Mismo motivo que en StockBajoMinimoResponse: no depender de
+    # /api/v1/puntos-de-venta, que exige permiso de Configuración.
+    opciones_locales: list[PuntoResumen]

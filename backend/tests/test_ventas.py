@@ -1128,3 +1128,97 @@ def test_el_permiso_general_de_configuracion_llega_a_las_promociones(
 
     assert client.get("/api/v1/configuracion/promociones").status_code == 200
     assert client.get("/api/v1/configuracion/medios-de-pago").status_code == 200
+
+
+# ============================================================================
+# REPORTE: ANÁLISIS DE VENTAS POR PRODUCTO
+# ============================================================================
+
+
+def _venta_confirmada(db, autor, dispositivo, crear_variante, efectivo, variante, hace_dias=0):
+    """Una venta CONFIRMADA de una unidad, con `created_at` corrido a mano."""
+    from datetime import timedelta
+
+    from app.core.utils import ahora_db
+
+    venta = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
+    servicio.agregar_item(db, autor, venta, variante_id=variante.id)
+    _cobrar_todo(db, autor, venta, efectivo)
+    servicio.confirmar_venta(db, autor, venta, LIBRE)
+    venta.created_at = ahora_db() - timedelta(days=hace_dias)
+    db.flush()
+    return venta
+
+
+def test_analisis_por_producto_toma_confirmadas_de_los_ultimos_90_dias(
+    db, autor, dispositivo, crear_variante, con_stock, efectivo, local
+):
+    """
+    Solo entran variantes con una venta CONFIRMADA en los últimos 90 días.
+    "Primera venta" es sobre TODO el historial, no solo esa ventana: una
+    venta de hace 120 días no cuenta para aparecer, pero si la variante ya
+    entró por otra más reciente, esa venta vieja pasa a ser la primera.
+    """
+    vendida = crear_variante("Anillo plata", "1000")
+    con_stock(vendida, 10)
+    nunca_reciente = crear_variante("Cadena vieja", "1000")
+    con_stock(nunca_reciente, 10)
+
+    # Dentro de los 90 días: una a los 10 días (cuenta para 30 y 90) y otra
+    # a los 60 (cuenta solo para 90). Más una de hace 120 días: no cuenta
+    # para ninguna ventana, pero sigue siendo la primera venta histórica.
+    primera = _venta_confirmada(
+        db, autor, dispositivo, crear_variante, efectivo, vendida, hace_dias=120
+    )
+    _venta_confirmada(db, autor, dispositivo, crear_variante, efectivo, vendida, hace_dias=60)
+    ultima = _venta_confirmada(
+        db, autor, dispositivo, crear_variante, efectivo, vendida, hace_dias=10
+    )
+
+    # Anulada: no es una venta real. Va ANTES que la "en curso" — si no,
+    # `iniciar_venta` devolvería esa misma venta pendiente en vez de crear
+    # una nueva (mismo autor y dispositivo).
+    a_anular = _venta_confirmada(
+        db, autor, dispositivo, crear_variante, efectivo, vendida, hace_dias=5
+    )
+    servicio.anular_venta(db, autor, a_anular)
+
+    # En curso: tampoco es una venta real (todavía no pasó nada). Queda
+    # sin confirmar a propósito, así que va última.
+    en_curso = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
+    servicio.agregar_item(db, autor, en_curso, variante_id=vendida.id)
+
+    # Esta variante solo vendió hace 120 días: no aparece en el reporte.
+    _venta_confirmada(
+        db, autor, dispositivo, crear_variante, efectivo, nunca_reciente, hace_dias=120
+    )
+    db.flush()
+
+    resultados, total = servicio.analisis_por_producto(db, pagina=1, tamano=50)
+
+    assert total == 1
+    fila = resultados[0]
+    assert fila["variante_id"] == vendida.id
+    assert fila["cantidad_30_dias"] == 1
+    assert fila["cantidad_90_dias"] == 2
+    assert fila["fecha_primera_venta"] == primera.created_at
+    assert fila["fecha_ultima_venta"] == ultima.created_at
+
+
+def test_analisis_productos_no_choca_con_el_detalle_de_venta(client, crear_usuario):
+    """
+    `/ventas/analisis-productos` tiene que estar declarado ANTES de
+    `/ventas/{venta_id}` en el router: si no, FastAPI intenta leer
+    "analisis-productos" como el id de una venta y devuelve 422 en vez de
+    correr el reporte. Bug real que llegó a pasar (ver comentario en el
+    endpoint, `api/v1/ventas.py`).
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    resp = client.get("/api/v1/ventas/analisis-productos")
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert "resultados" in cuerpo
+    assert "opciones_locales" in cuerpo

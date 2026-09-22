@@ -23,7 +23,7 @@ que la caja no cierra.
 
 import secrets
 import string
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, or_, select
@@ -37,7 +37,7 @@ from app.core.utils import ahora_db, redondear, redondear_hacia_abajo
 from app.models.cliente import TipoPunto
 from app.models.dispositivo import Dispositivo
 from app.models.medio_pago import MedioDePago, PlanCuotas
-from app.models.producto import Variante
+from app.models.producto import Producto, Variante
 from app.models.promocion import Promocion, TipoPromocion
 from app.models.sena import Sena
 from app.models.stock import TipoMovimiento
@@ -1185,3 +1185,127 @@ def descartar_venta(
     )
     db.delete(venta)
     db.flush()
+
+
+# ============================================================================
+# REPORTES
+# ============================================================================
+
+
+def analisis_por_producto(
+    db: Session,
+    punto_de_venta_id: int | None = None,
+    categoria_id: int | None = None,
+    proveedor_id: int | None = None,
+    busqueda: str | None = None,
+    pagina: int = 1,
+    tamano: int | None = 20,
+) -> tuple[list[dict], int]:
+    """
+    Una fila por variante: cuánto vendió en los últimos 30 y 90 días, y
+    cuándo fue su primera y su última venta — sobre TODO el historial, no
+    solo la ventana de 90 días (sirve para distinguir un producto nuevo de
+    uno recurrente).
+
+    Solo entran variantes con al menos una venta CONFIRMADA en los últimos
+    90 días: una venta `en_curso` es un carrito que no pasó nada todavía, y
+    una `anulada` se revirtió — ninguna de las dos es una venta real.
+
+    `VentaItem` no tiene columna `cantidad`: cada unidad vendida es una fila
+    propia (una promoción 2x1 necesita poder dejar una en $0 y cobrar la
+    otra), así que "cantidad vendida" es un COUNT de filas, no un SUM.
+
+    Los filtros de ubicación/categoría/proveedor/búsqueda acotan TODAS las
+    columnas por igual, incluidas las fechas: con un filtro de ubicación
+    puesto, "primera venta" es la primera venta en esa ubicación.
+    """
+    from app.models.categoria import Categoria
+    from app.models.proveedor import Proveedor
+
+    ahora = ahora_db()
+    corte_30 = ahora - timedelta(days=30)
+    corte_90 = ahora - timedelta(days=90)
+
+    consulta = (
+        select(
+            VentaItem.variante_id,
+            Variante.codigo_completo,
+            Variante.verificador,
+            Variante.descripcion_sufijo,
+            Producto.descripcion,
+            Categoria.nombre.label("categoria_nombre"),
+            Proveedor.nombre.label("proveedor_nombre"),
+            func.count().filter(Venta.created_at >= corte_30).label("cantidad_30_dias"),
+            func.count().filter(Venta.created_at >= corte_90).label("cantidad_90_dias"),
+            func.min(Venta.created_at).label("fecha_primera_venta"),
+            func.max(Venta.created_at).label("fecha_ultima_venta"),
+        )
+        .join(Venta, Venta.id == VentaItem.venta_id)
+        .join(Variante, Variante.id == VentaItem.variante_id)
+        .join(Producto, Producto.id == Variante.producto_id)
+        .join(Categoria, Categoria.id == Producto.categoria_id)
+        .join(Proveedor, Proveedor.id == Producto.proveedor_id)
+        .where(Venta.estado == EstadoVenta.CONFIRMADA)
+    )
+
+    if punto_de_venta_id is not None:
+        consulta = consulta.where(Venta.punto_de_venta_id == punto_de_venta_id)
+    if categoria_id is not None:
+        from app.services.categorias import rama_de_ids
+
+        consulta = consulta.where(Producto.categoria_id.in_(rama_de_ids(db, categoria_id)))
+    if proveedor_id is not None:
+        consulta = consulta.where(Producto.proveedor_id == proveedor_id)
+    if busqueda:
+        from app.services.productos import condiciones_codigo_variante
+
+        texto = busqueda.strip().upper()
+        patron = f"%{texto}%"
+        consulta = consulta.where(
+            or_(
+                *condiciones_codigo_variante(texto),
+                Producto.sku.ilike(patron),
+                Producto.descripcion.ilike(patron),
+            )
+        )
+
+    consulta = consulta.group_by(
+        VentaItem.variante_id,
+        Variante.codigo_completo,
+        Variante.verificador,
+        Variante.descripcion_sufijo,
+        Producto.descripcion,
+        Categoria.nombre,
+        Proveedor.nombre,
+    ).having(func.count().filter(Venta.created_at >= corte_90) > 0)
+
+    total = db.execute(
+        select(func.count()).select_from(consulta.order_by(None).subquery())
+    ).scalar_one()
+
+    consulta_ordenada = consulta.order_by(
+        func.count().filter(Venta.created_at >= corte_90).desc(),
+        func.lower(Producto.descripcion),
+    )
+    if tamano is not None:
+        consulta_ordenada = consulta_ordenada.limit(tamano).offset((pagina - 1) * tamano)
+
+    filas = db.execute(consulta_ordenada).all()
+
+    resultados = [
+        {
+            "variante_id": f.variante_id,
+            "codigo_completo": f.codigo_completo,
+            "verificador": f.verificador,
+            "descripcion": f.descripcion,
+            "descripcion_sufijo": f.descripcion_sufijo,
+            "categoria_nombre": f.categoria_nombre,
+            "proveedor_nombre": f.proveedor_nombre,
+            "cantidad_30_dias": f.cantidad_30_dias,
+            "cantidad_90_dias": f.cantidad_90_dias,
+            "fecha_primera_venta": f.fecha_primera_venta,
+            "fecha_ultima_venta": f.fecha_ultima_venta,
+        }
+        for f in filas
+    ]
+    return resultados, total

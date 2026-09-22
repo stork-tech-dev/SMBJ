@@ -1,0 +1,152 @@
+{# Reporte: análisis de ventas por producto. Los datos salen de
+   /api/v1/ventas/analisis-productos: esta página no consulta la base
+   (Principio 1). #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/paginacion.html" import paginacion %}
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="analisisVentas()" x-init="cargarCatalogos(); cargar()">
+
+    {% call encabezado('Análisis de ventas por producto', volver_url='/reportes',
+                       volver_texto='Reportes') %}
+        {# Link directo: el navegador dispara la descarga solo, sin JS de por
+           medio. Trae TODO lo que matchea los filtros activos, no solo la
+           página en pantalla (el endpoint no pagina). #}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
+
+    {# Criterio del reporte, explícito y visible. #}
+    <p class="mt-4 max-w-3xl text-sm text-texto-muted">
+        Muestra productos con al menos una venta confirmada en los últimos
+        90 días. Las fechas de primera y última venta son sobre todo el
+        historial, para distinguir un producto nuevo de uno recurrente. Con
+        un filtro de ubicación puesto, todas las columnas — incluidas esas
+        fechas — se calculan solo sobre esa ubicación.
+    </p>
+
+    {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-6">
+        <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
+        <input id="f-texto" type="text" x-model="filtros.busqueda"
+               @input.debounce.400ms="pagina = 1; cargar()"
+               placeholder="Código, SKU o descripción"
+               class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input text-texto
+                      placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <div class="w-full sm:w-[16rem]">
+            {{ combobox('f-categoria', 'categorias', 'rutaCategoria(o)',
+                        'filtros.categoria_id',
+                        etiqueta='Categoría', label_oculto=true,
+                        placeholder='Categoría',
+                        vacio='Todas las categorías',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[12.5rem]">
+            {{ combobox('f-proveedor', 'proveedores', 'o.nombre',
+                        'filtros.proveedor_id',
+                        etiqueta='Proveedor', label_oculto=true,
+                        placeholder='Proveedor',
+                        vacio='Todos los proveedores',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto-de-venta', 'puntosDeVenta', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Ubicación', label_oculto=true,
+                        placeholder='Ubicación',
+                        vacio='Todas las ubicaciones',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">
+            Limpiar filtros
+        </button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'resultado' : 'resultados'"></span>
+        </p>
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap">Código</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Descripción</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Categoría</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Proveedor</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled whitespace-nowrap">Cant. 30 días</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled whitespace-nowrap">Cant. 90 días</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap">Primera venta</th>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap">Última venta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="r in resultados" :key="r.variante_id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]">
+                            <td class="px-8 py-3 align-middle whitespace-nowrap">
+                                <span class="font-mono font-medium"
+                                      x-text="r.codigo_completo + r.verificador"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle font-medium">
+                                <span x-text="r.descripcion"></span>
+                                <span x-show="r.descripcion_sufijo" x-cloak
+                                      class="ml-2 text-xs text-texto-muted"
+                                      x-text="r.descripcion_sufijo"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle" x-text="r.categoria_nombre"></td>
+                            <td class="px-4 py-3 align-middle" x-text="r.proveedor_nombre"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums" x-text="r.cantidad_30_dias"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums font-medium" x-text="r.cantidad_90_dias"></td>
+                            <td class="px-4 py-3 align-middle whitespace-nowrap" x-text="fecha(r.fecha_primera_venta)"></td>
+                            <td class="px-8 py-3 align-middle whitespace-nowrap" x-text="fecha(r.fecha_ultima_venta)"></td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!resultados.length && !cargando">
+                        <td colspan="8" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {{ paginacion() }}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/reportes_analisis_ventas.js"></script>
+{% endblock %}

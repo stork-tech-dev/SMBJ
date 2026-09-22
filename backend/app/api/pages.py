@@ -197,6 +197,12 @@ _CRITERIO_BAJO_MINIMO = (
     "corresponda). Los productos sin mínimo configurado no aparecen acá."
 )
 
+_CRITERIO_ANALISIS_VENTAS = (
+    "Productos con al menos una venta confirmada en los últimos 90 días, "
+    "con cuánto vendieron en 30 y 90 días y su primera y última venta de "
+    "todo el historial."
+)
+
 SECCIONES_REPORTES = [
     {
         "nombre": "Productos bajo stock mínimo",
@@ -204,6 +210,13 @@ SECCIONES_REPORTES = [
         "url": "/reportes/stock-bajo-minimo",
         "modulo": Modulo.REPORTES,
         "title": _CRITERIO_BAJO_MINIMO,
+    },
+    {
+        "nombre": "Análisis de ventas por producto",
+        "descripcion": "Cantidad vendida en 30/90 días y primera/última venta, por producto",
+        "url": "/reportes/analisis-ventas",
+        "modulo": Modulo.REPORTES,
+        "title": _CRITERIO_ANALISIS_VENTAS,
     },
 ]
 
@@ -686,6 +699,25 @@ async def reporte_stock_bajo_minimo(
         contexto_base(
             request, db, usuario,
             titulo="Productos bajo stock mínimo",
+            ruta_activa=RUTA_HUB_REPORTES,
+        ),
+    )
+
+
+@router.get("/reportes/analisis-ventas", response_class=HTMLResponse)
+async def reporte_analisis_ventas(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Cuánto vendió cada producto en 30/90 días y su primera y última venta.
+    Sin aislamiento por dispositivo: es un reporte global.
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/reportes/analisis_ventas.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Análisis de ventas por producto",
             ruta_activa=RUTA_HUB_REPORTES,
         ),
     )
