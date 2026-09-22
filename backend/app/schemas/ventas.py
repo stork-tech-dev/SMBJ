@@ -250,7 +250,7 @@ class VentaPagoResponse(BaseModel):
 
 
 class VentaResumen(BaseModel):
-    """La fila del listado. Sin ítems ni pagos: la tabla no los muestra."""
+    """La fila del listado. Sin ítems: la tabla no los muestra."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -268,6 +268,9 @@ class VentaResumen(BaseModel):
     cliente: ClienteResumen | None
     punto_de_venta: PuntoResumen
     usuario_id: int
+    # Nombres de los medios con los que se cobró (ver `Venta.medios_pago`).
+    # Vacío en una venta `en_curso`, que todavía no cobró nada.
+    medios_pago: list[str]
 
 
 class VentaResponse(VentaResumen):

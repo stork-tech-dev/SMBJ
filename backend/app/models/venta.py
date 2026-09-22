@@ -260,6 +260,17 @@ class Venta(Base):
         back_populates="venta", cascade="all, delete-orphan", order_by="VentaPago.id"
     )
 
+    @property
+    def medios_pago(self) -> list[str]:
+        """
+        Nombres de los medios con los que se cobró, en el orden en que se
+        registraron. Vacío si todavía no se cobró nada (una venta en curso).
+        Para que el listado no haga un N+1 por fila, quien arma la consulta
+        tiene que precargar `pagos` y `pagos.medio_de_pago` (ver
+        `listar_ventas` en `services/ventas.py`).
+        """
+        return [p.medio_de_pago.nombre for p in self.pagos]
+
     __table_args__ = (
         CheckConstraint("subtotal >= 0", name="ck_ventas_subtotal_no_negativo"),
         CheckConstraint("descuento_total >= 0", name="ck_ventas_descuento_no_negativo"),

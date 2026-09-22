@@ -111,8 +111,10 @@
                         <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Número</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Fecha</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Local</th>
-                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Cliente</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Subtotal</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Descuento</th>
                         <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Total</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Medio de pago</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Cambio</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
@@ -120,17 +122,24 @@
                 </thead>
                 <tbody>
                     <template x-for="v in ventas" :key="v.id">
+                        {# Anulada: tachada y en gris, además del texto de estado
+                           en rojo — no basta con un badge chico en una fila larga. #}
                         <tr class="border-t border-borde transition-shadow
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
-                            :class="v.estado === 'anulada' && 'opacity-60'">
+                            :class="v.estado === 'anulada' && 'opacity-60 line-through text-texto-disabled'">
                             <td class="px-8 py-3 align-middle font-medium tabular-nums"
                                 x-text="v.numero"></td>
                             <td class="px-4 py-3 align-middle text-sm" x-text="fecha(v.created_at)"></td>
                             <td class="px-4 py-3 align-middle text-sm"
                                 x-text="v.punto_de_venta?.nombre || '—'"></td>
-                            <td class="px-4 py-3 align-middle" x-text="v.cliente?.nombre || 'Sin cliente'"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums"
+                                x-text="pesos(v.subtotal)"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums"
+                                x-text="Number(v.descuento_total) > 0 ? pesos(v.descuento_total) : '—'"></td>
                             <td class="px-4 py-3 align-middle text-right tabular-nums font-medium"
                                 x-text="pesos(v.total)"></td>
+                            <td class="px-4 py-3 align-middle text-sm"
+                                x-text="v.medios_pago?.length ? v.medios_pago.join(' + ') : '—'"></td>
                             {# Monoespaciado: es un código que alguien va a
                                comparar contra un papel escrito a mano. #}
                             <td class="px-4 py-3 align-middle font-mono text-sm"
@@ -163,7 +172,7 @@
                     </template>
 
                     <tr x-show="!ventas.length && !cargando">
-                        <td colspan="8" class="px-8 py-16 text-center text-texto-muted">
+                        <td colspan="10" class="px-8 py-16 text-center text-texto-muted">
                             Sin resultados.
                         </td>
                     </tr>

@@ -27,7 +27,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.codigos import codigo_es_valido
@@ -202,6 +202,14 @@ def listar_ventas(
         joinedload(Venta.cliente),
         joinedload(Venta.punto_de_venta),
         joinedload(Venta.usuario),
+        # Para `Venta.medios_pago` (columna del listado), sin hacer un N+1
+        # por fila. `selectinload` y no `joinedload`: `pagos` es una
+        # colección (uno-a-muchos), y un `joinedload` de una colección
+        # multiplicaría filas ANTES del `LIMIT`/`OFFSET` de más abajo —
+        # una venta con dos pagos contaría el doble en la página y en el
+        # total. `selectinload` trae los pagos en una segunda consulta
+        # aparte (`WHERE venta_id IN (...)`), así que no toca la paginación.
+        selectinload(Venta.pagos).joinedload(VentaPago.medio_de_pago),
     )
 
     if scope.restringido:
