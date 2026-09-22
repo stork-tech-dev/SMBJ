@@ -25,6 +25,11 @@
             {{ icono('users', clases='w-4 h-4') }} Clientes
         </a>
         {% endif %}
+        <a href="/cambios"
+           class="h-control px-5 inline-flex items-center gap-2 rounded-input border border-borde
+                  text-sm font-semibold hover:border-primary hover:text-primary">
+            {{ icono('list', clases='w-4 h-4') }} Cambios
+        </a>
     {% endcall %}
 
     {% if sin_asignacion %}
@@ -137,6 +142,14 @@
                             <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
                                 {% call acciones() %}
                                     {{ accion('ver', atributos='@click="abrirDetalle(v)"') }}
+                                    {# Cambio disponible para ventas confirmadas con código activo #}
+                                    <a x-show="v.estado === 'confirmada' && v.codigo_cambio_activo"
+                                       :href="'/cambios/nuevo?codigo=' + v.codigo_cambio"
+                                       class="inline-flex items-center gap-1 px-2 py-1 text-xs
+                                              font-medium rounded border border-borde hover:border-primary
+                                              hover:text-primary text-texto-muted">
+                                        Cambio
+                                    </a>
                                     {% if puede_anular %}
                                     {# Solo las confirmadas se anulan: una en
                                        curso se descarta y una anulada ya lo está. #}
@@ -307,6 +320,24 @@
                     anulada.
                 </p>
 
+                {# Aviso de política: la devolución de dinero es una decisión
+                   de gestión, no una operación automática de la anulación. #}
+                <div class="rounded-input bg-danger/10 border border-danger/30 px-4 py-3 text-sm text-danger">
+                    <p class="font-semibold mb-1">⚠ La devolución de dinero requiere autorización</p>
+                    <p class="text-texto">Anular la venta revierte el stock y los puntos, pero
+                    <strong>no procesa ningún reembolso automático</strong>. Si el cliente pide
+                    que se le devuelva el dinero, esa decisión la toma la supervisión y se
+                    gestiona por separado.</p>
+                </div>
+
+                <label class="flex items-start gap-3 cursor-pointer select-none">
+                    <input type="checkbox" x-model="anulacion.entendido"
+                           class="mt-0.5 h-4 w-4 rounded border-borde text-primary">
+                    <span class="text-sm text-texto-muted">
+                        Entendido: la devolución de dinero (si corresponde) se gestiona aparte.
+                    </span>
+                </label>
+
                 <div class="flex flex-col gap-1">
                     <label for="an-motivo" class="text-sm font-semibold text-texto-header">Motivo</label>
                     <input id="an-motivo" x-model="anulacion.motivo"
@@ -317,7 +348,8 @@
                     <button type="button" @click="anulacion.abierta = false"
                             class="h-boton px-5 rounded-input border border-borde text-base
                                    hover:border-primary hover:text-primary">Cancelar</button>
-                    <button type="submit" :disabled="anulacion.enviando"
+                    <button type="submit"
+                            :disabled="anulacion.enviando || !anulacion.entendido"
                             class="h-boton px-8 rounded-input bg-danger text-white text-base
                                    font-medium hover:opacity-90 disabled:opacity-60"
                             x-text="anulacion.enviando ? 'Anulando…' : 'Anular'"></button>

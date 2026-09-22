@@ -22,6 +22,7 @@ from app.schemas.permisos import (
 )
 from app.schemas.roles import RolResponse
 from app.schemas.usuarios import (
+    AutorizadorResumen,
     ClaveEspecialResetear,
     ClaveEspecialResultado,
     ClaveEspecialValidar,
@@ -109,6 +110,28 @@ def puntos_de_venta_asignables(
     qué tenerlo, y se quedaría sin opciones en el desplegable.
     """
     return servicio_usuarios.puntos_de_venta_asignables(db)
+
+
+@router.get(
+    "/autorizadores",
+    response_model=list[AutorizadorResumen],
+    summary="Usuarios que pueden autorizar un cambio por falla",
+)
+def autorizadores(
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
+):
+    """
+    Alimenta el selector de autorizador del wizard de cambios.
+
+    Permiso de VENTAS y no de USUARIOS a propósito: lo usa quien inicia un
+    cambio (vendedora o supervisor), no quien administra la lista — mismo
+    criterio que `stock.remito_recepcion`.
+
+    Declarado antes de `GET /{usuario_id}`: si fuera después, FastAPI
+    intentaría convertir "autorizadores" a un id numérico y devolvería 422.
+    """
+    return servicio_usuarios.listar_autorizadores(db)
 
 
 @router.get(
@@ -249,6 +272,7 @@ def editar(
             fecha_nacimiento=datos.fecha_nacimiento,
             celular=datos.celular,
             local_asignado_id=datos.local_asignado_id,
+            es_autorizador=datos.es_autorizador,
             # Distinguen "no lo mandaron" de "lo mandaron vacío": los tres
             # campos son opcionales y se tienen que poder borrar.
             editar_fecha_nacimiento="fecha_nacimiento" in datos.model_fields_set,

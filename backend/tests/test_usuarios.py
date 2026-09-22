@@ -700,3 +700,55 @@ def test_filtro_de_local_por_la_api(client, db, crear_usuario, roles, local, log
     cuerpo = resp.json()
     assert cuerpo["total"] == 1
     assert cuerpo["resultados"][0]["username"] == "anaolmos"
+
+
+# ---------------------------------------------------------------------------
+# es_autorizador: lista de la que sale el selector de autorizador de un
+# cambio por falla, administrada por Cuenta Maestra (reemplaza al recurso
+# de permisos CAMBIO_FALLA_AUTORIZAR, que nunca se llegó a validar).
+# ---------------------------------------------------------------------------
+
+
+def test_es_autorizador_arranca_en_false(crear_usuario):
+    usuario = crear_usuario("vendedor2", ROL_VENDEDOR)
+    assert usuario.es_autorizador is False
+
+
+def test_solo_cuenta_maestra_cambia_es_autorizador(db, crear_usuario):
+    """
+    Un Supervisor puede editar a un Vendedor, pero no puede marcarlo ni
+    desmarcarlo como autorizador — eso es exclusivo de Cuenta Maestra.
+    """
+    maestra = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    supervisor = crear_usuario("sup", ROL_SUPERVISOR)
+    vendedor = crear_usuario("vend", ROL_VENDEDOR)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="Cuenta Maestra"):
+        servicio_usuarios.editar_usuario(
+            db, supervisor, vendedor.id, es_autorizador=True,
+        )
+    assert vendedor.es_autorizador is False
+
+    servicio_usuarios.editar_usuario(
+        db, maestra, vendedor.id, es_autorizador=True,
+    )
+    assert vendedor.es_autorizador is True
+
+    # Reenviar el mismo valor que ya tiene no exige Cuenta Maestra: es lo
+    # que permite que un Supervisor edite el resto del usuario sin que este
+    # campo, que ni siquiera ve, se lo bloquee.
+    servicio_usuarios.editar_usuario(
+        db, supervisor, vendedor.id, nombre="Vendedor Editado", es_autorizador=True,
+    )
+    assert vendedor.nombre == "Vendedor Editado"
+    assert vendedor.es_autorizador is True
+
+
+def test_listar_autorizadores_solo_activos_y_marcados(db, crear_usuario):
+    marcado = crear_usuario("autoriza1", ROL_SUPERVISOR, es_autorizador=True)
+    crear_usuario("autoriza_inactivo", ROL_SUPERVISOR, es_autorizador=True, activo=False)
+    crear_usuario("sin_marcar", ROL_VENDEDOR, es_autorizador=False)
+
+    resultado = servicio_usuarios.listar_autorizadores(db)
+
+    assert [u.id for u in resultado] == [marcado.id]

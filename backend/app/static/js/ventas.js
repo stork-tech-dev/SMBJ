@@ -34,7 +34,7 @@ function listadoVentas(puedeAnular = false) {
         },
 
         detalle: { abierto: false, venta: null },
-        anulacion: { abierta: false, enviando: false, venta: null, motivo: '' },
+        anulacion: { abierta: false, enviando: false, venta: null, motivo: '', entendido: false },
 
         pesos: (v) => window.pesos(v),
 
@@ -150,7 +150,7 @@ function listadoVentas(puedeAnular = false) {
         /* --- Anulación --- */
 
         pedirAnulacion(v) {
-            this.anulacion = { abierta: true, enviando: false, venta: v, motivo: '' };
+            this.anulacion = { abierta: true, enviando: false, venta: v, motivo: '', entendido: false };
         },
 
         async anular() {

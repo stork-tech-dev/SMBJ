@@ -32,6 +32,13 @@ class Usuario(Base):
     )
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
+    # Lista de la que sale el selector de autorizador de un cambio por
+    # falla (y, a futuro, de novedades de caja). Lo administra Cuenta
+    # Maestra desde /usuarios; puede ser cualquier rol.
+    es_autorizador: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     # --- Datos personales (opcionales, capas "Nuevo/Editar Usuario") ---
 
     # Fecha sin hora: no interesa el momento, solo el día. El formato

@@ -25,6 +25,7 @@ from app.core.utils import ip_de_request
 from app.models.venta import EstadoVenta, Venta
 from app.schemas.comunes import MensajeResponse, RespuestaPaginada
 from app.schemas.medios_pago import MedioDisponible, PlanCuotasResponse
+from app.schemas.cambios import VentaParaCambioResponse
 from app.schemas.ventas import (
     ClienteAsociar,
     DescuentoAplicar,
@@ -260,6 +261,74 @@ def por_codigo_cambio(
         return _respuesta(servicio.por_codigo_cambio(db, codigo))
     except NoEncontrado as exc:
         raise _404(exc) from exc
+
+
+@router.get(
+    "/buscar-para-cambio",
+    response_model=list[VentaParaCambioResponse],
+    summary="Buscar ventas válidas para iniciar un cambio",
+)
+def buscar_para_cambio(
+    fecha_desde: date = Query(...),
+    fecha_hasta: date = Query(...),
+    sku: str | None = Query(default=None),
+    descripcion: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    scope: DeviceScope = Depends(get_device_scope),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "ver")),
+):
+    """
+    Ventas confirmadas del local con codigo_cambio_activo=TRUE en el rango
+    de fechas. Filtros opcionales por SKU o descripción de producto.
+    """
+    from datetime import date as date_type
+    from app.core.utils import ahora_db as _ahora
+    from app.services import cambios as servicio_cambios
+    from decimal import Decimal
+
+    def _desc_variante(variante) -> str:
+        desc = variante.producto.descripcion
+        if variante.descripcion_sufijo:
+            desc = f"{desc} · {variante.descripcion_sufijo}"
+        return desc
+
+    ventas = servicio_cambios.buscar_ventas_para_cambio(
+        db,
+        punto_de_venta_id=scope.punto_de_venta_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        sku=sku,
+        descripcion=descripcion,
+    )
+
+    hoy = _ahora().date()
+    resultado = []
+    for v in ventas:
+        dias = (hoy - v.created_at.date()).days
+        total = sum(Decimal(i.precio_lista) for i in v.items)
+        items = [
+            {
+                "id": i.id,
+                "variante_id": i.variante_id,
+                "variante_descripcion": _desc_variante(i.variante),
+                "variante_sku": i.variante.codigo_completo,
+                "precio_lista": str(i.precio_lista),
+                "precio_final": str(i.precio_final),
+                "en_promocion": i.en_promocion,
+            }
+            for i in v.items
+        ]
+        resultado.append(VentaParaCambioResponse(
+            id=v.id,
+            numero=v.numero,
+            fecha=v.created_at,
+            total=total,
+            codigo_cambio=v.codigo_cambio,
+            dias_desde_venta=dias,
+            plazo_vencido=dias > 30,
+            items=items,
+        ))
+    return resultado
 
 
 @router.get("/{venta_id}", response_model=VentaResponse, summary="Detalle de venta")
@@ -631,7 +700,8 @@ def anular(
     autor=Depends(requiere_permiso(Modulo.VENTAS, "eliminar", Recurso.VENTA_ANULAR)),
 ):
     """
-    Solo Supervisor y Dueño (permiso `venta.anular`).
+    Supervisor y Dueño: cualquier venta. Vendedor: solo las del turno
+    abierto actual de su local (lo valida `anular_venta`, no este permiso).
 
     Devuelve el stock, saca los puntos y repone el saldo de las señas usadas.
     La fila NO se borra: la venta ocurrió, y la caja de ese día tiene que

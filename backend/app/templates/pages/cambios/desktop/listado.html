@@ -1,0 +1,236 @@
+{# Historial de cambios de producto. Datos desde /api/v1/cambios.
+   Solo desktop: los cambios los gestiona supervisión/vendedoras de local. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/paginacion.html" import paginacion %}
+
+{% block contenido %}
+<div x-data="listadoCambios()" x-init="cargar()">
+
+    {% call encabezado('Cambios de Producto', volver_url='/ventas', volver_texto='Ventas') %}
+        <a href="/cambios/nuevo"
+           class="h-control px-6 inline-flex items-center gap-2 rounded-input
+                  bg-primary text-white text-sm font-semibold hover:opacity-90">
+            {{ icono('mas', clases='w-4 h-4') }} Nuevo cambio
+        </a>
+    {% endcall %}
+
+    {# ---------- Filtros ---------- #}
+    <form @submit.prevent="buscar()" class="flex flex-wrap items-end gap-4 mt-8">
+        <div class="flex flex-col gap-1">
+            <label class="text-sm font-semibold text-texto-header">Tipo</label>
+            <div class="relative">
+                <select x-model="filtros.tipo" class="campo-linea appearance-none pr-10 w-full sm:w-[11rem]">
+                    <option value="">Todos</option>
+                    <option value="comun">Común</option>
+                    <option value="promocion">Promoción</option>
+                    <option value="falla">Por falla</option>
+                    <option value="gift_card_fisica">Gift card física</option>
+                </select>
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                    {{ icono('chevron') }}
+                </span>
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-1">
+            <label class="text-sm font-semibold text-texto-header">Estado</label>
+            <div class="relative">
+                <select x-model="filtros.estado" class="campo-linea appearance-none pr-10 w-full sm:w-[11rem]">
+                    <option value="">Todos</option>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="confirmado">Confirmado</option>
+                    <option value="cancelado">Cancelado</option>
+                </select>
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                    {{ icono('chevron') }}
+                </span>
+            </div>
+        </div>
+
+        <button type="submit"
+                class="h-boton px-6 rounded-input bg-primary text-white text-base font-medium
+                       hover:bg-primary-hover">Buscar</button>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="h-boton grid place-items-center text-sm text-texto-muted">
+            <span x-text="total + (total === 1 ? ' cambio encontrado' : ' cambios encontrados')"></span>
+        </p>
+    </form>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">#</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Tipo</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Fecha</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Local</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Venta origen</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Diferencia</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Estado</th>
+                        <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="c in cambios" :key="c.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
+                            :class="c.estado === 'cancelado' && 'opacity-60'">
+                            <td class="px-8 py-3 align-middle font-medium tabular-nums"
+                                x-text="'#' + c.id"></td>
+                            <td class="px-4 py-3 align-middle text-sm"
+                                x-text="etiquetaTipo(c.tipo)"></td>
+                            <td class="px-4 py-3 align-middle text-sm"
+                                x-text="fecha(c.created_at)"></td>
+                            <td class="px-4 py-3 align-middle text-sm"
+                                x-text="c.punto_de_venta_nombre || '—'"></td>
+                            <td class="px-4 py-3 align-middle font-mono text-sm"
+                                x-text="c.codigo_venta_origen || '—'"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums"
+                                :class="Number(c.diferencia) > 0 ? 'text-danger' : (Number(c.diferencia) < 0 ? 'text-success' : '')"
+                                x-text="Number(c.diferencia) === 0 ? 'Sin diferencia' : pesos(Math.abs(Number(c.diferencia))) + (Number(c.diferencia) > 0 ? ' cliente paga' : ' a favor cliente')"></td>
+                            <td class="px-4 py-3 align-middle">
+                                <span class="text-xs font-medium"
+                                      :class="colorEstado(c.estado)"
+                                      x-text="etiquetaEstado(c.estado)"></span>
+                            </td>
+                            <td class="px-8 py-3 align-middle text-right whitespace-nowrap">
+                                <button type="button" @click="abrirDetalle(c)"
+                                        class="text-xs px-2 py-1 rounded border border-borde
+                                               hover:border-primary hover:text-primary text-texto-muted">
+                                    Ver
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!cambios.length && !cargando">
+                        <td colspan="8" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# ---------- Paginación ---------- #}
+    <nav class="flex items-center justify-end gap-3 mt-4" x-show="paginas > 1" x-cloak>
+        <button type="button" @click="irA(pagina - 1)" :disabled="pagina <= 1"
+                class="h-boton px-4 rounded-input border border-borde text-sm
+                       disabled:opacity-40">Anterior</button>
+        <span class="text-sm text-texto-muted">
+            Página <span x-text="pagina"></span> de <span x-text="paginas"></span>
+        </span>
+        <button type="button" @click="irA(pagina + 1)" :disabled="pagina >= paginas"
+                class="h-boton px-4 rounded-input border border-borde text-sm
+                       disabled:opacity-40">Siguiente</button>
+    </nav>
+
+    {# ---------- Panel de detalle ---------- #}
+    <div x-show="detalle.abierto" x-cloak
+         class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 overflow-y-auto"
+         @keydown.escape.window="detalle.abierto = false"
+         role="dialog" aria-modal="true">
+        <div x-show="detalle.cambio"
+             class="w-full max-w-2xl bg-surface rounded-[10px] my-8
+                    shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+            <div class="flex items-start justify-between px-8 pt-7 pb-2">
+                <div>
+                    <h2 class="text-lg font-black text-welcome"
+                        x-text="'Cambio #' + (detalle.cambio?.id || '')"></h2>
+                    <p class="text-sm text-texto-muted"
+                       x-text="etiquetaTipo(detalle.cambio?.tipo) + ' · '
+                               + (detalle.cambio?.punto_de_venta_nombre || '')"></p>
+                </div>
+                <button type="button" @click="detalle.abierto = false" aria-label="Cerrar"
+                        class="text-texto-muted hover:text-texto -mt-1">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <div class="px-8 pb-8 pt-4 space-y-5">
+                <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                    <div>
+                        <span class="text-texto-muted">Venta origen:</span>
+                        <span class="ml-2 font-mono" x-text="detalle.cambio?.codigo_venta_origen || '—'"></span>
+                    </div>
+                    <div>
+                        <span class="text-texto-muted">Operador:</span>
+                        <span class="ml-2" x-text="detalle.cambio?.usuario_nombre || '—'"></span>
+                    </div>
+                    <div x-show="detalle.cambio?.autorizador_nombre">
+                        <span class="text-texto-muted">Autorizó:</span>
+                        <span class="ml-2" x-text="detalle.cambio?.autorizador_nombre"></span>
+                    </div>
+                    <div x-show="detalle.cambio?.codigo_cambio_nuevo">
+                        <span class="text-texto-muted">Código nuevo:</span>
+                        <span class="ml-2 font-mono font-medium" x-text="detalle.cambio?.codigo_cambio_nuevo"></span>
+                    </div>
+                    <div x-show="detalle.cambio?.notas">
+                        <span class="text-texto-muted">Notas:</span>
+                        <span class="ml-2" x-text="detalle.cambio?.notas"></span>
+                    </div>
+                </div>
+
+                {# Ítems devueltos #}
+                <div>
+                    <h3 class="text-base font-semibold text-texto mb-2">Ítems devueltos</h3>
+                    <ul class="divide-y divide-borde">
+                        <template x-for="i in detalle.cambio?.items_devueltos || []" :key="i.id">
+                            <li class="py-2 flex items-center justify-between gap-4">
+                                <div class="min-w-0">
+                                    <p class="text-sm truncate" x-text="i.variante_descripcion"></p>
+                                    <p class="text-xs text-texto-muted font-mono" x-text="i.variante_sku"></p>
+                                </div>
+                                <span class="text-sm tabular-nums shrink-0" x-text="pesos(i.precio_reconocido)"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
+                {# Ítems nuevos #}
+                <div>
+                    <h3 class="text-base font-semibold text-texto mb-2">Ítems nuevos</h3>
+                    <ul class="divide-y divide-borde">
+                        <template x-for="i in detalle.cambio?.items_nuevos || []" :key="i.id">
+                            <li class="py-2 flex items-center justify-between gap-4">
+                                <div class="min-w-0">
+                                    <p class="text-sm truncate" x-text="i.variante_descripcion"></p>
+                                    <p class="text-xs text-texto-muted font-mono" x-text="i.variante_sku"></p>
+                                </div>
+                                <span class="text-sm tabular-nums shrink-0" x-text="pesos(i.precio_actual)"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
+                {# Diferencia #}
+                <div class="pt-3 border-t border-borde flex items-center justify-between">
+                    <span class="text-base font-semibold text-texto">Diferencia</span>
+                    <span class="text-base tabular-nums font-semibold"
+                          :class="Number(detalle.cambio?.diferencia) > 0 ? 'text-danger' :
+                                  (Number(detalle.cambio?.diferencia) < 0 ? 'text-success' : 'text-texto-muted')"
+                          x-text="Number(detalle.cambio?.diferencia) === 0 ? 'Sin diferencia' :
+                                  pesos(Math.abs(Number(detalle.cambio?.diferencia)))
+                                  + (Number(detalle.cambio?.diferencia) > 0 ? ' (cliente pagó)' : ' (a favor del cliente)')">
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/cambios.js') }}"></script>
+{% endblock %}

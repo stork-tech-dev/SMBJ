@@ -1,17 +1,18 @@
 {# Home mobile de la vendedora (Figma `269:2014`).
 
    Es lo primero que ve al entrar desde el celular del local. Tres cosas, en
-   este orden de importancia:
+   este orden:
 
-     1. Si tiene una venta sin concluir. Va arriba de todo y en color de
-        alerta porque es lo único que puede estar mal: una venta abierta
-        tiene productos que nadie va a cobrar.
-     2. El estado del turno.
+     1. El estado del turno: sin turno abierto no se vende, así que va
+        primero.
+     2. Si tiene una venta sin concluir. En color de alerta porque es lo
+        único que puede estar mal: una venta abierta tiene productos que
+        nadie va a cobrar.
      3. Los accesos a lo que hace el resto del día.
 
-   La zona de turno se dibuja pero todavía no opera: `turnos` es del módulo
-   de Caja (prompt 07). Se deja el lugar armado —y dicho— en vez de un botón
-   que no hace nada. #}
+   El acceso a "Nueva venta" se oculta si hay una venta sin concluir: ya
+   está el link del aviso para seguirla, y dos botones a la vez invitarían
+   a arrancar una segunda venta antes de cerrar la primera. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
@@ -38,22 +39,6 @@
         {{ mensaje_sin_asignacion }}
     </p>
     {% else %}
-
-    {# ---------- Venta sin concluir ----------
-       Sale de GET /ventas/en-curso. Si no hay ninguna, la respuesta trae
-       `venta: null` y este bloque simplemente no se dibuja: "no hay venta
-       abierta" es una respuesta válida, no un error. #}
-    <a x-show="enCurso" x-cloak :href="'/ventas/carrito'"
-       class="mt-4 flex items-center gap-3 p-4 rounded-input bg-danger/15 text-danger
-              hover:opacity-90">
-        {{ icono('alerta', clases='w-6 h-6 shrink-0') }}
-        <span class="flex-1 min-w-0">
-            <span class="block text-base font-semibold">Tenés una venta sin concluir</span>
-            <span class="block text-sm truncate"
-                  x-text="enCurso ? enCurso.numero + ' · ' + pesos(enCurso.total) : ''"></span>
-        </span>
-        {{ icono('chevron-derecha', clases='w-5 h-5 shrink-0') }}
-    </a>
 
     {# ---------- Turno ----------
        Sección dinámica gestionada por cajaTurno() en caja.js.
@@ -174,12 +159,31 @@
 
     </section>
 
-    {# ---------- Acción principal ---------- #}
-    <a href="/ventas/nueva"
+    {# ---------- Venta sin concluir ----------
+       Sale de GET /ventas/en-curso. Si no hay ninguna, la respuesta trae
+       `venta: null` y este bloque simplemente no se dibuja: "no hay venta
+       abierta" es una respuesta válida, no un error. #}
+    <a x-show="enCurso" x-cloak :href="'/ventas/carrito'"
+       class="mt-4 flex items-center gap-3 p-4 rounded-input bg-danger/15 text-danger
+              hover:opacity-90">
+        {{ icono('alerta', clases='w-6 h-6 shrink-0') }}
+        <span class="flex-1 min-w-0">
+            <span class="block text-base font-semibold">Tenés una venta sin concluir</span>
+            <span class="block text-sm truncate"
+                  x-text="enCurso ? enCurso.numero + ' · ' + pesos(enCurso.total) : ''"></span>
+        </span>
+        {{ icono('chevron-derecha', clases='w-5 h-5 shrink-0') }}
+    </a>
+
+    {# ---------- Acción principal ----------
+       Oculta si hay venta sin concluir: seguirla ya sale del aviso de
+       arriba, y dos botones a la vez invitarían a arrancar una segunda
+       venta antes de cerrar la primera. #}
+    <a x-show="!enCurso" x-cloak href="/ventas/nueva"
        class="mt-5 flex items-center justify-center gap-2 h-[3.25rem] rounded-input
               bg-primary text-white text-base font-medium hover:bg-primary-hover">
         {{ icono('cart', clases='w-5 h-5') }}
-        <span x-text="enCurso ? 'Seguir la venta' : 'Nueva venta'">Nueva venta</span>
+        <span>Nueva venta</span>
     </a>
 
     {# ---------- Accesos rápidos ----------
@@ -189,7 +193,7 @@
         <a href="/ventas/consulta-stock"
            class="aspect-square flex flex-col items-center justify-center gap-3 p-4
                   rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
-            {{ icono('almacen', clases='w-8 h-8 text-primary') }}
+            {{ icono('box', clases='w-8 h-8 text-primary') }}
             <span class="text-sm font-semibold text-texto">Consultar stock</span>
         </a>
 
@@ -200,22 +204,41 @@
             <span class="text-sm font-semibold text-texto">Remitos: Envío y Recepción</span>
         </a>
 
-        {# Anulaciones y Cambios son el módulo 08: la tarjeta se muestra
-           apagada en vez de esconderse, para que la vendedora sepa que van
-           a estar ahí y no las busque en otro lado. #}
+        {# Sin el permiso correspondiente, la tarjeta se muestra apagada en
+           vez de esconderse: así la vendedora sabe que la función existe y
+           no la busca en otro lado (es la Cuenta Maestra la que decide si
+           su perfil la tiene). #}
+        {% if puede_anular %}
+        <a href="/ventas/anular"
+           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
+            {{ icono('papelera', clases='w-8 h-8 text-primary') }}
+            <span class="text-sm font-semibold text-texto">Anulaciones</span>
+        </a>
+        {% else %}
         <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
                     rounded-[10px] bg-surface tarjeta text-center opacity-50">
             {{ icono('papelera', clases='w-8 h-8 text-texto-muted') }}
             <span class="text-sm font-semibold text-texto-muted">Anulaciones</span>
-            <span class="text-[0.625rem] text-texto-disabled">Próximamente</span>
+            <span class="text-[0.625rem] text-texto-disabled">Sin permiso</span>
         </div>
+        {% endif %}
 
+        {% if puede_vender %}
+        <a href="/cambios/nuevo"
+           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
+            {{ icono('portapapeles', clases='w-8 h-8 text-primary') }}
+            <span class="text-sm font-semibold text-texto">Cambios</span>
+        </a>
+        {% else %}
         <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
                     rounded-[10px] bg-surface tarjeta text-center opacity-50">
             {{ icono('portapapeles', clases='w-8 h-8 text-texto-muted') }}
             <span class="text-sm font-semibold text-texto-muted">Cambios</span>
-            <span class="text-[0.625rem] text-texto-disabled">Próximamente</span>
+            <span class="text-[0.625rem] text-texto-disabled">Sin permiso</span>
         </div>
+        {% endif %}
     </div>
 
     <button type="button" @click="cerrarSesion()"

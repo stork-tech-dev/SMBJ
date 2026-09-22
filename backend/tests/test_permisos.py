@@ -140,31 +140,16 @@ def test_todo_recurso_esta_en_los_tres_mapas():
         assert recurso in LABEL_RECURSO, f"{recurso} no tiene etiqueta"
 
 
-def test_el_recurso_de_autorizar_cambio_por_falla(db, crear_usuario):
+def test_ya_no_existe_el_recurso_de_autorizar_cambio_por_falla():
     """
-    Recurso del módulo de cambios (sesión 08): autoriza un cambio por falla,
-    que se hace sin código de cambio.
+    `CAMBIO_FALLA_AUTORIZAR` nunca se llegó a validar en
+    `services/cambios.py` — era un permiso "de mentira" en el árbol.
 
-    Cuelga de VENTAS porque los cambios son parte de ese flujo — sus
-    endpoints van junto a ventas y convive con VENTA_ANULAR.
+    Se reemplazó por `usuario.es_autorizador` (mismo mecanismo que va a
+    reusar Novedades de Caja, sesión 09): una lista administrada por Cuenta
+    Maestra, no un permiso de rol. Ver `test_usuarios.py` para su
+    cobertura.
     """
-    from app.core.permisos import (
-        Modulo,
-        Recurso,
-        recursos_de_modulo,
-        resolver_permiso,
-    )
+    from app.core.permisos import Recurso
 
-    assert Recurso.CAMBIO_FALLA_AUTORIZAR.value == "cambio.falla_autorizar"
-    assert Recurso.CAMBIO_FALLA_AUTORIZAR in recursos_de_modulo(Modulo.VENTAS)
-
-    usuario = crear_usuario("vendedor2", ROL_VENDEDOR)
-    db.flush()
-
-    # Sin asignarlo, no lo tiene: es un permiso que se concede a mano.
-    assert (
-        resolver_permiso(
-            db, usuario.id, Modulo.VENTAS, "crear", Recurso.CAMBIO_FALLA_AUTORIZAR
-        )
-        is False
-    )
+    assert not hasattr(Recurso, "CAMBIO_FALLA_AUTORIZAR")

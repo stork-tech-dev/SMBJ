@@ -68,9 +68,6 @@ class Recurso(str, Enum):
     # que habilitaría también a aprobar auditorías.
     STOCK_REMITO_RECEPCION = "stock.remito_recepcion"
     STOCK_MOTIVOS_BAJA = "stock.motivos_baja"
-    # Autorizar un cambio por falla, que se hace sin código de cambio. Se
-    # asigna a roles o a usuarios sueltos desde la pantalla de permisos.
-    CAMBIO_FALLA_AUTORIZAR = "cambio.falla_autorizar"
     # Las promociones las administra el Supervisor además de la Cuenta
     # Maestra. Va como recurso suelto y no con el permiso general de
     # CONFIGURACION porque ese habilitaría también los medios de pago y
@@ -140,7 +137,6 @@ LABEL_RECURSO: dict[Recurso, str] = {
     Recurso.STOCK_REMITO_RECEPCION: "Recepción de remitos",
     Recurso.STOCK_MOTIVOS_BAJA: "Motivos de baja",
     Recurso.STOCK_AUDITORIA: "Auditoría de inventario",
-    Recurso.CAMBIO_FALLA_AUTORIZAR: "Autorización de cambio por falla",
     Recurso.PROMOCIONES: "Promociones",
 }
 
@@ -166,9 +162,6 @@ MODULO_DE_RECURSO: dict[Recurso, Modulo] = {
     Recurso.STOCK_AUDITORIA_APROBAR: Modulo.STOCK,
     Recurso.STOCK_REMITO_RECEPCION: Modulo.STOCK,
     Recurso.STOCK_MOTIVOS_BAJA: Modulo.STOCK,
-    # Los cambios cuelgan del flujo de ventas: los endpoints van junto a
-    # ventas y el recurso convive con VENTA_ANULAR y VENTA_DESCUENTO.
-    Recurso.CAMBIO_FALLA_AUTORIZAR: Modulo.VENTAS,
     Recurso.PROMOCIONES: Modulo.CONFIGURACION,
 }
 
@@ -198,9 +191,6 @@ ACCIONES_DE_RECURSO: dict[Recurso, tuple[str, ...]] = {
     Recurso.STOCK_AUDITORIA_APROBAR: ("editar",),
     Recurso.STOCK_REMITO_RECEPCION: ("editar",),
     Recurso.STOCK_MOTIVOS_BAJA: ("editar",),
-    # "crear": autorizar habilita a registrar el cambio, igual que
-    # VENTA_DESCUENTO habilita a aplicar el descuento.
-    Recurso.CAMBIO_FALLA_AUTORIZAR: ("crear",),
     Recurso.PROMOCIONES: ("editar",),
 }
 

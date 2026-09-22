@@ -1,0 +1,383 @@
+{# Wizard de nuevo cambio de producto.
+   Flujo: iniciar → ítems devueltos → ítems nuevos → confirmar → resultado. #}
+{% extends "base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/encabezado.html" import encabezado %}
+
+{% block contenido %}
+<div x-data="nuevoCambio('{{ codigo_inicial }}')"
+     x-init="init()">
+
+    {% call encabezado('Nuevo cambio', volver_url='/cambios', volver_texto='Cambios') %}
+    {% endcall %}
+
+    {# ---------- Indicador de pasos ---------- #}
+    <div class="mt-6 flex items-center gap-2 text-sm">
+        <template x-for="(nombre, idx) in pasos" :key="idx">
+            <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                          :class="idx < paso ? 'bg-success text-white' :
+                                  idx === paso ? 'bg-primary text-white' :
+                                  'bg-borde text-texto-muted'"
+                          x-text="idx < paso ? '✓' : idx + 1"></span>
+                    <span :class="idx === paso ? 'font-semibold text-texto' : 'text-texto-muted'"
+                          x-text="nombre"></span>
+                </div>
+                <span x-show="idx < pasos.length - 1" class="text-texto-disabled">›</span>
+            </div>
+        </template>
+    </div>
+
+    {# ---------- Avisos (plazo vencido, cambios previos) ---------- #}
+    <template x-if="avisos.length">
+        <div class="mt-4 rounded-input bg-warning/10 border border-warning/40 px-4 py-3 space-y-1">
+            <template x-for="a in avisos" :key="a">
+                <p class="text-sm text-texto">⚠ <span x-text="a"></span></p>
+            </template>
+        </div>
+    </template>
+
+    {# ===== PASO 0: Iniciar ===== #}
+    <div x-show="paso === 0" class="mt-8 max-w-lg">
+        <div class="tarjeta rounded-[10px] p-8 space-y-6">
+            <h2 class="text-xl font-black text-welcome">Iniciar cambio</h2>
+
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-semibold text-texto-header">Tipo de cambio</label>
+                <div class="relative">
+                    <select x-model="form.tipo" class="campo-linea appearance-none pr-10 w-full">
+                        <option value="comun">Cambio común</option>
+                        <option value="promocion">Cambio de promoción</option>
+                        <option value="falla">Cambio por falla</option>
+                        <option value="gift_card_fisica">Gift card física</option>
+                    </select>
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        {{ icono('chevron') }}
+                    </span>
+                </div>
+            </div>
+
+            <div x-show="form.tipo !== 'falla'" class="flex flex-col gap-1">
+                <label class="text-sm font-semibold text-texto-header">
+                    Código de cambio del ticket
+                </label>
+                <input x-model="form.codigo_cambio"
+                       placeholder="ABCD1234"
+                       class="campo-linea uppercase"
+                       maxlength="8"
+                       @keydown.enter="iniciar()">
+                <p class="text-xs text-texto-muted">
+                    El código de 8 caracteres impreso en el ticket de la compra original.
+                </p>
+            </div>
+
+            <div x-show="form.tipo === 'falla'" class="flex flex-col gap-1">
+                <label class="text-sm font-semibold text-texto-header">Autorizador</label>
+                <div class="relative">
+                    <select x-model.number="form.autorizador_id"
+                            class="campo-linea appearance-none pr-10 w-full">
+                        <option value="">Seleccionar…</option>
+                        <template x-for="a in autorizadores" :key="a.id">
+                            <option :value="a.id" x-text="a.nombre"></option>
+                        </template>
+                    </select>
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        {{ icono('chevron') }}
+                    </span>
+                </div>
+                <p x-show="!autorizadores.length" class="text-xs text-texto-muted">
+                    No hay usuarios marcados como autorizadores. Los administra
+                    Cuenta Maestra desde Usuarios.
+                </p>
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-semibold text-texto-header">Local donde se hace el cambio</label>
+                <input x-model.number="form.punto_de_venta_id" type="number" min="1"
+                       placeholder="ID del punto de venta"
+                       class="campo-linea">
+                <p class="text-xs text-texto-muted">
+                    El cambio puede hacerse en cualquier local, no solo en el que vendió.
+                </p>
+            </div>
+
+            <div class="flex justify-end">
+                <button type="button" @click="iniciar()" :disabled="enviando"
+                        class="h-boton px-8 rounded-input bg-primary text-white text-base
+                               font-medium hover:opacity-90 disabled:opacity-60"
+                        x-text="enviando ? 'Iniciando…' : 'Continuar'">
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ===== PASO 1: Ítems devueltos ===== #}
+    <div x-show="paso === 1" class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {# Panel izquierdo: escáner #}
+        <div class="tarjeta rounded-[10px] p-6 space-y-4">
+            <h2 class="text-base font-black text-welcome">¿Qué devuelve el cliente?</h2>
+            <p class="text-sm text-texto-muted">
+                Ingresá el código o SKU del producto que trae el cliente.
+            </p>
+            <div class="flex gap-2">
+                <input x-model="scan.codigo" placeholder="Escanear o tipear código"
+                       @keydown.enter="buscarProducto('devuelto')"
+                       class="campo-linea flex-1"
+                       x-ref="inputDevuelto">
+                <button type="button" @click="buscarProducto('devuelto')"
+                        class="h-control px-4 rounded-input bg-primary text-white text-sm
+                               hover:opacity-90">
+                    Buscar
+                </button>
+            </div>
+
+            {# Resultado de la búsqueda #}
+            <div x-show="scan.resultados.length > 0" class="space-y-2">
+                <p class="text-xs font-semibold text-texto-muted">Resultados:</p>
+                <template x-for="r in scan.resultados" :key="r.id">
+                    <button type="button" @click="agregarDevuelto(r)"
+                            class="w-full text-left rounded-input border border-borde px-3 py-2
+                                   hover:border-primary hover:bg-primary/5 transition-colors">
+                        <p class="text-sm font-medium" x-text="r.descripcion + (r.descripcion_sufijo ? ' · ' + r.descripcion_sufijo : '')"></p>
+                        <p class="text-xs text-texto-muted font-mono" x-text="r.codigo_completo"></p>
+                    </button>
+                </template>
+            </div>
+            <p x-show="scan.sinResultados" class="text-sm text-danger">
+                No se encontró ninguna variante con ese código.
+            </p>
+        </div>
+
+        {# Panel derecho: lista de devueltos #}
+        <div class="tarjeta rounded-[10px] p-6 space-y-4">
+            <h2 class="text-base font-black text-welcome">
+                Devuelve
+                <span class="text-texto-muted font-normal"
+                      x-text="'(' + itemsDevueltos.length + ' ítem' + (itemsDevueltos.length !== 1 ? 's' : '') + ')'">
+                </span>
+            </h2>
+
+            <div x-show="!itemsDevueltos.length" class="py-8 text-center text-sm text-texto-muted">
+                Todavía no agregaste ningún ítem.
+            </div>
+
+            <ul class="divide-y divide-borde">
+                <template x-for="i in itemsDevueltos" :key="i.id">
+                    <li class="py-3 flex items-center justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-sm truncate" x-text="i.variante_descripcion"></p>
+                            <p class="text-xs text-texto-muted font-mono" x-text="i.variante_sku"></p>
+                        </div>
+                        <span class="text-sm tabular-nums shrink-0 font-medium"
+                              x-text="pesos(i.precio_reconocido)"></span>
+                    </li>
+                </template>
+            </ul>
+
+            <div x-show="itemsDevueltos.length > 0" class="pt-3 border-t border-borde">
+                <div class="flex justify-between text-sm">
+                    <span class="text-texto-muted">Total devuelto:</span>
+                    <span class="font-semibold tabular-nums" x-text="pesos(totalDevuelto)"></span>
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-2">
+                <button type="button" @click="paso = 2"
+                        :disabled="!itemsDevueltos.length"
+                        class="h-boton px-6 rounded-input bg-primary text-white text-base
+                               font-medium hover:opacity-90 disabled:opacity-60">
+                    Continuar →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ===== PASO 2: Ítems nuevos ===== #}
+    <div x-show="paso === 2" class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {# Panel izquierdo: escáner #}
+        <div class="tarjeta rounded-[10px] p-6 space-y-4">
+            <h2 class="text-base font-black text-welcome">¿Qué se lleva el cliente?</h2>
+            <p class="text-sm text-texto-muted">
+                Ingresá el código o SKU del producto que el cliente elige.
+            </p>
+            <div class="flex gap-2">
+                <input x-model="scan.codigo" placeholder="Escanear o tipear código"
+                       @keydown.enter="buscarProducto('nuevo')"
+                       class="campo-linea flex-1"
+                       x-ref="inputNuevo">
+                <button type="button" @click="buscarProducto('nuevo')"
+                        class="h-control px-4 rounded-input bg-primary text-white text-sm
+                               hover:opacity-90">
+                    Buscar
+                </button>
+            </div>
+
+            <div x-show="scan.resultados.length > 0" class="space-y-2">
+                <p class="text-xs font-semibold text-texto-muted">Resultados:</p>
+                <template x-for="r in scan.resultados" :key="r.id">
+                    <button type="button" @click="agregarNuevo(r)"
+                            class="w-full text-left rounded-input border border-borde px-3 py-2
+                                   hover:border-primary hover:bg-primary/5 transition-colors">
+                        <p class="text-sm font-medium" x-text="r.descripcion + (r.descripcion_sufijo ? ' · ' + r.descripcion_sufijo : '')"></p>
+                        <p class="text-xs text-texto-muted font-mono" x-text="r.codigo_completo"></p>
+                        <p class="text-xs text-primary tabular-nums" x-text="pesos(r.precio_venta_efectivo || r.precio_venta)"></p>
+                    </button>
+                </template>
+            </div>
+            <p x-show="scan.sinResultados" class="text-sm text-danger">
+                No se encontró ninguna variante con ese código.
+            </p>
+        </div>
+
+        {# Panel derecho: lista de nuevos #}
+        <div class="tarjeta rounded-[10px] p-6 space-y-4">
+            <h2 class="text-base font-black text-welcome">
+                Se lleva
+                <span class="text-texto-muted font-normal"
+                      x-text="'(' + itemsNuevos.length + ' ítem' + (itemsNuevos.length !== 1 ? 's' : '') + ')'">
+                </span>
+            </h2>
+
+            <div x-show="!itemsNuevos.length" class="py-8 text-center text-sm text-texto-muted">
+                Todavía no agregaste ningún ítem.
+            </div>
+
+            <ul class="divide-y divide-borde">
+                <template x-for="i in itemsNuevos" :key="i.id">
+                    <li class="py-3 flex items-center justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-sm truncate" x-text="i.variante_descripcion"></p>
+                            <p class="text-xs text-texto-muted font-mono" x-text="i.variante_sku"></p>
+                        </div>
+                        <span class="text-sm tabular-nums shrink-0 font-medium"
+                              x-text="pesos(i.precio_actual)"></span>
+                    </li>
+                </template>
+            </ul>
+
+            <div x-show="itemsNuevos.length > 0" class="pt-3 border-t border-borde">
+                <div class="flex justify-between text-sm">
+                    <span class="text-texto-muted">Total nuevo:</span>
+                    <span class="font-semibold tabular-nums" x-text="pesos(totalNuevo)"></span>
+                </div>
+            </div>
+
+            <div class="flex justify-between pt-2">
+                <button type="button" @click="paso = 1"
+                        class="h-boton px-4 rounded-input border border-borde text-sm
+                               hover:border-primary hover:text-primary">← Volver</button>
+                <button type="button" @click="calcularDiferencia()"
+                        :disabled="!itemsNuevos.length || enviando"
+                        class="h-boton px-6 rounded-input bg-primary text-white text-base
+                               font-medium hover:opacity-90 disabled:opacity-60">
+                    Ver diferencia →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ===== PASO 3: Confirmar ===== #}
+    <div x-show="paso === 3" class="mt-8 max-w-lg">
+        <div class="tarjeta rounded-[10px] p-8 space-y-6">
+            <h2 class="text-xl font-black text-welcome">Confirmar cambio</h2>
+
+            {# Resumen #}
+            <dl class="grid gap-2 text-base">
+                <div class="flex justify-between">
+                    <dt class="text-texto-muted">Total devuelto</dt>
+                    <dd class="tabular-nums" x-text="pesos(diferencia.total_devuelto)"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-texto-muted">Total nuevo</dt>
+                    <dd class="tabular-nums" x-text="pesos(diferencia.total_nuevo)"></dd>
+                </div>
+                <div class="flex justify-between text-lg font-black border-t border-borde pt-2"
+                     :class="Number(diferencia.diferencia) > 0 ? 'text-danger' :
+                             (Number(diferencia.diferencia) < 0 ? 'text-success' : 'text-texto')">
+                    <dt x-text="Number(diferencia.diferencia) > 0 ? 'El cliente paga' :
+                                (Number(diferencia.diferencia) < 0 ? 'A favor del cliente' : 'Sin diferencia')"></dt>
+                    <dd class="tabular-nums"
+                        x-text="Number(diferencia.diferencia) === 0 ? '—' :
+                                pesos(Math.abs(Number(diferencia.diferencia)))"></dd>
+                </div>
+            </dl>
+
+            <p x-show="diferencia.mensaje" class="text-sm text-texto-muted bg-surface-alt rounded-input px-3 py-2"
+               x-text="diferencia.mensaje"></p>
+
+            {# Medio de pago (solo si diferencia > 0) #}
+            <div x-show="Number(diferencia.diferencia) > 0" class="space-y-3">
+                <div class="flex flex-col gap-1">
+                    <label class="text-sm font-semibold text-texto-header">Medio de pago para la diferencia</label>
+                    <div class="relative">
+                        <select x-model.number="confirmacion.medio_pago_id"
+                                class="campo-linea appearance-none pr-10 w-full">
+                            <option value="">Elegir…</option>
+                            <template x-for="m in medios" :key="m.id">
+                                <option :value="m.id" x-text="m.nombre"></option>
+                            </template>
+                        </select>
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            {{ icono('chevron') }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-semibold text-texto-header">Notas (opcional)</label>
+                <textarea x-model="confirmacion.notas" rows="2"
+                          placeholder="Observaciones del cambio"
+                          class="campo-linea resize-none"></textarea>
+            </div>
+
+            <div class="flex justify-between pt-2">
+                <button type="button" @click="paso = 2"
+                        class="h-boton px-4 rounded-input border border-borde text-sm
+                               hover:border-primary hover:text-primary">← Volver</button>
+                <button type="button" @click="confirmar()" :disabled="enviando"
+                        class="h-boton px-8 rounded-input bg-primary text-white text-base
+                               font-medium hover:opacity-90 disabled:opacity-60"
+                        x-text="enviando ? 'Confirmando…' : 'Confirmar cambio'">
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ===== PASO 4: Resultado ===== #}
+    <div x-show="paso === 4" class="mt-8 max-w-lg">
+        <div class="tarjeta rounded-[10px] p-8 space-y-6 text-center">
+            <div class="text-success text-5xl">✓</div>
+            <h2 class="text-xl font-black text-welcome">Cambio confirmado</h2>
+
+            <div x-show="resultado.codigo_cambio_nuevo">
+                <p class="text-sm text-texto-muted mb-2">
+                    El cliente puede usar este código para futuros cambios:
+                </p>
+                <p class="text-4xl font-mono font-black tracking-widest text-primary"
+                   x-text="resultado.codigo_cambio_nuevo"></p>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3 justify-center pt-4">
+                <a href="/cambios/nuevo"
+                   class="h-boton px-6 rounded-input bg-primary text-white text-base
+                          font-medium hover:opacity-90 inline-flex items-center justify-center">
+                    Nuevo cambio
+                </a>
+                <a href="/cambios"
+                   class="h-boton px-6 rounded-input border border-borde text-base
+                          hover:border-primary hover:text-primary inline-flex items-center justify-center">
+                    Ver historial
+                </a>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/cambios.js') }}"></script>
+{% endblock %}

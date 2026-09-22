@@ -261,6 +261,7 @@ class VentaResumen(BaseModel):
     recargo_total: Decimal
     total: Decimal
     codigo_cambio: str | None
+    codigo_cambio_activo: bool
     puntos_acumulados: int
     created_at: datetime
     cliente: ClienteResumen | None

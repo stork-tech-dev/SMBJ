@@ -1,0 +1,89 @@
+{# Nuevo cambio — mobile, paso 2: producto que se lleva el cliente. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido_mobile %}
+<div x-data="cambioNuevos()" x-init="init()">
+
+    <form @submit.prevent="buscar()" class="mt-2">
+        <label for="codigo-nuevo" class="sr-only">Código del producto que se lleva</label>
+        <div class="relative">
+            <input id="codigo-nuevo" x-model="scan.codigo"
+                   type="search" inputmode="text" autocomplete="off"
+                   enterkeyhint="search" placeholder="Escanear o tipear código"
+                   class="w-full h-[3.25rem] pl-4 pr-12 text-base text-center bg-surface
+                          border-2 border-borde rounded-input placeholder:text-texto-disabled
+                          focus:outline-none focus:border-primary">
+            <button type="submit" aria-label="Buscar"
+                    class="absolute right-1 top-1/2 -translate-y-1/2 grid place-items-center
+                           min-h-toque min-w-toque text-texto-muted hover:text-primary">
+                {{ icono('lupa', clases='w-5 h-5') }}
+            </button>
+        </div>
+    </form>
+
+    <p x-show="scan.sinResultados" x-cloak class="mt-3 text-sm text-texto-disabled">
+        No se encontró ningún producto con ese código.
+    </p>
+
+    <ul x-show="scan.resultados.length" x-cloak class="mt-3 divide-y divide-borde">
+        <template x-for="r in scan.resultados" :key="r.id">
+            <li>
+                <button type="button" @click="agregar(r)" :disabled="enviando"
+                        class="w-full py-3 flex items-center justify-between gap-3 text-left
+                               min-h-toque disabled:opacity-60">
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-base font-medium truncate" x-text="r.descripcion"></span>
+                        <span class="block text-sm text-texto-muted" x-text="r.codigo_completo"></span>
+                    </span>
+                    <span class="shrink-0 text-sm text-primary tabular-nums"
+                          x-text="pesos(r.precio_venta_efectivo || r.precio_venta)"></span>
+                </button>
+            </li>
+        </template>
+    </ul>
+
+    <p x-show="cargando" class="mt-8 text-center text-sm text-texto-disabled">Cargando…</p>
+
+    <template x-if="!cargando">
+        <div>
+            <h2 class="mt-6 text-sm font-semibold text-texto-header">Se lleva</h2>
+
+            <p x-show="!items.length" class="mt-2 text-sm text-texto-disabled">
+                Todavía no agregaste ningún producto.
+            </p>
+
+            <ul x-show="items.length" x-cloak class="mt-2 divide-y divide-borde">
+                <template x-for="i in items" :key="i.id">
+                    <li class="py-3 flex items-center justify-between gap-3">
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-base font-medium truncate"
+                                  x-text="i.variante_descripcion"></span>
+                            <span class="block text-sm text-texto-muted" x-text="i.variante_sku"></span>
+                        </span>
+                        <span class="shrink-0 text-base font-black text-welcome tabular-nums"
+                              x-text="pesos(i.precio_actual)"></span>
+                    </li>
+                </template>
+            </ul>
+
+            <div x-show="items.length" x-cloak
+                 class="mt-3 flex items-center justify-between text-base font-semibold">
+                <span>Total nuevo</span>
+                <span x-text="pesos(total)"></span>
+            </div>
+
+            <button type="button" @click="continuar()" :disabled="!items.length || enviando"
+                    class="mt-6 w-full h-boton rounded-input bg-primary text-white text-base
+                           font-medium hover:bg-primary-hover disabled:opacity-60">
+                <span x-text="enviando ? 'Calculando…' : 'Ver diferencia'"></span>
+            </button>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/cambios_mobile.js') }}"></script>
+{% endblock %}

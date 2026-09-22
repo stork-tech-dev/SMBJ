@@ -1,0 +1,67 @@
+{# Nuevo cambio — mobile, paso 0: tipo de cambio.
+
+   A diferencia de escritorio, acá no se pide el local: el celular ya sabe
+   en qué local está parada la vendedora (`punto_de_venta_id_num`, el mismo
+   dato que usa la caja de turno), así que se manda solo al confirmar. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido_mobile %}
+<div x-data="cambioTipo({{ punto_de_venta_id_num }}, '{{ codigo_inicial }}')" x-init="init()">
+
+    <div class="mt-4 flex flex-col gap-1">
+        <label class="text-sm font-semibold text-texto-header">Tipo de cambio</label>
+        <div class="relative">
+            <select x-model="form.tipo" class="campo-linea appearance-none pr-10 w-full">
+                <option value="comun">Cambio común</option>
+                <option value="promocion">Cambio de promoción</option>
+                <option value="falla">Cambio por falla</option>
+                <option value="gift_card_fisica">Gift card física</option>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+    </div>
+
+    <div x-show="form.tipo !== 'falla'" class="mt-4 flex flex-col gap-1">
+        <label class="text-sm font-semibold text-texto-header">Código de cambio del ticket</label>
+        <input x-model="form.codigo_cambio" type="search" inputmode="text"
+               placeholder="ABCD1234" maxlength="8" enterkeyhint="done"
+               class="campo-linea uppercase" @keydown.enter="iniciar()">
+        <p class="text-xs text-texto-muted">
+            El código de 8 caracteres impreso en el ticket de la compra original.
+        </p>
+    </div>
+
+    <div x-show="form.tipo === 'falla'" class="mt-4 flex flex-col gap-1">
+        <label class="text-sm font-semibold text-texto-header">Autorizador</label>
+        <div class="relative">
+            <select x-model.number="form.autorizador_id" class="campo-linea appearance-none pr-10 w-full">
+                <option value="">Seleccionar…</option>
+                <template x-for="a in autorizadores" :key="a.id">
+                    <option :value="a.id" x-text="a.nombre"></option>
+                </template>
+            </select>
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {{ icono('chevron') }}
+            </span>
+        </div>
+        <p x-show="!autorizadores.length" class="text-xs text-texto-muted">
+            No hay usuarios marcados como autorizadores. Los administra
+            Cuenta Maestra desde Usuarios.
+        </p>
+    </div>
+
+    <button type="button" @click="iniciar()" :disabled="enviando"
+            class="mt-6 w-full h-boton rounded-input bg-primary text-white text-base
+                   font-medium hover:bg-primary-hover disabled:opacity-60">
+        <span x-text="enviando ? 'Iniciando…' : 'Continuar'"></span>
+    </button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/cambios_mobile.js') }}"></script>
+{% endblock %}

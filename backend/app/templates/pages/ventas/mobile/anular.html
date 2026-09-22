@@ -1,0 +1,116 @@
+{# Anular venta — mobile.
+
+   Solo se ofrecen ventas del turno abierto actual: es la misma restricción
+   que ya valida `anular_venta()` en el backend para el rol Vendedor (un
+   Supervisor no tiene ese límite, pero esta pantalla la usa una vendedora
+   parada en el local). Sin turno abierto no se lista nada — el backend
+   rechazaría igual, pero no tiene sentido ofrecer una lista que después
+   rebota entera. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido_mobile %}
+<div x-data="anularVenta({{ punto_de_venta_id_num }})" x-init="cargar()">
+
+    {% if sin_asignacion %}
+    <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+        {{ mensaje_sin_asignacion }}
+    </p>
+    {% elif not puede_anular %}
+    <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+        Tu perfil no tiene permiso para anular ventas.
+    </p>
+    {% else %}
+
+    <p x-show="cargando" class="mt-16 text-center text-sm text-texto-disabled">Cargando…</p>
+
+    <p x-show="!cargando && !turno" x-cloak
+       class="mt-16 text-center text-sm text-texto-disabled">
+        No hay un turno abierto en este local.
+    </p>
+
+    <p x-show="!cargando && turno && !ventas.length" x-cloak
+       class="mt-16 text-center text-sm text-texto-disabled">
+        Todavía no hay ventas confirmadas en este turno.
+    </p>
+
+    <ul x-show="!cargando && ventas.length" x-cloak class="mt-4 divide-y divide-borde">
+        <template x-for="v in ventas" :key="v.id">
+            <li>
+                <button type="button" @click="pedirAnulacion(v)"
+                        class="w-full py-3 flex items-center justify-between gap-3 text-left
+                               min-h-toque">
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-base font-medium truncate" x-text="v.numero"></span>
+                        <span class="block text-sm text-texto-muted truncate"
+                              x-text="(v.cliente?.nombre || 'Sin cliente') + ' · '
+                                      + new Date(v.created_at).toLocaleTimeString('es-AR',
+                                            { hour: '2-digit', minute: '2-digit' })"></span>
+                    </span>
+                    <span class="shrink-0 text-base font-black text-welcome tabular-nums"
+                          x-text="pesos(v.total)"></span>
+                </button>
+            </li>
+        </template>
+    </ul>
+
+    {# ---------- Confirmación de anulación (bottom-sheet) ----------
+       Mismo aviso obligatorio que el modal de escritorio: la devolución de
+       dinero se gestiona aparte, esto solo revierte stock, puntos y seña. #}
+    <div x-show="anulacion.abierta" x-cloak
+         class="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+         @keydown.escape.window="anulacion.abierta = false"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-anular">
+        <div class="w-full max-w-[26rem] bg-surface rounded-t-[20px] p-6
+                    pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+            <div class="flex items-center justify-between">
+                <h2 id="titulo-anular" class="text-lg font-black text-welcome">
+                    Anular <span x-text="anulacion.venta?.numero"></span>
+                </h2>
+                <button type="button" @click="anulacion.abierta = false" aria-label="Cerrar"
+                        class="grid place-items-center min-h-toque min-w-toque text-texto-muted">
+                    {{ icono('cerrar', clases='w-6 h-6') }}
+                </button>
+            </div>
+
+            <p class="mt-3 text-sm text-texto-muted">
+                Se devuelve el stock al local, se le sacan los puntos al cliente y se
+                repone el saldo de las señas usadas. La venta no se borra: queda
+                registrada como anulada.
+            </p>
+
+            <p class="mt-3 p-3 rounded-input bg-danger/10 text-danger text-sm">
+                ⚠ La devolución de dinero requiere autorización de supervisora o dueño.
+                Esta opción no debe ofrecerse al cliente.
+            </p>
+
+            <form @submit.prevent="anular()" class="mt-5 grid gap-4">
+                <label class="flex items-start gap-2 text-sm font-light text-texto-header
+                              cursor-pointer">
+                    <input type="checkbox" class="acceso-check mt-0.5" x-model="anulacion.entendido">
+                    <span>Entendido: la devolución de dinero (si corresponde) se gestiona aparte.</span>
+                </label>
+
+                <div class="flex flex-col gap-1">
+                    <label for="a-motivo" class="text-sm font-semibold text-texto-header">Motivo</label>
+                    <input id="a-motivo" x-model="anulacion.motivo" placeholder="Se arrepintió"
+                           class="campo-linea">
+                </div>
+
+                <button type="submit" :disabled="anulacion.enviando || !anulacion.entendido"
+                        class="h-boton px-8 rounded-input bg-danger text-white text-base
+                               font-medium hover:opacity-90 disabled:opacity-60">
+                    <span x-text="anulacion.enviando ? 'Anulando…' : 'Anular venta'"></span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/ventas_mobile.js') }}"></script>
+{% endblock %}

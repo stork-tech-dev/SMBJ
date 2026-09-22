@@ -1,0 +1,72 @@
+{# Nuevo cambio — mobile, paso 3: confirmar. Mismo resumen que escritorio. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% block contenido_mobile %}
+<div x-data="cambioConfirmar()" x-init="init()">
+
+    <p x-show="cargando" class="mt-16 text-center text-sm text-texto-disabled">Cargando…</p>
+
+    <template x-if="!cargando">
+        <div class="mt-4">
+            <dl class="grid gap-2 text-base">
+                <div class="flex justify-between">
+                    <dt class="text-texto-muted">Total devuelto</dt>
+                    <dd class="tabular-nums" x-text="pesos(diferencia.total_devuelto)"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-texto-muted">Total nuevo</dt>
+                    <dd class="tabular-nums" x-text="pesos(diferencia.total_nuevo)"></dd>
+                </div>
+                <div class="flex justify-between text-lg font-black border-t border-borde pt-2"
+                     :class="Number(diferencia.diferencia) > 0 ? 'text-danger' :
+                             (Number(diferencia.diferencia) < 0 ? 'text-success' : 'text-texto')">
+                    <dt x-text="Number(diferencia.diferencia) > 0 ? 'El cliente paga' :
+                                (Number(diferencia.diferencia) < 0 ? 'A favor del cliente' : 'Sin diferencia')"></dt>
+                    <dd class="tabular-nums"
+                        x-text="Number(diferencia.diferencia) === 0 ? '—' :
+                                pesos(Math.abs(Number(diferencia.diferencia)))"></dd>
+                </div>
+            </dl>
+
+            <p x-show="diferencia.mensaje" x-cloak
+               class="mt-4 text-sm text-texto-muted bg-surface-alt rounded-input px-3 py-2"
+               x-text="diferencia.mensaje"></p>
+
+            <div x-show="Number(diferencia.diferencia) > 0" x-cloak class="mt-4 flex flex-col gap-1">
+                <label class="text-sm font-semibold text-texto-header">Medio de pago para la diferencia</label>
+                <div class="relative">
+                    <select x-model.number="confirmacion.medio_pago_id"
+                            class="campo-linea appearance-none pr-10 w-full">
+                        <option value="">Elegir…</option>
+                        <template x-for="m in medios" :key="m.id">
+                            <option :value="m.id" x-text="m.nombre"></option>
+                        </template>
+                    </select>
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        {{ icono('chevron') }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-1">
+                <label class="text-sm font-semibold text-texto-header">Notas (opcional)</label>
+                <textarea x-model="confirmacion.notas" rows="2"
+                          placeholder="Observaciones del cambio"
+                          class="campo-linea resize-none"></textarea>
+            </div>
+
+            <button type="button" @click="confirmar()" :disabled="enviando"
+                    class="mt-6 w-full h-boton rounded-input bg-primary text-white text-base
+                           font-medium hover:bg-primary-hover disabled:opacity-60">
+                <span x-text="enviando ? 'Confirmando…' : 'Confirmar cambio'"></span>
+            </button>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/cambios_mobile.js') }}"></script>
+{% endblock %}
