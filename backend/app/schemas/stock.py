@@ -212,3 +212,23 @@ class ConsultaStockResponse(BaseModel):
     # este momento. Sin esto el combo no podría ofrecer una Ubicación
     # Especial: por defecto nunca está en `columnas`.
     opciones_locales: list[ConsultaStockColumna]
+
+
+# ---------------------------------------------------------------------------
+# Reporte: productos bajo stock mínimo
+# ---------------------------------------------------------------------------
+
+
+class StockBajoMinimoResponse(BaseModel):
+    """
+    Mismo patrón que `ConsultaStockResponse`: manda las ubicaciones para el
+    combo de filtro en la misma respuesta, para no depender de
+    `GET /api/v1/puntos-de-venta` (exige permiso de Configuración, que un
+    perfil con solo Reportes no tiene).
+    """
+
+    resultados: list[StockResponse]
+    total: int
+    pagina: int
+    tamano: int
+    opciones_locales: list[PuntoResumen]

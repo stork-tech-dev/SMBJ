@@ -191,10 +191,21 @@ SECCIONES_STOCK = [
 
 RUTA_HUB_REPORTES = "/reportes"
 
-# Vacía por ahora: el único reporte que había ("Consulta Stock") se movió a
-# Gestión de Stock como "Stock por Local" (ver SECCIONES_STOCK). Se deja la
-# lista y el hub en pie para el próximo reporte que se agregue.
-SECCIONES_REPORTES: list[dict] = []
+_CRITERIO_BAJO_MINIMO = (
+    "Combinaciones de producto y ubicación cuyo stock actual es igual o "
+    "menor a su mínimo definido (mínimo de depósito o de local, según "
+    "corresponda). Los productos sin mínimo configurado no aparecen acá."
+)
+
+SECCIONES_REPORTES = [
+    {
+        "nombre": "Productos bajo stock mínimo",
+        "descripcion": "Stock actual en o por debajo del mínimo definido, por ubicación",
+        "url": "/reportes/stock-bajo-minimo",
+        "modulo": Modulo.REPORTES,
+        "title": _CRITERIO_BAJO_MINIMO,
+    },
+]
 
 
 def usuario_de_pagina(request: Request, db: Session = Depends(get_db)):
@@ -656,6 +667,26 @@ async def reportes(
             titulo="Reportes",
             ruta_activa=RUTA_HUB_REPORTES,
             secciones=secciones_reportes(db, usuario),
+        ),
+    )
+
+
+@router.get("/reportes/stock-bajo-minimo", response_class=HTMLResponse)
+async def reporte_stock_bajo_minimo(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Productos en o por debajo de su stock mínimo, por ubicación. Sin
+    aislamiento por dispositivo: es un reporte global, igual que "Stock por
+    Local" (`consulta_stock`, más abajo).
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/reportes/stock_bajo_minimo.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Productos bajo stock mínimo",
+            ruta_activa=RUTA_HUB_REPORTES,
         ),
     )
 

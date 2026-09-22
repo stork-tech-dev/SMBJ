@@ -217,15 +217,67 @@ def test_el_minimo_que_aplica_depende_del_tipo_de_ubicacion(db, autor, variante,
     El CD abastece a todos los locales: su colchón es de otro orden que el de
     una góndola. Cuál aplica lo decide el tipo, no quien carga el dato.
     """
-    en_cd = servicio.definir_minimos(
-        db, autor, variante.id, cd.id, stock_minimo_cd=20, stock_minimo_local=3
-    )
-    en_local = servicio.definir_minimos(
-        db, autor, variante.id, local.id, stock_minimo_cd=20, stock_minimo_local=3
+    servicio.fila_de_stock(db, variante.id, cd.id)
+    servicio.fila_de_stock(db, variante.id, local.id)
+    db.flush()
+
+    servicio.definir_minimos(
+        db, autor, variante.id, stock_minimo_cd=20, stock_minimo_local=3
     )
 
-    assert en_cd.stock_minimo == 20
-    assert en_local.stock_minimo == 3
+    assert servicio.fila_de_stock(db, variante.id, cd.id).stock_minimo == 20
+    assert servicio.fila_de_stock(db, variante.id, local.id).stock_minimo == 3
+
+
+def test_definir_minimos_aplica_a_todas_las_filas_de_la_variante(
+    db, autor, variante, cd, local
+):
+    """
+    Guardar desde cualquier fila de un código actualiza TODAS sus
+    ubicaciones: el mínimo de CD en el depósito, el de local en cada local
+    — no solo la fila desde la que se abrió el modal.
+    """
+    from app.models.punto_de_venta import PuntoDeVenta
+
+    otro_local = PuntoDeVenta(
+        codigo="OTR", nombre="Otro Local", tipo=TipoPuntoVenta.LOCAL, activo=True,
+    )
+    db.add(otro_local)
+    db.flush()
+
+    servicio.fila_de_stock(db, variante.id, cd.id)
+    servicio.fila_de_stock(db, variante.id, local.id)
+    servicio.fila_de_stock(db, variante.id, otro_local.id)
+    db.flush()
+
+    servicio.definir_minimos(
+        db, autor, variante.id, stock_minimo_cd=15, stock_minimo_local=4
+    )
+
+    assert servicio.fila_de_stock(db, variante.id, cd.id).stock_minimo_cd == 15
+    assert servicio.fila_de_stock(db, variante.id, local.id).stock_minimo_local == 4
+    assert servicio.fila_de_stock(db, variante.id, otro_local.id).stock_minimo_local == 4
+
+
+def test_definir_minimos_no_crea_filas_en_ubicaciones_sin_stock(
+    db, autor, variante, cd, local
+):
+    """Solo toca las filas que ya existen — no inventa stock en cero en otro lado."""
+    from sqlalchemy import select
+
+    servicio.fila_de_stock(db, variante.id, cd.id)
+    db.flush()
+
+    servicio.definir_minimos(
+        db, autor, variante.id, stock_minimo_cd=10, stock_minimo_local=2
+    )
+
+    fila_local = db.execute(
+        select(Stock).where(
+            Stock.variante_id == variante.id, Stock.punto_de_venta_id == local.id
+        )
+    ).scalar_one_or_none()
+    assert fila_local is None
 
 
 def test_las_alertas_traen_lo_que_esta_en_el_minimo_o_por_debajo(
@@ -239,7 +291,7 @@ def test_las_alertas_traen_lo_que_esta_en_el_minimo_o_por_debajo(
         cantidad=5,
         punto_venta_destino_id=cd.id,
     )
-    servicio.definir_minimos(db, autor, variante.id, cd.id, stock_minimo_cd=5)
+    servicio.definir_minimos(db, autor, variante.id, stock_minimo_cd=5)
     db.flush()
 
     assert len(servicio.alertas(db, LIBRE)) == 1
@@ -258,7 +310,7 @@ def test_las_alertas_ignoran_las_filas_sin_minimo_configurado(db, autor, variant
 
 def test_los_minimos_no_pueden_ser_negativos(db, autor, variante, cd):
     with pytest.raises(ReglaDeNegocio, match="no puede ser negativo"):
-        servicio.definir_minimos(db, autor, variante.id, cd.id, stock_minimo_cd=-1)
+        servicio.definir_minimos(db, autor, variante.id, stock_minimo_cd=-1)
 
 
 # ============================================================================
@@ -1048,7 +1100,7 @@ def test_bajo_minimo_se_enciende_si_alguna_ubicacion_esta_en_su_minimo(
         cantidad=50,
         punto_venta_destino_id=cd.id,
     )
-    servicio.definir_minimos(db, autor, variante.id, cd.id, stock_minimo_cd=10)
+    servicio.definir_minimos(db, autor, variante.id, stock_minimo_cd=10)
     db.flush()
     db.expire_all()
 
@@ -1063,7 +1115,7 @@ def test_bajo_minimo_se_enciende_si_alguna_ubicacion_esta_en_su_minimo(
         cantidad=2,
         punto_venta_destino_id=local.id,
     )
-    servicio.definir_minimos(db, autor, variante.id, local.id, stock_minimo_local=5)
+    servicio.definir_minimos(db, autor, variante.id, stock_minimo_local=5)
     db.flush()
     db.expire_all()
 

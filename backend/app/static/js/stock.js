@@ -178,7 +178,7 @@ function abmStock({ puntoFijo = null } = {}) {
             m.guardando = true;
             try {
                 const resp = await fetch(
-                    `/api/v1/stock/minimos/${m.variante_id}/${m.punto_de_venta_id}`,
+                    `/api/v1/stock/minimos/${m.variante_id}`,
                     {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },

@@ -1,0 +1,150 @@
+{# Reporte: productos bajo stock mínimo. Los datos salen de
+   /api/v1/stock/bajo-minimo: esta página no consulta la base (Principio 1). #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/paginacion.html" import paginacion %}
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="stockBajoMinimo()" x-init="cargarCatalogos(); cargar()">
+
+    {% call encabezado('Productos bajo stock mínimo', volver_url='/reportes',
+                       volver_texto='Reportes') %}
+        {# Link directo: el navegador dispara la descarga solo, sin JS de por
+           medio. Trae TODO lo que matchea los filtros activos, no solo la
+           página en pantalla (el endpoint no pagina). #}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
+
+    {# Criterio del reporte, explícito y visible: qué cuenta como "bajo
+       mínimo" y qué queda afuera a propósito. #}
+    <p class="mt-4 max-w-3xl text-sm text-texto-muted">
+        Muestra las combinaciones de producto y ubicación cuyo stock actual
+        es igual o menor a su mínimo definido (mínimo de depósito o de
+        local, según corresponda). Los productos sin mínimo configurado no
+        aparecen acá.
+    </p>
+
+    {# ---------- Filtros (Principio 5, resueltos en el backend) ---------- #}
+    <div class="flex flex-wrap items-center gap-4 mt-6">
+        <label class="sr-only" for="f-texto">Código, SKU o descripción</label>
+        <input id="f-texto" type="text" x-model="filtros.busqueda"
+               @input.debounce.400ms="pagina = 1; cargar()"
+               placeholder="Código, SKU o descripción"
+               class="h-control w-full sm:w-[18rem] px-4 text-sm font-semibold bg-surface
+                      border-2 border-borde rounded-input text-texto
+                      placeholder:text-texto-disabled focus:outline-none focus:border-primary">
+
+        <div class="w-full sm:w-[16rem]">
+            {{ combobox('f-categoria', 'categorias', 'rutaCategoria(o)',
+                        'filtros.categoria_id',
+                        etiqueta='Categoría', label_oculto=true,
+                        placeholder='Categoría',
+                        vacio='Todas las categorías',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[12.5rem]">
+            {{ combobox('f-proveedor', 'proveedores', 'o.nombre',
+                        'filtros.proveedor_id',
+                        etiqueta='Proveedor', label_oculto=true,
+                        placeholder='Proveedor',
+                        vacio='Todos los proveedores',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto-de-venta', 'puntosDeVenta', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Ubicación', label_oculto=true,
+                        placeholder='Ubicación',
+                        vacio='Todas las ubicaciones',
+                        al_elegir='pagina = 1; cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">
+            Limpiar filtros
+        </button>
+
+        <p class="text-sm text-texto-muted">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'resultado' : 'resultados'"></span>
+        </p>
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap">Ubicación</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap">Código</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Descripción</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Categoría</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Proveedor</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Stock</th>
+                        <th class="px-8 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Mínimo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="r in resultados" :key="r.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]">
+                            <td class="px-8 py-3 align-middle whitespace-nowrap" x-text="r.punto_de_venta.nombre"></td>
+                            <td class="px-4 py-3 align-middle whitespace-nowrap">
+                                <span class="font-mono font-medium"
+                                      x-text="r.variante.codigo_completo + r.variante.verificador"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle font-medium">
+                                <span x-text="r.variante.producto.descripcion"></span>
+                                <span x-show="r.variante.descripcion_sufijo" x-cloak
+                                      class="ml-2 text-xs text-texto-muted"
+                                      x-text="r.variante.descripcion_sufijo"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle" x-text="rutaCategoria(r.variante.producto.categoria)"></td>
+                            <td class="px-4 py-3 align-middle" x-text="r.variante.producto.proveedor.nombre"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums text-danger font-medium"
+                                x-text="r.cantidad"></td>
+                            <td class="px-8 py-3 align-middle text-right tabular-nums" x-text="r.stock_minimo"></td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!resultados.length && !cargando">
+                        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {{ paginacion() }}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/reportes_stock_bajo_minimo.js"></script>
+{% endblock %}

@@ -301,47 +301,65 @@ def definir_minimos(
     db: Session,
     autor: Usuario,
     variante_id: int,
-    punto_de_venta_id: int,
     *,
     stock_minimo_cd: int | None = None,
     stock_minimo_local: int | None = None,
     ip_origen: str | None = None,
-) -> Stock:
+) -> list[Stock]:
     """
-    Cambia los mínimos de una fila de stock.
+    Cambia los mínimos de TODAS las filas de stock de una variante, no de
+    una ubicación puntual: el mínimo de CD se aplica a la(s) fila(s) de
+    depósito y el de local a todas las filas de local que ya existen para
+    ese código. Es lo único que se edita a mano en esta tabla: la CANTIDAD
+    nunca se toca así —para eso están los movimientos—, pero el mínimo es
+    una decisión de reposición, no un hecho del depósito.
 
-    Es lo único que se edita a mano en esta tabla: la CANTIDAD nunca se toca
-    así —para eso están los movimientos—, pero el mínimo es una decisión de
-    reposición, no un hecho del depósito.
+    Solo toca filas que ya existen — no crea stock en ubicaciones que nunca
+    tuvieron esta variante; para eso ya está `fila_de_stock` en el flujo de
+    movimientos.
     """
     for valor in (stock_minimo_cd, stock_minimo_local):
         if valor is not None and valor < 0:
             raise ReglaDeNegocio("El stock mínimo no puede ser negativo")
 
     obtener_variante(db, variante_id)
-    obtener_punto(db, punto_de_venta_id)
 
-    fila = fila_de_stock(db, variante_id, punto_de_venta_id)
-    antes = snapshot(fila)
+    filas = db.execute(
+        select(Stock)
+        .where(Stock.variante_id == variante_id)
+        .options(joinedload(Stock.punto_de_venta))
+    ).unique().scalars().all()
 
-    if stock_minimo_cd is not None:
-        fila.stock_minimo_cd = stock_minimo_cd
-    if stock_minimo_local is not None:
-        fila.stock_minimo_local = stock_minimo_local
-    fila.updated_at = ahora_db()
-    db.flush()
+    tocadas = []
+    for fila in filas:
+        es_cd = fila.punto_de_venta.tipo == TipoPuntoVenta.CD
+        valor_nuevo = stock_minimo_cd if es_cd else stock_minimo_local
+        if valor_nuevo is None or valor_nuevo == (
+            fila.stock_minimo_cd if es_cd else fila.stock_minimo_local
+        ):
+            continue
 
-    registrar_auditoria(
-        db,
-        usuario_id=autor.id,
-        accion="stock.minimos",
-        entidad="stock",
-        entidad_id=fila.id,
-        estado_anterior=antes,
-        estado_nuevo=fila,
-        ip_origen=ip_origen,
-    )
-    return fila
+        antes = snapshot(fila)
+        if es_cd:
+            fila.stock_minimo_cd = valor_nuevo
+        else:
+            fila.stock_minimo_local = valor_nuevo
+        fila.updated_at = ahora_db()
+        db.flush()
+
+        registrar_auditoria(
+            db,
+            usuario_id=autor.id,
+            accion="stock.minimos",
+            entidad="stock",
+            entidad_id=fila.id,
+            estado_anterior=antes,
+            estado_nuevo=fila,
+            ip_origen=ip_origen,
+        )
+        tocadas.append(fila)
+
+    return tocadas
 
 
 # ============================================================================
@@ -392,7 +410,7 @@ def listar_stock(
     usuario_id: int | None = None,
     punto_de_venta_dispositivo: int | None = None,
     pagina: int = 1,
-    tamano: int = 50,
+    tamano: int | None = 50,
 ) -> tuple[list[Stock], int]:
     """
     Filtros del Principio 5, todos resueltos en el backend.
@@ -442,7 +460,11 @@ def listar_stock(
             )
         )
     if solo_bajo_minimo:
-        consulta = consulta.where(Stock.cantidad <= _minimo_sql())
+        # `_minimo_sql() > 0` deja afuera los que nunca tuvieron un mínimo
+        # configurado (columna no nullable, default 0): sin esto, cualquier
+        # producto en cero aparecería como "bajo mínimo" aunque nadie haya
+        # definido ninguno. Mismo criterio que `alertas()`, más abajo.
+        consulta = consulta.where(Stock.cantidad <= _minimo_sql(), _minimo_sql() > 0)
     if not incluir_sin_stock:
         consulta = consulta.where(Stock.cantidad > 0)
 
@@ -450,14 +472,17 @@ def listar_stock(
         select(func.count()).select_from(consulta.order_by(None).subquery())
     ).scalar_one()
 
+    consulta_ordenada = consulta.order_by(
+        func.lower(Producto.descripcion), Variante.codigo_completo, PuntoDeVenta.codigo
+    )
+    # `tamano=None` trae todo lo filtrado sin paginar — lo usa la
+    # exportación a Excel, que necesita las filas completas y no solo la
+    # página que se ve en pantalla.
+    if tamano is not None:
+        consulta_ordenada = consulta_ordenada.limit(tamano).offset((pagina - 1) * tamano)
+
     filas = (
-        db.execute(
-            consulta.order_by(
-                func.lower(Producto.descripcion), Variante.codigo_completo, PuntoDeVenta.codigo
-            )
-            .limit(tamano)
-            .offset((pagina - 1) * tamano)
-        )
+        db.execute(consulta_ordenada)
         .unique()
         .scalars()
         .all()
@@ -499,6 +524,22 @@ def listar_stock(
         )
 
     return filas, total
+
+
+def opciones_locales(db: Session) -> list[PuntoDeVenta]:
+    """
+    Todas las ubicaciones activas (CD incluido), para el combo de filtro de
+    los reportes de stock. Sirve para que el frontend arme el combo sin
+    pedirle nada a `/api/v1/puntos-de-venta` — ese endpoint exige permiso
+    de Configuración, que un perfil con solo Reportes no tiene.
+    """
+    return list(
+        db.execute(
+            select(PuntoDeVenta)
+            .where(PuntoDeVenta.activo.is_(True))
+            .order_by(func.lower(PuntoDeVenta.nombre))
+        ).scalars()
+    )
 
 
 def alertas(db: Session, scope: DeviceScope, limite: int = 200) -> list[Stock]:

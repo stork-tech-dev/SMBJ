@@ -21,7 +21,7 @@ from app.core.permisos import Modulo, Recurso, requiere_permiso
 from app.core.utils import ip_de_request
 from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.stock import TipoMovimiento
-from app.schemas.comunes import RespuestaPaginada
+from app.schemas.comunes import MensajeResponse, RespuestaPaginada
 from app.schemas.stock import (
     BajaCrear,
     ConsultaStockColumna,
@@ -34,6 +34,7 @@ from app.schemas.stock import (
     MovimientoResponse,
     PuntoResumen,
     ResumenStock,
+    StockBajoMinimoResponse,
     StockMinimos,
     StockResponse,
 )
@@ -175,6 +176,80 @@ def consulta_exportar(
         content=generar_xls_consulta_stock(filas, columnas),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="stock-por-local.xlsx"'},
+    )
+
+
+@router.get(
+    "/bajo-minimo",
+    response_model=StockBajoMinimoResponse,
+    summary="Reporte: productos bajo su stock mínimo",
+)
+def bajo_minimo(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    pagina: int = Query(default=1, ge=1),
+    tamano: int = Query(default=20, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """
+    Filas de stock (variante × ubicación) con `cantidad <= mínimo` y
+    `mínimo > 0` — deja afuera lo que nunca tuvo un mínimo configurado,
+    mismo criterio que `alertas()`. Sin aislamiento por dispositivo: es un
+    reporte global, no una pantalla operativa atada al local de un equipo.
+    """
+    filas, total = servicio.listar_stock(
+        db,
+        DeviceScope(restringido=False),
+        punto_de_venta_id=punto_de_venta_id,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        busqueda=busqueda,
+        solo_bajo_minimo=True,
+        pagina=pagina,
+        tamano=tamano,
+    )
+    return StockBajoMinimoResponse(
+        resultados=filas,  # type: ignore[arg-type]
+        total=total,
+        pagina=pagina,
+        tamano=tamano,
+        opciones_locales=servicio.opciones_locales(db),
+    )
+
+
+@router.get(
+    "/bajo-minimo/exportar",
+    response_class=Response,
+    summary="Exportar a Excel el reporte de productos bajo mínimo",
+)
+def bajo_minimo_exportar(
+    busqueda: str | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    """Mismo filtro que `/bajo-minimo`, sin paginar."""
+    from app.reports.stock_bajo_minimo_excel import generar_xls_stock_bajo_minimo
+
+    filas, _total = servicio.listar_stock(
+        db,
+        DeviceScope(restringido=False),
+        punto_de_venta_id=punto_de_venta_id,
+        categoria_id=categoria_id,
+        proveedor_id=proveedor_id,
+        busqueda=busqueda,
+        solo_bajo_minimo=True,
+        tamano=None,
+    )
+    return Response(
+        content=generar_xls_stock_bajo_minimo(filas),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="productos-bajo-minimo.xlsx"'},
     )
 
 
@@ -468,32 +543,31 @@ def crear_baja(
 
 
 @router.put(
-    "/minimos/{variante_id}/{punto_de_venta_id}",
-    response_model=StockResponse,
+    "/minimos/{variante_id}",
+    response_model=MensajeResponse,
     summary="Definir los mínimos de reposición",
 )
 def definir_minimos(
     variante_id: int,
-    punto_de_venta_id: int,
     datos: StockMinimos,
     request: Request,
     db: Session = Depends(get_db),
-    scope: DeviceScope = Depends(get_device_scope),
     autor=Depends(requiere_permiso(Modulo.STOCK, "editar")),
 ):
     """
     Lo único que se edita a mano en la tabla de stock.
 
-    Los ids van en la URL y no en el cuerpo porque identifican la fila —que
-    puede no existir todavía: se crea en cero al definirle un mínimo.
+    Se aplica a TODA la variante, no a una ubicación puntual: el mínimo de
+    CD a la(s) fila(s) de depósito y el de local a todas las filas de local
+    que ya existen para ese código (ver `servicio.definir_minimos`). Sin
+    `DeviceScope`: hoy el permiso de editar stock solo lo tienen Cuenta
+    Maestra y Dueño, que nunca están restringidos por dispositivo.
     """
-    scope.exigir(punto_de_venta_id)
     try:
-        fila = servicio.definir_minimos(
+        servicio.definir_minimos(
             db,
             autor,
             variante_id,
-            punto_de_venta_id,
             stock_minimo_cd=datos.stock_minimo_cd,
             stock_minimo_local=datos.stock_minimo_local,
             ip_origen=ip_de_request(request),
@@ -504,4 +578,4 @@ def definir_minimos(
         raise _409(exc) from exc
 
     db.commit()
-    return fila
+    return MensajeResponse(mensaje="Mínimos actualizados")
