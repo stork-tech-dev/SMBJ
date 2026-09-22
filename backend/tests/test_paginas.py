@@ -2474,8 +2474,9 @@ def test_ventas_rutea_por_dispositivo(client, db, crear_usuario, crear_punto_de_
     navegador.
 
     Es la regla del módulo: desde un celular registrado en un local se
-    trabaja el punto de venta, y desde cualquier otro equipo se mira el
-    listado. Si dependiera del ancho, una vendedora que gira el teléfono
+    trabaja el punto de venta, y desde cualquier otro equipo se ve el menú
+    de Ventas (con el listado colgando de ahí, en "Resumen de Ventas
+    Netas"). Si dependiera del ancho, una vendedora que gira el teléfono
     perdería la caja, y un supervisor en una notebook angosta recibiría el
     flujo de venta.
     """
@@ -2485,10 +2486,15 @@ def test_ventas_rutea_por_dispositivo(client, db, crear_usuario, crear_punto_de_
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    # Sin dispositivo de local: listado de escritorio.
+    # Sin dispositivo de local: menú de Ventas, con la tarjeta al listado.
     html = client.get("/ventas").text
-    assert "listadoVentas(" in html
+    assert 'href="/ventas/resumen-ventas"' in html
     assert "homeVentas()" not in html
+    assert "listadoVentas(" not in html
+
+    # La tarjeta lleva al listado de siempre.
+    html = client.get("/ventas/resumen-ventas").text
+    assert "listadoVentas(" in html
 
     # Con un equipo asignado a un local: el home de la vendedora.
     local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)

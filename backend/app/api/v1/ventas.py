@@ -37,6 +37,7 @@ from app.schemas.ventas import (
     PagosRegistrar,
     ProductoEscaneado,
     PromocionAplicar,
+    ResumenPuntoVentaResponse,
     VentaAnular,
     VentaEnCursoResponse,
     VentaResponse,
@@ -403,6 +404,55 @@ def analisis_productos_exportar(
         content=generar_xls_analisis_ventas(resultados),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="analisis-ventas-por-producto.xlsx"'},
+    )
+
+
+@router.get(
+    "/resumen-por-punto",
+    response_model=ResumenPuntoVentaResponse,
+    summary="Reporte: resumen por punto de venta",
+)
+def resumen_por_punto(
+    fecha_desde: date | None = Query(default=None),
+    fecha_hasta: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "ver")),
+):
+    """
+    Una fila por local, con el total vendido y el porcentaje cobrado con
+    cada medio de pago. Solo ventas confirmadas.
+
+    Declarado ANTES de `GET /{venta_id}` (mismo motivo que
+    `/analisis-productos`): si no, FastAPI leería "resumen-por-punto" como
+    un id numérico y devolvería 422.
+    """
+    filas, columnas_medios = servicio.resumen_por_punto_de_venta(
+        db, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+    )
+    return ResumenPuntoVentaResponse(filas=filas, columnas_medios=columnas_medios)
+
+
+@router.get(
+    "/resumen-por-punto/exportar",
+    response_class=Response,
+    summary="Exportar a Excel el resumen por punto de venta",
+)
+def resumen_por_punto_exportar(
+    fecha_desde: date | None = Query(default=None),
+    fecha_hasta: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "ver")),
+):
+    """Mismo filtro que `/resumen-por-punto`."""
+    from app.reports.resumen_por_punto_excel import generar_xls_resumen_por_punto
+
+    filas, columnas_medios = servicio.resumen_por_punto_de_venta(
+        db, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+    )
+    return Response(
+        content=generar_xls_resumen_por_punto(filas, columnas_medios),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="resumen-por-punto-de-venta.xlsx"'},
     )
 
 

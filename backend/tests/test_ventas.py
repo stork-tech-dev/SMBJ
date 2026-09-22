@@ -1222,3 +1222,98 @@ def test_analisis_productos_no_choca_con_el_detalle_de_venta(client, crear_usuar
     cuerpo = resp.json()
     assert "resultados" in cuerpo
     assert "opciones_locales" in cuerpo
+
+
+# ============================================================================
+# REPORTE: RESUMEN POR PUNTO DE VENTA
+# ============================================================================
+
+
+def test_resumen_por_punto_de_venta_solo_cuenta_confirmadas(
+    db, autor, dispositivo, local, otro_local, crear_variante, con_stock, efectivo
+):
+    """
+    Una fila por local con su total, y el porcentaje cobrado con cada medio
+    de pago — solo de ventas CONFIRMADAS. Una anulada y una en curso en el
+    mismo local no entran ni al total ni al denominador del porcentaje.
+    """
+    from app.services import medios_pago as servicio_medios
+
+    tarjeta = servicio_medios.crear_medio(db, autor, nombre="Visa", soporta_cuotas=False)
+
+    otro_dispositivo = Dispositivo(
+        punto_de_venta_id=otro_local.id, activo=True, descripcion="Caja 2"
+    )
+    db.add(otro_dispositivo)
+    db.flush()
+
+    vendida = crear_variante("Anillo plata", "1000")
+    con_stock(vendida, 10)
+    servicio_stock.aplicar_movimiento(
+        db, autor,
+        tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=vendida.id,
+        cantidad=10,
+        punto_venta_destino_id=otro_local.id,
+    )
+
+    # Local 1: una venta confirmada en efectivo.
+    venta1 = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
+    servicio.agregar_item(db, autor, venta1, variante_id=vendida.id)
+    _cobrar_todo(db, autor, venta1, efectivo)
+    servicio.confirmar_venta(db, autor, venta1, LIBRE)
+
+    # Local 1: una venta anulada y otra en curso, ninguna debe contar.
+    a_anular = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
+    servicio.agregar_item(db, autor, a_anular, variante_id=vendida.id)
+    _cobrar_todo(db, autor, a_anular, efectivo)
+    servicio.confirmar_venta(db, autor, a_anular, LIBRE)
+    servicio.anular_venta(db, autor, a_anular)
+
+    en_curso = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
+    servicio.agregar_item(db, autor, en_curso, variante_id=vendida.id)
+
+    # Local 2: una venta confirmada con tarjeta.
+    scope_otro = DeviceScope(restringido=True, punto_de_venta_id=otro_local.id)
+    venta2 = servicio.iniciar_venta(db, autor, otro_dispositivo, scope_otro)
+    servicio.agregar_item(db, autor, venta2, variante_id=vendida.id)
+    servicio.registrar_pagos(
+        db, autor, venta2,
+        [{"medio_de_pago_id": tarjeta.id, "monto": venta2.items[0].precio_final}],
+    )
+    servicio.confirmar_venta(db, autor, venta2, scope_otro)
+    db.flush()
+
+    filas, columnas_medios = servicio.resumen_por_punto_de_venta(db)
+
+    assert columnas_medios == ["Efectivo", "Visa"]
+    assert len(filas) == 2
+
+    por_local = {f["punto_de_venta_id"]: f for f in filas}
+    fila_local = por_local[local.id]
+    fila_otro = por_local[otro_local.id]
+
+    assert fila_local["total"] == venta1.total
+    assert fila_local["porcentajes"]["Efectivo"] == Decimal("100")
+    assert fila_local["porcentajes"]["Visa"] == Decimal("0")
+
+    assert fila_otro["total"] == venta2.total
+    assert fila_otro["porcentajes"]["Visa"] == Decimal("100")
+    assert fila_otro["porcentajes"]["Efectivo"] == Decimal("0")
+
+
+def test_resumen_por_punto_no_choca_con_el_detalle_de_venta(client, crear_usuario):
+    """
+    Mismo bug que `analisis-productos`: `/ventas/resumen-por-punto` tiene que
+    estar declarado ANTES de `/ventas/{venta_id}`, o FastAPI intenta leer
+    "resumen-por-punto" como un id numérico y devuelve 422.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    resp = client.get("/api/v1/ventas/resumen-por-punto")
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert "filas" in cuerpo
+    assert "columnas_medios" in cuerpo

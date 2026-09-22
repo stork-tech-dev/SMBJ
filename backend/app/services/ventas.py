@@ -39,6 +39,7 @@ from app.models.dispositivo import Dispositivo
 from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.producto import Producto, Variante
 from app.models.promocion import Promocion, TipoPromocion
+from app.models.punto_de_venta import PuntoDeVenta
 from app.models.sena import Sena
 from app.models.stock import TipoMovimiento
 from app.models.usuario import Usuario
@@ -1317,3 +1318,85 @@ def analisis_por_producto(
         for f in filas
     ]
     return resultados, total
+
+
+def resumen_por_punto_de_venta(
+    db: Session,
+    fecha_desde: date | None = None,
+    fecha_hasta: date | None = None,
+) -> tuple[list[dict], list[str]]:
+    """
+    Una fila por local: cuánto vendió (solo ventas CONFIRMADAS — una
+    anulada no fue ingreso real, y una en_curso todavía no se cobró) y qué
+    porcentaje de ese total se cobró con cada medio de pago.
+
+    Las columnas de medio de pago son dinámicas: solo entran los medios que
+    de verdad se usaron en el período filtrado, no el catálogo completo
+    (un local nunca usó "Cheque" en marzo, esa columna no tiene por qué
+    aparecer).
+
+    Dos consultas separadas y no una sola con joins: `Venta.total` y
+    `VentaPago.monto_total` están a distinta granularidad (una venta, un
+    pago), y agregarlas en el mismo GROUP BY multiplicaría el total de la
+    venta por su cantidad de pagos.
+    """
+
+    def _rango(consulta):
+        consulta = consulta.where(Venta.estado == EstadoVenta.CONFIRMADA)
+        if fecha_desde is not None:
+            consulta = consulta.where(func.date(Venta.created_at) >= fecha_desde)
+        if fecha_hasta is not None:
+            consulta = consulta.where(func.date(Venta.created_at) <= fecha_hasta)
+        return consulta
+
+    # ── Total por local ────────────────────────────────────────────────────
+    consulta_totales = _rango(
+        select(
+            Venta.punto_de_venta_id,
+            PuntoDeVenta.nombre.label("punto_de_venta_nombre"),
+            func.sum(Venta.total).label("total"),
+        )
+        .join(PuntoDeVenta, PuntoDeVenta.id == Venta.punto_de_venta_id)
+        .group_by(Venta.punto_de_venta_id, PuntoDeVenta.nombre)
+    )
+    totales = db.execute(consulta_totales.order_by(func.lower(PuntoDeVenta.nombre))).all()
+
+    # ── Cobrado por local y medio de pago ──────────────────────────────────
+    consulta_medios = _rango(
+        select(
+            Venta.punto_de_venta_id,
+            MedioDePago.nombre.label("medio_nombre"),
+            func.sum(VentaPago.monto_total).label("monto"),
+        )
+        .join(VentaPago, VentaPago.venta_id == Venta.id)
+        .join(MedioDePago, MedioDePago.id == VentaPago.medio_de_pago_id)
+        .group_by(Venta.punto_de_venta_id, MedioDePago.nombre)
+    )
+    montos_por_medio = db.execute(consulta_medios).all()
+
+    columnas_medios = sorted({fila.medio_nombre for fila in montos_por_medio})
+
+    montos: dict[int, dict[str, Decimal]] = {}
+    for fila in montos_por_medio:
+        montos.setdefault(fila.punto_de_venta_id, {})[fila.medio_nombre] = fila.monto
+
+    resultados = []
+    for fila in totales:
+        montos_de_este_local = montos.get(fila.punto_de_venta_id, {})
+        total = fila.total or Decimal("0")
+        porcentajes = {
+            medio: (
+                (montos_de_este_local.get(medio, Decimal("0")) / total * 100)
+                if total > 0
+                else Decimal("0")
+            )
+            for medio in columnas_medios
+        }
+        resultados.append({
+            "punto_de_venta_id": fila.punto_de_venta_id,
+            "punto_de_venta_nombre": fila.punto_de_venta_nombre,
+            "total": total,
+            "porcentajes": porcentajes,
+        })
+
+    return resultados, columnas_medios

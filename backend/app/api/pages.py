@@ -148,6 +148,33 @@ CONFIGURACION_SECCIONES = [
 ]
 
 
+# Tarjetas de la página de menú de Ventas. Hoy es una sola, pero entra por el
+# mismo molde que Stock/Reportes para que agregar la próxima sea una línea
+# acá y no otro rediseño de la página.
+SECCIONES_VENTAS = [
+    {
+        "nombre": "Resumen de Ventas Netas",
+        "descripcion": "Ventas del período con subtotal, descuento, total y medio de pago",
+        "url": "/ventas/resumen-ventas",
+        "modulo": Modulo.VENTAS,
+        "title": (
+            "Listado de ventas del período filtrado, con subtotal, descuento, "
+            "total y el medio de pago con que se cobró cada una. Incluye las "
+            "anuladas (se muestran tachadas, no se excluyen del listado)."
+        ),
+    },
+    {
+        "nombre": "Resumen por Punto de Venta",
+        "descripcion": "Total por local y porcentaje cobrado con cada medio de pago",
+        "url": "/ventas/resumen-por-punto",
+        "modulo": Modulo.VENTAS,
+        "title": (
+            "Una fila por local, con el total vendido y el porcentaje del total "
+            "cobrado con cada medio de pago. Solo cuenta ventas confirmadas."
+        ),
+    },
+]
+
 # Tarjetas de la página de Gestión de Stock (diseño "CDGStock"). Mismo formato
 # y mismo filtro de visibilidad que las de Configuraciones: agregar una
 # pantalla al módulo es una línea acá.
@@ -305,6 +332,12 @@ def secciones_configuracion(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Configuraciones visibles para el usuario."""
     es_maestra = _es_maestra(usuario)
     return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]  # type: ignore[arg-type, misc]
+
+
+def secciones_ventas(db: Session, usuario) -> list[dict]:
+    """Tarjetas de la página de menú de Ventas visibles para el usuario."""
+    es_maestra = _es_maestra(usuario)
+    return [s for s in SECCIONES_VENTAS if _visible(db, usuario, s, es_maestra)]
 
 
 def secciones_stock(db: Session, usuario) -> list[dict]:
@@ -1086,18 +1119,64 @@ async def ventas(
 
     Desde un celular de local: el home de la vendedora, con el acceso a la
     venta nueva y el aviso de venta sin concluir. Desde cualquier otro
-    equipo: el listado de ventas con sus filtros.
+    equipo: el menú de Ventas (hoy, una sola tarjeta: el listado con sus
+    filtros, como "Resumen de Ventas Netas").
     """
     dispositivo = _dispositivo_de_request(request, db)
-    plantilla = (
-        "pages/ventas/mobile/home.html"
-        if _es_dispositivo_de_local(dispositivo)
-        else "pages/ventas/desktop/listado.html"
-    )
+    if _es_dispositivo_de_local(dispositivo):
+        return templates.TemplateResponse(
+            request,
+            "pages/ventas/mobile/home.html",
+            _contexto_ventas(request, db, usuario, "Ventas", activa_mobile="inicio"),
+        )
+    # No usa `_contexto_ventas` porque no muestra ventas: el aislamiento por
+    # dispositivo lo resuelve la pantalla del listado, y el menú es el mismo
+    # para todos (mismo criterio que `gestion_de_stock`, más abajo).
     return templates.TemplateResponse(
         request,
-        plantilla,
-        _contexto_ventas(request, db, usuario, "Ventas", activa_mobile="inicio"),
+        "pages/ventas/desktop/hub.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Ventas",
+            ruta_activa="/ventas",
+            secciones=secciones_ventas(db, usuario),
+        ),
+    )
+
+
+@router.get("/ventas/resumen-ventas", response_class=HTMLResponse)
+async def ventas_resumen(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    El listado de ventas con sus filtros — lo que antes se servía
+    directamente en `/ventas` para escritorio. Mismo template, ahora colgado
+    del menú de Ventas en vez de ser la puerta del módulo.
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/ventas/desktop/listado.html",
+        _contexto_ventas(request, db, usuario, "Resumen de Ventas Netas"),
+    )
+
+
+@router.get("/ventas/resumen-por-punto", response_class=HTMLResponse)
+async def ventas_resumen_por_punto(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Total por local y porcentaje cobrado con cada medio de pago. Sin
+    aislamiento por dispositivo: es un reporte global, igual que los del
+    hub de Reportes.
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/ventas/desktop/resumen_por_punto.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Resumen por Punto de Venta",
+            ruta_activa="/ventas",
+        ),
     )
 
 

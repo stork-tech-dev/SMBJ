@@ -1,0 +1,97 @@
+{# Reporte: resumen por punto de venta. Los datos salen de
+   /api/v1/ventas/resumen-por-punto: esta página no consulta la base
+   (Principio 1). Sin paginar: hay una fila por local, nunca son muchas. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="resumenPorPunto()" x-init="cargar()">
+
+    {% call encabezado('Resumen por Punto de Venta', volver_url='/ventas',
+                       volver_texto='Ventas') %}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
+
+    {# Criterio del reporte, explícito y visible. #}
+    <p class="mt-4 max-w-3xl text-sm text-texto-muted">
+        Una fila por local, con el total vendido y el porcentaje del total
+        cobrado con cada medio de pago. Solo cuenta ventas confirmadas — una
+        anulada no fue ingreso real y una en curso todavía no se cobró. Las
+        columnas de medio de pago solo aparecen si hubo al menos un cobro
+        con ese medio en el período filtrado.
+    </p>
+
+    {# ---------- Filtros ---------- #}
+    <div class="flex flex-wrap items-end gap-4 mt-6">
+        <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold text-texto-header">Fecha</span>
+            <div class="flex items-center gap-2">
+                <input x-model="filtros.fecha_desde" type="date" aria-label="Fecha desde"
+                       @change="cargar()"
+                       class="campo-linea w-full sm:w-[9.5rem]">
+                <span class="text-texto-disabled" aria-hidden="true">–</span>
+                <input x-model="filtros.fecha_hasta" type="date" aria-label="Fecha hasta"
+                       @change="cargar()"
+                       class="campo-linea w-full sm:w-[9.5rem]">
+            </div>
+        </div>
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">
+            Limpiar filtros
+        </button>
+    </div>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap">Local</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled whitespace-nowrap">Total</th>
+                        <template x-for="medio in columnasMedios" :key="medio">
+                            <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled whitespace-nowrap"
+                                x-text="medio"></th>
+                        </template>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="fila in filas" :key="fila.punto_de_venta_id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]">
+                            <td class="px-8 py-3 align-middle font-medium whitespace-nowrap"
+                                x-text="fila.punto_de_venta_nombre"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums font-medium"
+                                x-text="pesos(fila.total)"></td>
+                            <template x-for="medio in columnasMedios" :key="medio">
+                                <td class="px-4 py-3 align-middle text-right tabular-nums"
+                                    x-text="porcentaje(fila, medio)"></td>
+                            </template>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!filas.length && !cargando">
+                        <td :colspan="2 + columnasMedios.length" class="px-8 py-16 text-center text-texto-muted">
+                            Sin resultados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/reportes_resumen_por_punto.js"></script>
+{% endblock %}

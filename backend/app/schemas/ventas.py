@@ -346,3 +346,26 @@ class AnalisisVentasResponse(BaseModel):
     # Mismo motivo que en StockBajoMinimoResponse: no depender de
     # /api/v1/puntos-de-venta, que exige permiso de Configuración.
     opciones_locales: list[PuntoResumen]
+
+
+# ---------------------------------------------------------------------------
+# Reporte: resumen por punto de venta
+# ---------------------------------------------------------------------------
+
+
+class ResumenPuntoVentaFila(BaseModel):
+    """Un local: cuánto vendió y qué porcentaje cobró con cada medio de pago."""
+
+    punto_de_venta_id: int
+    punto_de_venta_nombre: str
+    total: Decimal
+    # Clave = nombre del medio de pago, valor = porcentaje (0-100) del total
+    # cobrado con ese medio. Solo trae los medios usados en el período.
+    porcentajes: dict[str, Decimal]
+
+
+class ResumenPuntoVentaResponse(BaseModel):
+    filas: list[ResumenPuntoVentaFila]
+    # Columnas de medio de pago a dibujar, ya ordenadas: solo las que
+    # de verdad se usaron en el período filtrado.
+    columnas_medios: list[str]
