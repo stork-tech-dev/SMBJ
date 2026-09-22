@@ -3,10 +3,12 @@
    La pantalla es un campo con foco y poco más. El lector de códigos escribe
    en él y manda Enter; la vendedora también puede tipear el código a mano.
 
-   Si no hay stock en el local NO se bloquea nada: la vendedora tiene el
-   producto en la mano, así que el que está mal es el sistema. Lo que hace la
-   pantalla es pedirle que controle el código, porque la otra explicación
-   posible es que escaneó otra cosa. #}
+   Sin stock en el local, "Agregar al carrito" queda deshabilitado: el
+   aviso ya dice que puede ser un error de código, y dejar agregar igual
+   invitaba a vender lo que la pantalla misma está diciendo que no hay. El
+   backend (`POST /ventas/{id}/items`) sigue sin bloquearlo — a ese nivel
+   sigue siendo válido vender con stock negativo si hace falta desde otro
+   lugar — pero esta pantalla ya no ofrece ese camino. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
@@ -92,7 +94,7 @@
             </div>
             <div class="flex justify-between gap-4">
                 <dt class="text-texto-muted">Stock en este local</dt>
-                {# En rojo cuando es 0: no bloquea, avisa. #}
+                {# En rojo cuando es 0: es lo que deshabilita el botón de abajo. #}
                 <dd class="font-medium tabular-nums"
                     :class="producto && producto.stock <= 0 ? 'text-danger' : 'text-texto'"
                     x-text="producto?.stock_infinito
@@ -107,7 +109,7 @@
             <span x-text="aviso"></span>
         </p>
 
-        <button type="button" @click="agregar()" :disabled="agregando"
+        <button type="button" @click="agregar()" :disabled="agregando || sinStock"
                 class="mt-5 w-full h-[3.25rem] rounded-input bg-primary text-white text-base
                        font-medium hover:bg-primary-hover disabled:opacity-60"
                 x-text="agregando ? 'Agregando…' : 'Agregar al carrito'"></button>

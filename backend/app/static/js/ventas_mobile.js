@@ -97,6 +97,13 @@ function nuevaVenta() {
         buscando: false,
         agregando: false,
 
+        // Sin stock, no se ofrece agregar: el aviso ya dice que puede ser
+        // un error de código, y agregar igual sería vender lo que la
+        // pantalla misma está diciendo que no hay en el local.
+        get sinStock() {
+            return !!this.producto && !this.producto.stock_infinito && this.producto.stock <= 0;
+        },
+
         async iniciar() {
             // Abre la venta al entrar, o recupera la que estaba abierta: el
             // endpoint devuelve la existente en vez de crear una segunda.
