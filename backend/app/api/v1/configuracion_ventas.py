@@ -56,6 +56,7 @@ from app.schemas.promociones import (
     PromocionEstado,
     PromocionResponse,
 )
+from app.schemas.senas import VigenciaSenas
 from app.schemas.turnos import PlataformaGiftCardRequest, PlataformaGiftCardResponse
 from app.schemas.ventas import (
     MotivoDescuentoCrear,
@@ -63,6 +64,7 @@ from app.schemas.ventas import (
     MotivoDescuentoResponse,
     RestriccionItem,
 )
+from app.services import configuracion as servicio_configuracion
 from app.services import descuentos as servicio_descuentos
 from app.services import medios_pago as servicio_medios
 from app.services import novedades_caja as servicio_novedades
@@ -812,3 +814,36 @@ def estado_concepto_novedad(
         raise _404(exc) from exc
     db.commit()
     return _concepto_response(concepto)
+
+
+# ============================================================================
+# VIGENCIA DE SEÑAS
+# ============================================================================
+
+
+@router.get("/vigencia-senas", response_model=VigenciaSenas, summary="Vigencia de las señas")
+def obtener_vigencia_senas(
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "ver")),
+):
+    """Días desde el alta hasta que una seña figura como vencida en el reporte."""
+    return VigenciaSenas(dias=servicio_configuracion.dias_vigencia_sena(db))
+
+
+@router.put("/vigencia-senas", response_model=VigenciaSenas, summary="Cambiar la vigencia de las señas")
+def cambiar_vigencia_senas(
+    datos: VigenciaSenas,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_permiso(Modulo.CONFIGURACION, "editar")),
+):
+    try:
+        config = servicio_configuracion.cambiar_dias_vigencia_sena(
+            db, autor.id, datos.dias, ip_origen=ip_de_request(request)
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+    db.commit()
+    return VigenciaSenas(dias=config.dias_vigencia_sena)

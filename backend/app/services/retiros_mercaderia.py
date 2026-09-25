@@ -198,6 +198,7 @@ def _consulta(
     hasta: date | None,
     empleada: str | None,
     es_empresa_propia: bool | None,
+    turno_ids: list[int] | None = None,
 ):
     consulta = (
         select(RetiroMercaderia)
@@ -217,6 +218,8 @@ def _consulta(
         consulta = consulta.where(func.date(RetiroMercaderia.timestamp) <= hasta)
     if es_empresa_propia is not None:
         consulta = consulta.where(RetiroMercaderia.es_empresa_propia.is_(es_empresa_propia))
+    if turno_ids is not None:
+        consulta = consulta.where(RetiroMercaderia.turno_id.in_(turno_ids))
     if empleada:
         patron = f"%{sin_tildes(empleada.strip())}%"
         consulta = consulta.where(
@@ -262,14 +265,18 @@ def reporte(
     punto_de_venta_id: int | None = None,
     desde: date | None = None,
     hasta: date | None = None,
+    turno_ids: list[int] | None = None,
     pagina: int = 1,
     tamano: int | None = 10,
 ) -> tuple[list[RetiroMercaderia], int]:
     """
+    `turno_ids` acota a esos turnos (lo usa Reportes de Caja, que filtra
+    por los turnos del día).
+
     Para liquidar sueldos: primero las empleadas de esta empresa (ordenadas
     por empleada), después las de la otra empresa (para pasarle el dato).
     """
-    consulta = _consulta(punto_de_venta_id, desde, hasta, None, None)
+    consulta = _consulta(punto_de_venta_id, desde, hasta, None, None, turno_ids)
     total = db.execute(
         select(func.count()).select_from(consulta.order_by(None).subquery())
     ).scalar_one()

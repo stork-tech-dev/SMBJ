@@ -1,0 +1,10 @@
+{# Clases de celdas compartidas por las tablas de los Reportes de Caja.
+   Cada reporte las importa: {% import "pages/reportes/caja/_clases.html" as c %}
+   (un `set` del molde no llega a los bloques de las páginas hijas). #}
+{% set th = 'px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled whitespace-nowrap' %}
+{% set th_monto = 'px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled whitespace-nowrap' %}
+{% set td = 'px-4 py-3 align-middle' %}
+{% set td_monto = 'px-4 py-3 align-middle text-right tabular-nums whitespace-nowrap' %}
+{% set fila = 'border-t border-borde transition-shadow hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]' %}
+{% set fila_subtotal = 'border-t-2 border-borde bg-surface-alt font-semibold' %}
+

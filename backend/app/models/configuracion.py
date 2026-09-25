@@ -14,6 +14,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     func,
@@ -42,6 +43,12 @@ class ConfiguracionSistema(Base):
     # Letra de la empresa que factura: 'S' (Soleil) o 'M' (Mallorca).
     letra_empresa: Mapped[str] = mapped_column(String(1), nullable=False)
 
+    # Días que dura una seña desde su alta. El vencimiento se calcula al
+    # consultar (reporte de Señas), no se guarda en cada seña.
+    dias_vigencia_sena: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="30"
+    )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
@@ -64,6 +71,7 @@ class ConfiguracionSistema(Base):
             "descuento_maximo >= 0 AND descuento_maximo <= 100",
             name="ck_config_descuento_maximo",
         ),
+        CheckConstraint("dias_vigencia_sena > 0", name="ck_config_dias_vigencia_sena"),
     )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug

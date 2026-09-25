@@ -1,0 +1,57 @@
+{# Reporte de Caja: novedades por turno, con subtotales. #}
+{% extends "pages/reportes/caja/_base.html" %}
+{% import "pages/reportes/caja/_clases.html" as c %}
+
+{% block tabla %}
+<thead>
+    <tr>
+        <th class="{{ c.th }} pl-8">Hora</th>
+        <th class="{{ c.th }}">Concepto</th>
+        <th class="{{ c.th }}">Tipo</th>
+        <th class="{{ c.th }}">Autorizó</th>
+        <th class="{{ c.th }}">Notas</th>
+        <th class="{{ c.th_monto }} pr-8">Monto</th>
+    </tr>
+</thead>
+<template x-for="t in datos.turnos" :key="t.turno_id">
+    <tbody>
+        <tr class="border-t border-borde">
+            <td colspan="6" class="px-8 pt-5 pb-2 text-sm font-semibold text-welcome" x-text="rangoTurno(t)"></td>
+        </tr>
+        <template x-for="n in t.novedades" :key="n.id">
+            <tr class="{{ c.fila }}">
+                <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="hora(n.timestamp)"></td>
+                <td class="{{ c.td }} font-medium" x-text="n.concepto"></td>
+                <td class="{{ c.td }} text-sm font-medium"
+                    :class="n.tipo === 'entrada' ? 'text-success' : 'text-danger'"
+                    x-text="n.tipo === 'entrada' ? 'Entrada' : 'Salida'"></td>
+                <td class="{{ c.td }}" x-text="n.autorizador_nombre"></td>
+                <td class="{{ c.td }} text-sm text-texto-muted" x-text="n.notas || '—'"></td>
+                <td class="{{ c.td_monto }} pr-8"
+                    x-text="(n.tipo === 'salida' ? '− ' : '') + pesos(n.monto)"></td>
+            </tr>
+        </template>
+        <tr class="{{ c.fila_subtotal }}">
+            <td colspan="5" class="{{ c.td }} pl-8">
+                Subtotal del turno
+                <span class="ml-2 text-sm font-normal text-texto-muted"
+                      x-text="'Entradas ' + pesos(t.total_entradas) + ' · Salidas ' + pesos(t.total_salidas)"></span>
+            </td>
+            <td class="{{ c.td_monto }} pr-8" x-text="pesos(t.neto)"></td>
+        </tr>
+    </tbody>
+</template>
+<tfoot>
+    <tr x-show="datos.turnos.length" class="{{ c.fila_subtotal }}">
+        <td colspan="5" class="{{ c.td }} pl-8">
+            Total del día
+            <span class="ml-2 text-sm font-normal text-texto-muted"
+                  x-text="'Entradas ' + pesos(datos.total_entradas) + ' · Salidas ' + pesos(datos.total_salidas)"></span>
+        </td>
+        <td class="{{ c.td_monto }} pr-8" x-text="pesos(datos.neto)"></td>
+    </tr>
+    <tr x-show="!datos.turnos.length">
+        <td colspan="6" class="px-8 py-16 text-center text-texto-muted">Sin novedades ese día.</td>
+    </tr>
+</tfoot>
+{% endblock %}

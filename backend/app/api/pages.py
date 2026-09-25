@@ -233,6 +233,8 @@ SECCIONES_STOCK = [
 
 
 RUTA_HUB_REPORTES = "/reportes"
+RUTA_REPORTES_PRODUCTO = "/reportes/productos"
+RUTA_REPORTES_CAJA = "/reportes/caja"
 
 _CRITERIO_BAJO_MINIMO = (
     "Combinaciones de producto y ubicación cuyo stock actual es igual o "
@@ -246,13 +248,10 @@ _CRITERIO_ANALISIS_VENTAS = (
     "todo el historial."
 )
 
-_CRITERIO_RETIROS_MERCADERIA = (
-    "Productos que se llevaron las empleadas en el período, con el precio de "
-    "lista, el descuento de empleada y lo que se descuenta del sueldo. Primero "
-    "las empleadas de esta empresa y después las de la otra, para pasarle el dato."
-)
 
-SECCIONES_REPORTES = [
+# Reportes que agrupa la tarjeta "Reportes de Producto" (página
+# RUTA_REPORTES_PRODUCTO, que es otro hub con estas tarjetas).
+SECCIONES_REPORTES_PRODUCTO = [
     {
         "nombre": "Productos bajo stock mínimo",
         "descripcion": "Stock actual en o por debajo del mínimo definido, por ubicación",
@@ -267,13 +266,83 @@ SECCIONES_REPORTES = [
         "modulo": Modulo.REPORTES,
         "title": _CRITERIO_ANALISIS_VENTAS,
     },
+]
+
+# Reportes de Caja: todos de un día, filtrados por local (salvo Señas). Cada
+# uno tiene su plantilla en `pages/reportes/caja/{plantilla}.html` y su
+# endpoint en `/api/v1/reportes/caja/{slug}`; `criterio` se muestra en la
+# página y como tooltip de la tarjeta.
+_REPORTES_CAJA = [
+    ("novedades", "novedades", "Novedades de caja",
+     "Lista de novedades por turno con concepto, monto y subtotales.",
+     "Las novedades de caja de los turnos abiertos ese día, agrupadas por "
+     "turno, con el subtotal de entradas, salidas y neto de cada uno y del día."),
+    ("arqueos", "arqueos", "Arqueos de caja",
+     "Comparativa sistema vs contado. Efectivo, Débito+Crédito, Mercado Pago. "
+     "Diferencias resaltadas.",
+     "Un arqueo por fila: por cada medio de pago lo que decía el sistema, lo "
+     "que se contó y la diferencia, en rojo si no da cero. Los medios que se "
+     "arquean juntos en la terminal (p. ej. Débito + Crédito) son una sola columna."),
+    ("movimientos", "movimientos", "Movimientos de caja por turno",
+     "Todos los ingresos y egresos cronológicos de un turno.",
+     "Apertura, cobros de ventas, cobros de joyero, novedades y retiros de "
+     "efectivo de cada turno, en orden de hora, con el efectivo que debería "
+     "quedar en la caja según el mismo cálculo del arqueo."),
+    ("retiros-efectivo", "retiros_efectivo", "Retiros de efectivo",
+     "Historial con persona, monto, local y fecha.",
+     "Los retiros de efectivo de los turnos abiertos ese día: quién retiró, "
+     "quién lo registró, de qué local y cuánto."),
+    ("cobros-joyero", "cobros_joyero", "Cobros de joyero",
+     "Historial con vendedora y medio de pago.",
+     "Los cobros de joyero de los turnos abiertos ese día, con la vendedora "
+     "que los registró, el medio de pago y el total por medio."),
+    ("senas", "senas", "Señas",
+     "Lista con estado (activa/usada/vencida), saldo restante y fecha vencimiento.",
+     "Señas dadas de alta ese día. Usada: no le queda saldo. Vencida: le queda "
+     "saldo y pasó su vigencia. Las señas no son de un local: no se filtran por local."),
+    ("retiros-mercaderia", "retiros_mercaderia", "Retiros de mercadería",
+     "Por vendedora con subtotal para descontar del sueldo.",
+     "Productos que se llevaron las empleadas en los turnos de ese día, "
+     "agrupados por empleada con el subtotal a descontar del sueldo. Primero "
+     "las de esta empresa y después las de la otra, para pasarle el dato."),
+]
+
+REPORTES_CAJA = {
+    slug: {"plantilla": plantilla, "nombre": nombre, "criterio": criterio,
+           "con_local": slug != "senas"}
+    for slug, plantilla, nombre, _descripcion, criterio in _REPORTES_CAJA
+}
+
+SECCIONES_REPORTES_CAJA = [
     {
-        "nombre": "Retiros de mercadería",
-        "descripcion": "Lo que se descuenta del sueldo de cada empleada, por período",
-        "url": "/reportes/retiros-mercaderia",
+        "nombre": nombre,
+        "descripcion": descripcion,
+        "url": f"{RUTA_REPORTES_CAJA}/{slug}",
         "modulo": Modulo.REPORTES,
-        "title": _CRITERIO_RETIROS_MERCADERIA,
-    },
+        "title": criterio,
+    }
+    for slug, _plantilla, nombre, descripcion, criterio in _REPORTES_CAJA
+]
+
+
+def _grupo_de_reportes(nombre: str, url: str, secciones: list[dict]) -> dict:
+    """
+    Tarjeta que agrupa otras: se ve si alguna de las suyas se ve (ver
+    `_visible`) y su descripción enumera los reportes que contiene, sacados
+    de la misma lista para que no se desactualice.
+    """
+    return {
+        "nombre": nombre,
+        "descripcion": ", ".join(s["nombre"] for s in secciones),
+        "url": url,
+        "title": "Contiene:\n" + "\n".join(f"• {s['nombre']}" for s in secciones),
+        "secciones": secciones,
+    }
+
+# Tarjetas del hub de Reportes: un grupo por tema.
+SECCIONES_REPORTES = [
+    _grupo_de_reportes("Reportes de Producto", RUTA_REPORTES_PRODUCTO, SECCIONES_REPORTES_PRODUCTO),
+    _grupo_de_reportes("Reportes de Caja", RUTA_REPORTES_CAJA, SECCIONES_REPORTES_CAJA),
 ]
 
 
@@ -335,6 +404,9 @@ def _visible(db: Session, usuario, item: dict, es_maestra: bool) -> bool:
         return any(
             _visible(db, usuario, s, es_maestra) for s in CONFIGURACION_SECCIONES  # type: ignore[arg-type]
         )
+    # Tarjeta que agrupa otras (p. ej. "Reportes de Producto"): mismo criterio.
+    if item.get("secciones"):
+        return any(_visible(db, usuario, s, es_maestra) for s in item["secciones"])
     if item.get("modulo") is None:
         return True
     # `recurso` acota el ítem a un permiso puntual dentro del módulo. Lo usa
@@ -375,10 +447,12 @@ def secciones_stock(db: Session, usuario) -> list[dict]:
     return [s for s in SECCIONES_STOCK if _visible(db, usuario, s, es_maestra)]
 
 
-def secciones_reportes(db: Session, usuario) -> list[dict]:
-    """Tarjetas del hub de Reportes visibles para el usuario."""
+def secciones_reportes(
+    db: Session, usuario, secciones: list[dict] = SECCIONES_REPORTES
+) -> list[dict]:
+    """Tarjetas visibles del hub de Reportes (o de uno de sus grupos)."""
     es_maestra = _es_maestra(usuario)
-    return [s for s in SECCIONES_REPORTES if _visible(db, usuario, s, es_maestra)]
+    return [s for s in secciones if _visible(db, usuario, s, es_maestra)]
 
 
 def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
@@ -746,18 +820,63 @@ async def reportes(
     )
 
 
-@router.get("/reportes/retiros-mercaderia", response_class=HTMLResponse)
-async def reporte_retiros_mercaderia(
-    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
-):
-    """Retiros de mercadería de empleadas (sesión 09), para liquidar sueldos."""
+def _sub_hub_reportes(request: Request, db: Session, usuario, titulo: str, secciones: list[dict]):
+    """Página de un grupo de reportes: otro hub, con sus tarjetas."""
     return templates.TemplateResponse(
         request,
-        "pages/reportes/retiros_mercaderia.html",
+        "pages/reportes/hub.html",
         contexto_base(
             request, db, usuario,
-            titulo="Retiros de mercadería",
+            titulo=titulo,
             ruta_activa=RUTA_HUB_REPORTES,
+            secciones=secciones_reportes(db, usuario, secciones),
+            volver_url=RUTA_HUB_REPORTES,
+            volver_texto="Reportes",
+        ),
+    )
+
+
+@router.get(RUTA_REPORTES_PRODUCTO, response_class=HTMLResponse)
+async def reportes_de_producto(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return _sub_hub_reportes(request, db, usuario, "Reportes de Producto", SECCIONES_REPORTES_PRODUCTO)
+
+
+@router.get(RUTA_REPORTES_CAJA, response_class=HTMLResponse)
+async def reportes_de_caja(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return _sub_hub_reportes(request, db, usuario, "Reportes de Caja", SECCIONES_REPORTES_CAJA)
+
+
+@router.get("/reportes/retiros-mercaderia")
+async def reporte_retiros_mercaderia_anterior():
+    """El reporte se mudó a Reportes de Caja: la URL vieja sigue andando."""
+    return RedirectResponse(f"{RUTA_REPORTES_CAJA}/retiros-mercaderia", status_code=301)
+
+
+@router.get(RUTA_REPORTES_CAJA + "/{slug}", response_class=HTMLResponse)
+async def reporte_de_caja(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    """Los siete Reportes de Caja comparten molde (`pages/reportes/caja/_base.html`)."""
+    reporte = REPORTES_CAJA.get(slug)
+    if reporte is None:
+        raise HTTPException(status_code=404, detail="Reporte inexistente")
+    return templates.TemplateResponse(
+        request,
+        f"pages/reportes/caja/{reporte['plantilla']}.html",
+        contexto_base(
+            request, db, usuario,
+            titulo=reporte["nombre"],
+            ruta_activa=RUTA_HUB_REPORTES,
+            slug=slug,
+            criterio=reporte["criterio"],
+            con_local=reporte["con_local"],
         ),
     )
 

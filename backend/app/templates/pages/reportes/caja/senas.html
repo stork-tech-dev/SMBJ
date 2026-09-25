@@ -1,0 +1,62 @@
+{# Reporte de Caja: señas dadas de alta ese día, con su estado. Sin local. #}
+{% extends "pages/reportes/caja/_base.html" %}
+{% import "pages/reportes/caja/_clases.html" as c %}
+
+{% block filtros_extra %}
+<div class="flex flex-col gap-1">
+    <label for="f-estado" class="text-sm font-semibold text-texto-header">Estado</label>
+    <select id="f-estado" x-model="filtros.estado" @change="cargar()"
+            class="h-control w-full sm:w-[10rem] px-4 text-sm font-semibold bg-surface border-2
+                   border-borde rounded-input focus:outline-none focus:border-primary"
+            :class="filtros.estado ? 'text-texto' : 'text-texto-disabled'">
+        <option value="">Todos</option>
+        <option value="activa">Activa</option>
+        <option value="usada">Usada</option>
+        <option value="vencida">Vencida</option>
+    </select>
+</div>
+{% endblock %}
+
+{% block tabla %}
+<thead>
+    <tr>
+        <th class="{{ c.th }} pl-8">Hora</th>
+        <th class="{{ c.th }}">Cliente</th>
+        <th class="{{ c.th_monto }}">Monto</th>
+        <th class="{{ c.th_monto }}">Saldo restante</th>
+        <th class="{{ c.th }}">Vence</th>
+        <th class="{{ c.th }} pr-8">Estado</th>
+    </tr>
+</thead>
+<tbody>
+    <template x-for="s in datos.filas" :key="s.id">
+        <tr class="{{ c.fila }}">
+            <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="hora(s.created_at)"></td>
+            <td class="{{ c.td }} font-medium">
+                <span x-text="s.cliente_nombre"></span>
+                <span x-show="s.descripcion" x-cloak class="block text-xs text-texto-muted"
+                      x-text="s.descripcion"></span>
+            </td>
+            <td class="{{ c.td_monto }}" x-text="pesos(s.monto)"></td>
+            <td class="{{ c.td_monto }} font-medium" x-text="pesos(s.saldo)"></td>
+            <td class="{{ c.td }} whitespace-nowrap" x-text="fechaCorta(s.fecha_vencimiento)"></td>
+            <td class="{{ c.td }} pr-8 text-sm font-semibold"
+                :class="{ 'text-success': s.estado === 'activa',
+                          'text-texto-muted': s.estado === 'usada',
+                          'text-danger': s.estado === 'vencida' }"
+                x-text="s.estado.charAt(0).toUpperCase() + s.estado.slice(1)"></td>
+        </tr>
+    </template>
+</tbody>
+<tfoot>
+    <tr x-show="datos.filas.length" class="{{ c.fila_subtotal }}">
+        <td colspan="2" class="{{ c.td }} pl-8">Total</td>
+        <td class="{{ c.td_monto }}" x-text="pesos(datos.total_monto)"></td>
+        <td class="{{ c.td_monto }}" x-text="pesos(datos.total_saldo)"></td>
+        <td colspan="2"></td>
+    </tr>
+    <tr x-show="!datos.filas.length">
+        <td colspan="6" class="px-8 py-16 text-center text-texto-muted">Sin señas ese día.</td>
+    </tr>
+</tfoot>
+{% endblock %}

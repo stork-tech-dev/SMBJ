@@ -1,0 +1,78 @@
+{# ===========================================================================
+   Molde de los Reportes de Caja: encabezado con "Exportar a Excel", criterio
+   del reporte, filtros de Fecha (un día) y Local, y el bloque `tabla` que
+   completa cada reporte sobre `datos` (la respuesta de su endpoint).
+
+   La ruta pasa `titulo`, `slug`, `criterio` y `con_local`. Los datos salen de
+   /api/v1/reportes/caja/{slug}: estas páginas no consultan la base
+   (Principio 1).
+   =========================================================================== #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="reporteCaja('{{ slug }}', { conLocal: {{ 'true' if con_local else 'false' }} })"
+     x-init="iniciar()">
+
+    {% call encabezado(titulo, volver_url='/reportes/caja', volver_texto='Reportes de Caja') %}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
+
+    <p class="mt-4 max-w-3xl text-sm text-texto-muted">{{ criterio }}</p>
+
+    {# ---------- Filtros: pocos datos por día → en tiempo real ---------- #}
+    <div class="flex flex-wrap items-end gap-4 mt-6">
+        <div class="flex flex-col gap-1">
+            <label for="f-fecha" class="text-sm font-semibold text-texto-header">Fecha</label>
+            <input id="f-fecha" x-model="filtros.fecha" type="date" @change="cargar()"
+                   class="campo-linea w-full sm:w-[10rem]">
+        </div>
+
+        {% if con_local %}
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto-de-venta', 'puntosDeVenta', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Local', label_oculto=true,
+                        placeholder='Local',
+                        vacio='Todos los locales',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+        {% endif %}
+
+        {% block filtros_extra %}{% endblock %}
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">
+            Limpiar filtros
+        </button>
+    </div>
+
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <template x-if="datos">
+                <table class="w-full border-collapse text-base">
+                    {% block tabla %}{% endblock %}
+                </table>
+            </template>
+        </div>
+        <p x-show="cargando && !datos" class="px-8 py-16 text-center text-texto-muted">Cargando…</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/reportes_caja.js') }}"></script>
+{% endblock %}

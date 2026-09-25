@@ -2654,3 +2654,34 @@ def test_clientes_es_modulo_propio_en_el_sidebar(client, crear_usuario):
     assert 'href="/clientes"' in aside
 
     assert "abmClientes" in client.get("/clientes").text
+
+
+def test_reportes_agrupa_los_de_producto_en_una_tarjeta(client, crear_usuario):
+    """
+    El hub de Reportes muestra la tarjeta "Reportes de Producto", que nombra
+    los reportes que contiene y lleva a un segundo hub con ellos.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    hub = client.get("/reportes").text
+    assert 'href="/reportes/productos"' in hub
+    assert "Reportes de Producto" in hub
+    assert "Productos bajo stock mínimo, Análisis de ventas por producto" in hub
+    # Los reportes ya no cuelgan directo del hub.
+    assert 'href="/reportes/stock-bajo-minimo"' not in hub
+
+    grupo = client.get("/reportes/productos").text
+    for url in (
+        "/reportes/stock-bajo-minimo",
+        "/reportes/analisis-ventas",
+    ):
+        assert f'href="{url}"' in grupo
+    assert 'href="/reportes"' in grupo  # volver
+
+
+def test_sin_permiso_de_reportes_no_se_ve_el_grupo(client, crear_usuario):
+    crear_usuario("vendedora", ROL_VENDEDOR)
+    client.post("/api/v1/auth/login", json={"username": "vendedora", "password": "Test1234!"})
+
+    assert 'href="/reportes/productos"' not in client.get("/reportes").text

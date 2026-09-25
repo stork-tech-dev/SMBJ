@@ -431,11 +431,11 @@ def test_el_home_mobile_ofrece_operaciones_de_caja(vendedora_en_local):
     "ruta, texto",
     [
         ("/conceptos-novedad", "Conceptos de novedad"),
-        ("/reportes/retiros-mercaderia", "Retiros de mercadería"),
+        ("/reportes/caja/retiros-mercaderia", "Retiros de mercadería"),
         ("/motivos-descuento", "Descuento de empleada"),
         ("/usuarios", "Código de retiro de efectivo"),
         ("/configuracion", "/conceptos-novedad"),
-        ("/reportes", "/reportes/retiros-mercaderia"),
+        ("/reportes/caja", "/reportes/caja/retiros-mercaderia"),
     ],
 )
 def test_pantallas_de_escritorio_de_la_sesion_09(client, db, autor, ruta, texto):

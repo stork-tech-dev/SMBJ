@@ -1,0 +1,59 @@
+{# Reporte de Caja: retiros de mercadería por empleada, con el subtotal a
+   descontar del sueldo. #}
+{% extends "pages/reportes/caja/_base.html" %}
+{% import "pages/reportes/caja/_clases.html" as c %}
+
+{% block tabla %}
+<thead>
+    <tr>
+        <th class="{{ c.th }} pl-8">Hora</th>
+        <th class="{{ c.th }}">Local</th>
+        <th class="{{ c.th }}">Producto</th>
+        <th class="{{ c.th_monto }}">Precio lista</th>
+        <th class="{{ c.th_monto }}">Descuento</th>
+        <th class="{{ c.th_monto }} pr-8">A descontar</th>
+    </tr>
+</thead>
+<template x-for="(g, gi) in datos.empleadas" :key="gi">
+    <tbody>
+        <tr class="border-t border-borde">
+            <td colspan="6" class="px-8 pt-5 pb-2">
+                <span class="text-sm font-semibold text-welcome" x-text="g.empleada_nombre"></span>
+                <span class="ml-2 text-xs text-texto-muted"
+                      x-text="(g.es_empresa_propia ? 'Esta empresa' : 'Otra empresa')
+                              + (g.empleada_dni ? ' · DNI ' + g.empleada_dni : '')"></span>
+            </td>
+        </tr>
+        <template x-for="r in g.retiros" :key="r.id">
+            <tr class="{{ c.fila }}">
+                <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="hora(r.timestamp)"></td>
+                <td class="{{ c.td }}" x-text="r.punto_de_venta_nombre"></td>
+                <td class="{{ c.td }}">
+                    <span class="font-mono text-sm" x-text="r.codigo"></span>
+                    <span class="block" x-text="r.descripcion"></span>
+                </td>
+                <td class="{{ c.td_monto }}" x-text="pesos(r.precio_lista)"></td>
+                <td class="{{ c.td_monto }}" x-text="Number(r.descuento_aplicado) + '%'"></td>
+                <td class="{{ c.td_monto }} pr-8 font-medium" x-text="pesos(r.precio_con_descuento)"></td>
+            </tr>
+        </template>
+        <tr class="{{ c.fila_subtotal }}">
+            <td colspan="3" class="{{ c.td }} pl-8">Subtotal a descontar del sueldo</td>
+            <td class="{{ c.td_monto }}" x-text="pesos(g.subtotal_lista)"></td>
+            <td></td>
+            <td class="{{ c.td_monto }} pr-8" x-text="pesos(g.subtotal)"></td>
+        </tr>
+    </tbody>
+</template>
+<tfoot>
+    <tr x-show="datos.empleadas.length" class="{{ c.fila_subtotal }}">
+        <td colspan="3" class="{{ c.td }} pl-8">Total</td>
+        <td class="{{ c.td_monto }}" x-text="pesos(datos.total_lista)"></td>
+        <td></td>
+        <td class="{{ c.td_monto }} pr-8" x-text="pesos(datos.total)"></td>
+    </tr>
+    <tr x-show="!datos.empleadas.length">
+        <td colspan="6" class="px-8 py-16 text-center text-texto-muted">Sin retiros de mercadería ese día.</td>
+    </tr>
+</tfoot>
+{% endblock %}

@@ -47,3 +47,9 @@ class UsoDeSena(BaseModel):
 
 class SenaDetalle(SenaResponse):
     usos: list[UsoDeSena] = []
+
+
+class VigenciaSenas(BaseModel):
+    """Días que dura una seña desde su alta (`configuracion_sistema`)."""
+
+    dias: int = Field(gt=0, le=3650)

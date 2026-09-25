@@ -1,0 +1,50 @@
+{# Reporte de Caja: movimientos cronológicos de cada turno. #}
+{% extends "pages/reportes/caja/_base.html" %}
+{% import "pages/reportes/caja/_clases.html" as c %}
+
+{% block tabla %}
+<thead>
+    <tr>
+        <th class="{{ c.th }} pl-8">Hora</th>
+        <th class="{{ c.th }}">Detalle</th>
+        <th class="{{ c.th }}">Medio de pago</th>
+        <th class="{{ c.th_monto }}">Ingreso</th>
+        <th class="{{ c.th_monto }} pr-8">Egreso</th>
+    </tr>
+</thead>
+<template x-for="t in datos.turnos" :key="t.turno_id">
+    <tbody>
+        <tr class="border-t border-borde">
+            <td colspan="5" class="px-8 pt-5 pb-2 text-sm font-semibold text-welcome" x-text="rangoTurno(t)"></td>
+        </tr>
+        <template x-for="(m, i) in t.movimientos" :key="i">
+            <tr class="{{ c.fila }}">
+                <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="hora(m.timestamp)"></td>
+                <td class="{{ c.td }}" x-text="m.detalle"></td>
+                <td class="{{ c.td }} text-sm" x-text="m.medio_de_pago || '—'"></td>
+                <td class="{{ c.td_monto }} text-success"
+                    x-text="esCero(m.ingreso) ? '' : pesos(m.ingreso)"></td>
+                <td class="{{ c.td_monto }} pr-8 text-danger"
+                    x-text="esCero(m.egreso) ? '' : pesos(m.egreso)"></td>
+            </tr>
+        </template>
+        <tr class="{{ c.fila_subtotal }}">
+            <td colspan="3" class="{{ c.td }} pl-8">Totales del turno</td>
+            <td class="{{ c.td_monto }}" x-text="pesos(t.total_ingresos)"></td>
+            <td class="{{ c.td_monto }} pr-8" x-text="pesos(t.total_egresos)"></td>
+        </tr>
+        <tr class="bg-surface-alt">
+            <td colspan="3" class="{{ c.td }} pl-8 text-sm text-texto-muted">
+                Efectivo esperado en caja (mismo cálculo que el arqueo)
+            </td>
+            <td class="{{ c.td_monto }} font-semibold" x-text="pesos(t.efectivo_esperado)"></td>
+            <td></td>
+        </tr>
+    </tbody>
+</template>
+<tfoot x-show="!datos.turnos.length">
+    <tr>
+        <td colspan="5" class="px-8 py-16 text-center text-texto-muted">Sin turnos ese día.</td>
+    </tr>
+</tfoot>
+{% endblock %}

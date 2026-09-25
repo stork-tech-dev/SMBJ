@@ -10,8 +10,8 @@
 {% block contenido %}
 <div x-data="stockBajoMinimo()" x-init="cargarCatalogos(); cargar()">
 
-    {% call encabezado('Productos bajo stock mínimo', volver_url='/reportes',
-                       volver_texto='Reportes') %}
+    {% call encabezado('Productos bajo stock mínimo', volver_url='/reportes/productos',
+                       volver_texto='Reportes de Producto') %}
         {# Link directo: el navegador dispara la descarga solo, sin JS de por
            medio. Trae TODO lo que matchea los filtros activos, no solo la
            página en pantalla (el endpoint no pagina). #}

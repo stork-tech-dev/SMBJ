@@ -1,11 +1,13 @@
-{# Página de menú del módulo de reportes: tarjetas hacia cada reporte. #}
+{# Página de menú del módulo de reportes: tarjetas hacia cada reporte o grupo
+   de reportes. La reusa cada grupo ("Reportes de Producto"), que pasa
+   `titulo` y el enlace para volver al hub. #}
 {% extends "base.html" %}
 
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/hub.html" import hub %}
 
 {% block contenido %}
-{% call encabezado('Reportes') %}{% endcall %}
+{% call encabezado(titulo, volver_url=volver_url, volver_texto=volver_texto or 'Volver') %}{% endcall %}
 
 {{ hub(secciones, vacio='No hay reportes disponibles para tu perfil.') }}
 {% endblock %}
