@@ -102,14 +102,34 @@ def generar_codigo_cambio(db: Session) -> str:
     """
     for _ in range(10):
         codigo = "".join(secrets.choice(_ALFABETO_CAMBIO) for _ in range(LARGO_CODIGO_CAMBIO))
-        existe = db.execute(
-            select(Venta.id).where(Venta.codigo_cambio == codigo)
-        ).scalar_one_or_none()
-        if existe is None:
+        if not codigo_cambio_en_uso(db, codigo):
             return codigo
     raise ReglaDeNegocio(
         "No se pudo generar un código de cambio único: reintentá la confirmación"
     )
+
+
+def codigo_cambio_en_uso(db: Session, codigo: str) -> bool:
+    """
+    Si el código ya identifica algo que se puede cambiar.
+
+    Hay tres lugares que emiten códigos de cambio —ventas, cambios (para los
+    productos nuevos) y retiros de mercadería de empleadas— y el módulo de
+    cambios los busca a todos por el mismo campo del ticket. Un código
+    repetido entre dos de ellos haría ambigua la búsqueda, así que la
+    unicidad se controla contra los tres en un solo lugar.
+    """
+    from app.models.cambio import Cambio
+    from app.models.operaciones_caja import RetiroMercaderia
+
+    for columna in (
+        Venta.codigo_cambio,
+        Cambio.codigo_cambio_nuevo,
+        RetiroMercaderia.codigo_cambio,
+    ):
+        if db.execute(select(columna).where(columna == codigo).limit(1)).first():
+            return True
+    return False
 
 
 # ============================================================================

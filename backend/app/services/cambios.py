@@ -30,6 +30,7 @@ from app.models.cambio import (
     TipoPromo,
 )
 from app.models.categoria import Categoria
+from app.models.operaciones_caja import RetiroMercaderia
 from app.models.producto import Variante
 from app.models.stock import TipoMovimiento
 from app.models.usuario import Usuario
@@ -37,7 +38,7 @@ from app.models.venta import EstadoVenta, Venta, VentaItem
 from app.services import clientes as servicio_clientes
 from app.services import stock as servicio_stock
 from app.services.roles import NoEncontrado, ReglaDeNegocio
-from app.services.ventas import generar_codigo_cambio
+from app.services.ventas import codigo_cambio_en_uso, generar_codigo_cambio
 
 _PLAZO_DIAS = 30
 _ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin 0/O ni 1/I/L
@@ -118,13 +119,7 @@ def _generar_codigo_cambio_nuevo(db: Session) -> str:
     """Código único de 8 chars para los productos nuevos del cambio."""
     for _ in range(10):
         codigo = "".join(secrets.choice(_ALFABETO) for _ in range(8))
-        existe_venta = db.execute(
-            select(Venta.id).where(Venta.codigo_cambio == codigo)
-        ).scalar_one_or_none()
-        existe_cambio = db.execute(
-            select(Cambio.id).where(Cambio.codigo_cambio_nuevo == codigo)
-        ).scalar_one_or_none()
-        if existe_venta is None and existe_cambio is None:
+        if not codigo_cambio_en_uso(db, codigo):
             return codigo
     raise ReglaDeNegocio(
         "No se pudo generar un código de cambio único: reintentá la operación"
@@ -305,6 +300,7 @@ def iniciar_cambio(
     """
     avisos: list[str] = []
     venta_origen = None
+    retiro_origen = None
 
     if tipo in (TipoCambio.COMUN, TipoCambio.PROMOCION, TipoCambio.GIFT_CARD_FISICA):
         if not codigo_cambio:
@@ -321,8 +317,29 @@ def iniciar_cambio(
             )
         ).unique().scalar_one_or_none()
 
+        # El código también puede ser de un retiro de mercadería de empleada
+        # (sesión 09): un producto para regalo que quien lo recibió viene a
+        # cambiar. Se cambia como un cambio común, al precio de lista.
         if venta_origen is None:
+            retiro_origen = db.execute(
+                select(RetiroMercaderia).where(RetiroMercaderia.codigo_cambio == codigo_clean)
+            ).scalar_one_or_none()
+
+        if venta_origen is None and retiro_origen is None:
             raise NoEncontrado(f"No hay ninguna venta con el código '{codigo_clean}'")
+
+    if retiro_origen is not None:
+        if tipo != TipoCambio.COMUN:
+            raise ReglaDeNegocio(
+                "Ese código es de un retiro de mercadería: se cambia como cambio común"
+            )
+        dias = (ahora_db().date() - retiro_origen.timestamp.date()).days
+        if dias > _PLAZO_DIAS:
+            avisos.append(
+                f"Pasaron {dias} días desde el retiro (el plazo habitual es {_PLAZO_DIAS} días). "
+                "Podés continuar igual o cancelar."
+            )
+    elif venta_origen is not None:
         if not venta_origen.codigo_cambio_activo:
             raise ReglaDeNegocio(
                 "Este código de cambio ya fue utilizado o la venta fue anulada"
@@ -349,6 +366,7 @@ def iniciar_cambio(
     cambio = Cambio(
         tipo=tipo,
         venta_origen_id=venta_origen.id if venta_origen else None,
+        retiro_mercaderia_origen_id=retiro_origen.id if retiro_origen else None,
         punto_de_venta_id=punto_de_venta_id,
         usuario_id=autor.id,
         autorizador_id=autorizador_id,
@@ -366,7 +384,11 @@ def iniciar_cambio(
         entidad="cambios",
         entidad_id=cambio.id,
         estado_anterior=None,
-        estado_nuevo={"tipo": tipo.value, "venta_origen_id": cambio.venta_origen_id},
+        estado_nuevo={
+            "tipo": tipo.value,
+            "venta_origen_id": cambio.venta_origen_id,
+            "retiro_mercaderia_origen_id": cambio.retiro_mercaderia_origen_id,
+        },
         ip_origen=ip_origen,
     )
 
@@ -396,6 +418,9 @@ def agregar_item_devuelto(
     avisos: list[str] = []
     variante = _variante(db, variante_id)
     venta_item = None
+
+    if cambio.retiro_mercaderia_origen_id is not None:
+        return _agregar_devuelto_de_retiro(db, cambio, variante)
 
     if cambio.tipo in (TipoCambio.COMUN, TipoCambio.PROMOCION, TipoCambio.GIFT_CARD_FISICA):
         if venta_item_id is None:
@@ -459,6 +484,49 @@ def agregar_item_devuelto(
     db.add(item)
     db.flush()
     return item, avisos
+
+
+def _agregar_devuelto_de_retiro(
+    db: Session, cambio: Cambio, variante: Variante
+) -> tuple[CambioItemDevuelto, list[str]]:
+    """
+    Ítem devuelto de un cambio cuyo origen es un retiro de mercadería.
+
+    El retiro es de UNA unidad: se devuelve esa variante y una sola vez. Se
+    reconoce el precio de lista del momento del retiro —no lo que pagó la
+    empleada con su descuento—, igual que un cambio común.
+    """
+    retiro = db.get(RetiroMercaderia, cambio.retiro_mercaderia_origen_id)
+    if retiro is None:
+        raise NoEncontrado("Retiro de mercadería no encontrado")
+    if retiro.variante_id != variante.id:
+        raise ReglaDeNegocio("Ese producto no es el del retiro de mercadería del código")
+
+    ya_devuelto = db.execute(
+        select(CambioItemDevuelto.id)
+        .join(Cambio, CambioItemDevuelto.cambio_id == Cambio.id)
+        .where(
+            Cambio.retiro_mercaderia_origen_id == retiro.id,
+            Cambio.estado != EstadoCambio.CANCELADO,
+        )
+        .limit(1)
+    ).first()
+    if ya_devuelto:
+        raise ReglaDeNegocio("El producto de ese retiro de mercadería ya se devolvió")
+
+    material = _material_de_variante(db, variante)
+    item = CambioItemDevuelto(
+        cambio_id=cambio.id,
+        venta_item_id=None,
+        variante_id=variante.id,
+        precio_reconocido=Decimal(retiro.precio_lista),
+        en_promocion=False,
+        tipo_promo=None,
+        material_id=material.id if material else None,
+    )
+    db.add(item)
+    db.flush()
+    return item, []
 
 
 def agregar_item_nuevo(

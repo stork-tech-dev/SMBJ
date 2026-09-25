@@ -1,5 +1,6 @@
 """
-Endpoints de turnos de caja, retiros de efectivo y arqueo.
+Endpoints de turnos de caja y arqueo. (Los retiros de efectivo viven en
+`retiros_efectivo.py`.)
 
 El device scope limita qué local puede operar el usuario:
 un Vendedor solo puede abrir/cerrar el turno de su local asignado.
@@ -14,7 +15,7 @@ from app.core.database import get_db
 from app.core.device_scope import DeviceScope, get_device_scope
 from app.core.permisos import Modulo, Recurso, requiere_permiso
 from app.core.utils import ip_de_request
-from app.models.turno import Arqueo, RetiroEfectivo, Turno, TurnoVendedora
+from app.models.turno import Arqueo, Turno, TurnoVendedora
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.turnos import (
     ArqueoEsperadoResponse,
@@ -22,8 +23,6 @@ from app.schemas.turnos import (
     ArqueoItemResponse,
     ArqueoRegistrarRequest,
     ArqueoResponse,
-    RetiroRequest,
-    RetiroResponse,
     TurnoAbrirRequest,
     TurnoResponse,
     TurnoResumen,
@@ -221,72 +220,6 @@ def ver_turno(
     if not turno:
         raise _404(NoEncontrado("Turno no encontrado"))
     return _turno_to_response(turno)
-
-
-# ── Retiros ────────────────────────────────────────────────────────────────
-
-
-@router.post(
-    "/{turno_id}/retiros",
-    response_model=RetiroResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def registrar_retiro(
-    turno_id: int,
-    body: RetiroRequest,
-    request: Request,
-    usuario=Depends(requiere_permiso(Modulo.CAJA, "crear", recurso=Recurso.CAJA_RETIRO)),
-    db: Session = Depends(get_db),
-):
-    """Registra un retiro de efectivo del turno. Requiere permiso CAJA_RETIRO."""
-    try:
-        retiro = srv_turnos.registrar_retiro(
-            turno_id=turno_id,
-            monto=float(body.monto),
-            motivo=body.motivo,
-            autorizado_por_id=body.autorizado_por_id,
-            realizado_por_id=usuario.id,
-            db=db,
-            ip=ip_de_request(request),
-        )
-    except (NoEncontrado, ReglaDeNegocio) as e:
-        code = status.HTTP_404_NOT_FOUND if isinstance(e, NoEncontrado) else status.HTTP_409_CONFLICT
-        raise HTTPException(status_code=code, detail=str(e))
-    db.commit()
-    db.refresh(retiro)
-    return RetiroResponse(
-        id=retiro.id,
-        turno_id=retiro.turno_id,
-        monto=retiro.monto,
-        motivo=retiro.motivo,
-        autorizado_por_id=retiro.autorizado_por,
-        realizado_por_id=retiro.realizado_por,
-        timestamp=retiro.timestamp,
-    )
-
-
-@router.get("/{turno_id}/retiros", response_model=list[RetiroResponse])
-def listar_retiros(
-    turno_id: int,
-    _=Depends(requiere_permiso(Modulo.CAJA, "ver")),
-    db: Session = Depends(get_db),
-):
-    """Lista todos los retiros de efectivo de un turno."""
-    retiros = db.execute(
-        select(RetiroEfectivo).where(RetiroEfectivo.turno_id == turno_id)
-    ).scalars().all()
-    return [
-        RetiroResponse(
-            id=r.id,
-            turno_id=r.turno_id,
-            monto=r.monto,
-            motivo=r.motivo,
-            autorizado_por_id=r.autorizado_por,
-            realizado_por_id=r.realizado_por,
-            timestamp=r.timestamp,
-        )
-        for r in retiros
-    ]
 
 
 # ── Arqueo ─────────────────────────────────────────────────────────────────

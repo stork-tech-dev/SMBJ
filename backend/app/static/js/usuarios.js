@@ -190,6 +190,9 @@ function abmUsuarios() {
                 celular: usuario.celular || '',
                 local_asignado_id: usuario.local_asignado_id || '',
                 es_autorizador: usuario.es_autorizador,
+                puede_retirar: usuario.puede_retirar,
+                codigo_retiro: '',
+                rol_nombre: usuario.rol?.nombre,
             };
             this.asegurarPuntoDeVentaActual(usuario);
             this.cargarAccesos();
@@ -331,6 +334,45 @@ function abmUsuarios() {
                 window.toast(e.message, 'error');
             } finally {
                 this.form.guardando = false;
+            }
+        },
+
+        /* --- Código de retiro de efectivo (solo Cuenta Maestra) --- */
+
+        get esVendedorForm() {
+            const rol = this.rolesAsignables.find((r) => r.id === Number(this.form.rol_id));
+            return (rol?.nombre || this.form.rol_nombre) === 'vendedor';
+        },
+
+        async asignarCodigoRetiro() {
+            if (!/^\d{4}$/.test(this.form.codigo_retiro || '')) {
+                window.toast('El código de retiro son 4 dígitos', 'error');
+                return;
+            }
+            try {
+                const usuario = await window.pedir(
+                    `/api/v1/usuarios/${this.form.id}/codigo-retiro`,
+                    { method: 'POST', body: JSON.stringify({ codigo: this.form.codigo_retiro }) }
+                );
+                this.form.puede_retirar = usuario.puede_retirar;
+                this.form.codigo_retiro = '';
+                window.toast('Código de retiro guardado', 'exito');
+                this.cargar();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
+
+        async revocarCodigoRetiro() {
+            try {
+                const usuario = await window.pedir(
+                    `/api/v1/usuarios/${this.form.id}/codigo-retiro`, { method: 'DELETE' }
+                );
+                this.form.puede_retirar = usuario.puede_retirar;
+                window.toast('Código de retiro revocado', 'exito');
+                this.cargar();
+            } catch (e) {
+                window.toast(e.message, 'error');
             }
         },
 

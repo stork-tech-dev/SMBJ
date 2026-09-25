@@ -41,6 +41,10 @@ class MotivoDescuentoCrear(BaseModel):
         default=False,
         description="Ofrece los planes sin interés aunque la venta no llegue al mínimo",
     )
+    es_descuento_empleada: bool = Field(
+        default=False,
+        description="El motivo que se aplica en los retiros de mercadería de empleadas (uno solo)",
+    )
     fecha_inicio: date | None = None
     fecha_fin: date | None = None
     restricciones: list[RestriccionItem] = Field(default_factory=list)
@@ -51,6 +55,7 @@ class MotivoDescuentoEditar(BaseModel):
     nota: str | None = None
     porcentaje_sugerido: Decimal | None = None
     habilita_cuotas_sin_interes: bool | None = None
+    es_descuento_empleada: bool | None = None
     activo: bool | None = None
     fecha_inicio: date | None = None
     fecha_fin: date | None = None
@@ -65,6 +70,7 @@ class MotivoDescuentoResponse(BaseModel):
     nota: str | None
     porcentaje_sugerido: Decimal | None
     habilita_cuotas_sin_interes: bool
+    es_descuento_empleada: bool = False
     activo: bool
     fecha_inicio: date | None
     fecha_fin: date | None
@@ -78,6 +84,7 @@ class MotivoDescuentoResponse(BaseModel):
             nota=motivo.nota,
             porcentaje_sugerido=motivo.porcentaje_sugerido,
             habilita_cuotas_sin_interes=motivo.habilita_cuotas_sin_interes,
+            es_descuento_empleada=motivo.es_descuento_empleada,
             activo=motivo.activo,
             fecha_inicio=motivo.fecha_inicio,
             fecha_fin=motivo.fecha_fin,

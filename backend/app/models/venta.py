@@ -100,6 +100,13 @@ class MotivoDescuento(Base):
         Boolean, nullable=False, server_default="false"
     )
 
+    # El motivo que se aplica en los retiros de mercadería de empleadas
+    # (sesión 09). Uno solo, garantizado por un índice único parcial: se busca
+    # por esta marca y no por el nombre, igual que `es_sena` en medios de pago.
+    es_descuento_empleada: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     activo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true", index=True
     )

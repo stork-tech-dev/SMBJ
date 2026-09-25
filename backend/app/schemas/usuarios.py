@@ -117,6 +117,8 @@ class UsuarioResponse(BaseModel):
     rol: RolResponse
     activo: bool
     es_autorizador: bool
+    # Habilitado a retirar efectivo con su código (sesión 09). El código no viaja.
+    puede_retirar: bool
     # Fecha cruda en ISO: el formato dd/mm/yyyy lo arma el frontend.
     fecha_nacimiento: date | None
     celular: str | None

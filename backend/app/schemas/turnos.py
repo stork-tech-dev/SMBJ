@@ -1,4 +1,4 @@
-"""Schemas de request/response para turnos, retiros y arqueo."""
+"""Schemas de request/response para turnos y arqueo."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -22,17 +22,6 @@ class VendedoraEnTurno(BaseModel):
     id: int
     nombre: str
     ingreso: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class RetiroResumen(BaseModel):
-    id: int
-    monto: Decimal
-    motivo: str
-    autorizado_por_nombre: str
-    realizado_por_nombre: str
-    timestamp: datetime
 
     model_config = {"from_attributes": True}
 
@@ -61,28 +50,6 @@ class TurnoResumen(BaseModel):
     fecha_apertura: datetime
     fecha_cierre: datetime | None
     usuario_apertura_nombre: str
-
-    model_config = {"from_attributes": True}
-
-
-# ── Retiro de efectivo ─────────────────────────────────────────────────────
-
-
-class RetiroRequest(BaseModel):
-    monto: Decimal = Field(..., gt=0)
-    motivo: str = Field(..., min_length=1, max_length=255)
-    # ID del usuario Dueño que autoriza el retiro.
-    autorizado_por_id: int
-
-
-class RetiroResponse(BaseModel):
-    id: int
-    turno_id: int
-    monto: Decimal
-    motivo: str
-    autorizado_por_id: int
-    realizado_por_id: int
-    timestamp: datetime
 
     model_config = {"from_attributes": True}
 

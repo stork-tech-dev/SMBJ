@@ -145,6 +145,12 @@ CONFIGURACION_SECCIONES = [
         # general de Configuración.
         "recurso": Recurso.PROMOCIONES,
     },
+    {
+        "nombre": "Conceptos de novedad",
+        "descripcion": "Gastos y ajustes de caja: si suman o restan al efectivo",
+        "url": "/conceptos-novedad",
+        "modulo": Modulo.CONFIGURACION,
+    },
 ]
 
 
@@ -240,6 +246,12 @@ _CRITERIO_ANALISIS_VENTAS = (
     "todo el historial."
 )
 
+_CRITERIO_RETIROS_MERCADERIA = (
+    "Productos que se llevaron las empleadas en el período, con el precio de "
+    "lista, el descuento de empleada y lo que se descuenta del sueldo. Primero "
+    "las empleadas de esta empresa y después las de la otra, para pasarle el dato."
+)
+
 SECCIONES_REPORTES = [
     {
         "nombre": "Productos bajo stock mínimo",
@@ -254,6 +266,13 @@ SECCIONES_REPORTES = [
         "url": "/reportes/analisis-ventas",
         "modulo": Modulo.REPORTES,
         "title": _CRITERIO_ANALISIS_VENTAS,
+    },
+    {
+        "nombre": "Retiros de mercadería",
+        "descripcion": "Lo que se descuenta del sueldo de cada empleada, por período",
+        "url": "/reportes/retiros-mercaderia",
+        "modulo": Modulo.REPORTES,
+        "title": _CRITERIO_RETIROS_MERCADERIA,
     },
 ]
 
@@ -727,6 +746,22 @@ async def reportes(
     )
 
 
+@router.get("/reportes/retiros-mercaderia", response_class=HTMLResponse)
+async def reporte_retiros_mercaderia(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """Retiros de mercadería de empleadas (sesión 09), para liquidar sueldos."""
+    return templates.TemplateResponse(
+        request,
+        "pages/reportes/retiros_mercaderia.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Retiros de mercadería",
+            ruta_activa=RUTA_HUB_REPORTES,
+        ),
+    )
+
+
 @router.get("/reportes/stock-bajo-minimo", response_class=HTMLResponse)
 async def reporte_stock_bajo_minimo(
     request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
@@ -1112,6 +1147,7 @@ def _contexto_ventas(request, db, usuario, titulo, **extra):
         puede_descontar=puede("crear", Recurso.VENTA_DESCUENTO),
         puede_anular=puede("eliminar", Recurso.VENTA_ANULAR),
         puede_ver_clientes=resolver_permiso(db, usuario.id, Modulo.CLIENTES, "ver"),
+        puede_operar_caja=resolver_permiso(db, usuario.id, Modulo.CAJA, "crear"),
         # ID numérico del punto de venta para el componente cajaTurno() de caja.js.
         # Ninguna pantalla distinta al home mobile lo usa, pero agregarlo acá (en
         # vez de en el handler de /ventas) evita pasarlo como `extra` en cada ruta.
@@ -1247,6 +1283,38 @@ _PANTALLAS_MOBILE = {
         "volver": "/ventas",
         "activa": "inicio",
     },
+    # Operaciones de caja (sesión 09): mismo layout y misma regla de "solo
+    # desde un celular de local" que el flujo de venta.
+    "/caja/operaciones": {
+        "plantilla": "pages/caja/mobile/operaciones.html",
+        "titulo": "Operaciones de Caja",
+        "volver": "/ventas",
+        "activa": "inicio",
+    },
+    "/caja/retiro-efectivo": {
+        "plantilla": "pages/caja/mobile/retiro_efectivo.html",
+        "titulo": "Retiro de efectivo",
+        "volver": "/caja/operaciones",
+        "activa": "inicio",
+    },
+    "/caja/novedad": {
+        "plantilla": "pages/caja/mobile/novedad.html",
+        "titulo": "Novedad de caja",
+        "volver": "/caja/operaciones",
+        "activa": "inicio",
+    },
+    "/caja/retiro-mercaderia": {
+        "plantilla": "pages/caja/mobile/retiro_mercaderia.html",
+        "titulo": "Retiro de mercadería",
+        "volver": "/caja/operaciones",
+        "activa": "inicio",
+    },
+    "/caja/cobro-joyero": {
+        "plantilla": "pages/caja/mobile/cobro_joyero.html",
+        "titulo": "Cobro de joyero",
+        "volver": "/caja/operaciones",
+        "activa": "inicio",
+    },
 }
 
 
@@ -1302,6 +1370,9 @@ _CATALOGOS_VENTAS = {
     ),
     "/promociones": (
         "pages/promociones/listado.html", "Promociones", Recurso.PROMOCIONES,
+    ),
+    "/conceptos-novedad": (
+        "pages/conceptos_novedad/listado.html", "Conceptos de novedad", None,
     ),
 }
 

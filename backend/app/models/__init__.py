@@ -20,6 +20,13 @@ from app.models.configuracion import ConfiguracionSistema
 from app.models.dispositivo import Dispositivo
 from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.motivo_baja import MotivoBaja
+from app.models.operaciones_caja import (
+    CobroJoyero,
+    ConceptoNovedad,
+    NovedadCaja,
+    RetiroMercaderia,
+    TipoNovedad,
+)
 from app.models.permiso import RolPermiso, UsuarioPermiso
 from app.models.producto import Producto, Temporada, Variante
 from app.models.producto_foto import MAX_FOTOS_POR_PRODUCTO, ProductoFoto
@@ -129,6 +136,11 @@ __all__ = [
     "Turno",
     "TurnoVendedora",
     "RetiroEfectivo",
+    "ConceptoNovedad",
+    "NovedadCaja",
+    "RetiroMercaderia",
+    "CobroJoyero",
+    "TipoNovedad",
     "MedioPagoArqueoConfig",
     "Arqueo",
     "ArqueoItem",

@@ -1,0 +1,64 @@
+{# Retiro de efectivo — mobile (sesión 09).
+   Monto (validado contra el efectivo disponible antes de pedir el código) y
+   el código de 4 dígitos de quien retira, oculto como una contraseña. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% block contenido_mobile %}
+{% if sin_asignacion or not puede_operar_caja %}
+    {% include "pages/caja/mobile/_sin_acceso.html" %}
+{% else %}
+<div x-data="retiroEfectivo()" x-init="cargar()" class="mt-4">
+
+    <p x-show="cargando" class="mt-16 text-center text-sm text-texto-disabled">Cargando…</p>
+    <p x-show="!cargando && error" x-cloak x-text="error"
+       class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base"></p>
+
+    <form x-show="!cargando && !error && !hecho" x-cloak @submit.prevent="confirmar()" class="space-y-6">
+        <div>
+            <label for="re-monto" class="text-sm font-semibold text-texto-header">Monto a retirar</label>
+            <input id="re-monto" type="number" inputmode="decimal" min="0" step="0.01"
+                   x-model="monto" required class="campo-linea" placeholder="$0">
+            <p class="mt-2 text-sm text-texto-muted">
+                Efectivo disponible en caja:
+                <span class="font-semibold text-texto" x-text="pesos(disponible)"></span>
+            </p>
+            <p x-show="superaDisponible" x-cloak class="mt-1 text-sm text-danger">
+                El monto supera el efectivo disponible.
+            </p>
+        </div>
+
+        <div>
+            <label for="re-codigo" class="text-sm font-semibold text-texto-header">
+                Código de autorización (4 dígitos)
+            </label>
+            <input id="re-codigo" type="password" inputmode="numeric" autocomplete="off"
+                   maxlength="4" pattern="\d{4}" x-model="codigo" required
+                   class="campo-linea tracking-[0.5em]">
+            <p class="mt-1 text-xs text-texto-disabled">El código no es la contraseña del sistema.</p>
+        </div>
+
+        <div class="flex gap-3">
+            <a href="/caja/operaciones"
+               class="flex-1 h-boton grid place-items-center rounded-input border border-borde
+                      text-sm text-texto-muted">Cancelar</a>
+            <button type="submit" :disabled="enviando || superaDisponible"
+                    class="flex-1 h-boton rounded-input bg-primary text-white text-sm font-semibold
+                           disabled:opacity-60"
+                    x-text="enviando ? 'Registrando…' : 'Confirmar retiro'"></button>
+        </div>
+    </form>
+
+    <div x-show="hecho" x-cloak class="mt-10 text-center space-y-3">
+        <p class="text-lg font-black text-welcome">Retiro registrado</p>
+        <p class="text-base text-texto" x-text="pesos(hecho?.monto) + ' · ' + (hecho?.usuario_nombre || '')"></p>
+        <a href="/caja/operaciones"
+           class="inline-grid place-items-center h-boton px-8 rounded-input bg-primary text-white
+                  text-sm font-semibold">Listo</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/caja.js') }}"></script>
+{% endblock %}

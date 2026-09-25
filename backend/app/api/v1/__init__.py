@@ -21,6 +21,7 @@ from app.api.v1 import (
     dispositivos,
     health,
     notificaciones,
+    operaciones_caja,
     productos,
     proveedores,
     puntos_de_venta,
@@ -57,5 +58,9 @@ api_router.include_router(configuracion_ventas.pgc_router)
 api_router.include_router(auditoria.router)
 api_router.include_router(turnos.router)
 api_router.include_router(notificaciones.router)
+api_router.include_router(operaciones_caja.retiros_router)
+api_router.include_router(operaciones_caja.novedades_router)
+api_router.include_router(operaciones_caja.mercaderia_router)
+api_router.include_router(operaciones_caja.joyero_router)
 
 __all__ = ["api_router"]

@@ -27,6 +27,7 @@ function abmMotivosDescuento() {
             abierto: false, guardando: false, id: null,
             nombre: '', nota: '', porcentaje_sugerido: '',
             habilita_cuotas_sin_interes: false,
+            es_descuento_empleada: false,
             fecha_inicio: '', fecha_fin: '',
             sucursales: [],   // array de {id, nombre}
             medios_pago: [],  // array de {id, nombre}
@@ -83,6 +84,7 @@ function abmMotivosDescuento() {
                 abierto: true, guardando: false, id: null,
                 nombre: '', nota: '', porcentaje_sugerido: '',
                 habilita_cuotas_sin_interes: false,
+                es_descuento_empleada: false,
                 fecha_inicio: '', fecha_fin: '',
                 sucursales: [], medios_pago: [],
             };
@@ -100,6 +102,7 @@ function abmMotivosDescuento() {
                 porcentaje_sugerido:
                     m.porcentaje_sugerido === null ? '' : String(Number(m.porcentaje_sugerido)),
                 habilita_cuotas_sin_interes: m.habilita_cuotas_sin_interes,
+                es_descuento_empleada: m.es_descuento_empleada,
                 fecha_inicio: m.fecha_inicio || '',
                 fecha_fin:    m.fecha_fin    || '',
                 // Reconstruir sucursales y medios desde las restricciones
@@ -168,6 +171,7 @@ function abmMotivosDescuento() {
                             ? null
                             : Number(this.form.porcentaje_sugerido),
                     habilita_cuotas_sin_interes: this.form.habilita_cuotas_sin_interes,
+                    es_descuento_empleada: this.form.es_descuento_empleada,
                     fecha_inicio: this.form.fecha_inicio || null,
                     fecha_fin:    this.form.fecha_fin    || null,
                     restricciones,

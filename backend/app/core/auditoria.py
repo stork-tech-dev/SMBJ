@@ -31,6 +31,8 @@ CAMPOS_SENSIBLES = frozenset(
         "password_hash",
         "clave_especial",
         "clave_especial_hash",
+        "codigo_retiro",
+        "codigo_retiro_hash",
         "pin",
         "pin_hash",
         "token",

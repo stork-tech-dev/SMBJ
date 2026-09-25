@@ -5,7 +5,12 @@ El arqueo compara lo que el sistema registró (venta_pagos del turno)
 contra lo que la vendedora declara al cerrar.
 
 Reglas:
+  - El efectivo esperado arranca en el efectivo de apertura del turno.
   - Los retiros de efectivo se descuentan del esperado de efectivo.
+  - Las novedades de caja suman (entrada) o restan (salida) al efectivo.
+  - Los cobros de joyero suman al medio con que pagó el cliente (no son venta).
+  - Los retiros de mercadería de empleadas NO afectan el arqueo.
+  - Las ventas anuladas no cuentan: solo se suman las confirmadas.
   - Los medios agrupados (agrupa_en_terminal=TRUE) se suman por grupo.
   - Los medios informativos (es_informativo=TRUE) se muestran pero no
     suman al total (ej: gift cards virtuales).
@@ -70,6 +75,59 @@ def _retiros_efectivo_del_turno(turno_id: int, db: Session) -> Decimal:
     return db.execute(stmt).scalar_one_or_none() or Decimal("0")
 
 
+def _cobros_joyero_del_turno(turno_id: int, db: Session) -> dict[int, Decimal]:
+    """Cobros de joyero del turno por medio de pago: {medio_de_pago_id: monto}."""
+    from app.models.operaciones_caja import CobroJoyero
+
+    filas = db.execute(
+        select(CobroJoyero.medio_de_pago_id, func.sum(CobroJoyero.monto_cobrado))
+        .where(CobroJoyero.turno_id == turno_id)
+        .group_by(CobroJoyero.medio_de_pago_id)
+    ).all()
+    return {medio_id: monto or Decimal("0") for medio_id, monto in filas}
+
+
+def _novedades_del_turno(turno_id: int, db: Session) -> Decimal:
+    """Neto de las novedades de caja del turno: entradas menos salidas."""
+    from app.models.operaciones_caja import NovedadCaja, TipoNovedad
+
+    filas = db.execute(
+        select(NovedadCaja.tipo, func.sum(NovedadCaja.monto))
+        .where(NovedadCaja.turno_id == turno_id)
+        .group_by(NovedadCaja.tipo)
+    ).all()
+    neto = Decimal("0")
+    for tipo, monto in filas:
+        neto += (monto or 0) if tipo == TipoNovedad.ENTRADA else -(monto or 0)
+    return neto
+
+
+def medio_efectivo(db: Session) -> MedioDePago | None:
+    """
+    El medio de pago "Efectivo". Se identifica por nombre: es el que recibe
+    la apertura, los retiros y las novedades de caja.
+    """
+    return db.execute(
+        select(MedioDePago).where(func.lower(MedioDePago.nombre) == "efectivo")
+    ).scalar_one_or_none()
+
+
+def efectivo_esperado(turno_id: int, db: Session) -> Decimal:
+    """
+    El efectivo que debería haber en la caja ahora mismo. Es la misma cuenta
+    que la línea de efectivo del arqueo, para que el tope de un retiro y el
+    cierre del turno nunca digan cosas distintas.
+    """
+    esperado = calcular_esperado(turno_id, db)
+    efectivo = medio_efectivo(db)
+    if efectivo is None:
+        return Decimal("0")
+    for item in esperado["items"]:
+        if item["medio_de_pago_id"] == efectivo.id:
+            return item["monto_esperado"]
+    return Decimal("0")
+
+
 def calcular_esperado(turno_id: int, db: Session) -> dict:
     """
     Calcula el arqueo esperado para el turno según:
@@ -93,18 +151,22 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
         cfg.medio_de_pago_id: (cfg, medio) for cfg, medio in configs
     }
 
-    # Pagos del turno por medio
+    # Pagos del turno por medio: ventas confirmadas + cobros de joyero.
     pagos = _pagos_del_turno(turno, db)
+    for medio_id, monto in _cobros_joyero_del_turno(turno_id, db).items():
+        pagos[medio_id] = pagos.get(medio_id, Decimal("0")) + monto
 
-    # Identificar el medio "efectivo" para descontar retiros.
-    # Asumimos que el medio con nombre ilike 'efectivo' es el de efectivo.
-    efectivo_medio = db.execute(
-        select(MedioDePago).where(func.lower(MedioDePago.nombre) == "efectivo")
-    ).scalar_one_or_none()
+    # El medio "efectivo" recibe además la apertura, los retiros y las
+    # novedades de caja (que siempre son en efectivo).
+    efectivo_medio = medio_efectivo(db)
 
-    retiros = Decimal("0")
+    ajuste_efectivo = Decimal("0")
     if efectivo_medio:
-        retiros = _retiros_efectivo_del_turno(turno_id, db)
+        ajuste_efectivo = (
+            Decimal(turno.efectivo_apertura)
+            - _retiros_efectivo_del_turno(turno_id, db)
+            + _novedades_del_turno(turno_id, db)
+        )
 
     # Construir items agrupados.
     # Se siembra primero con TODOS los medios activos en $0 para que la
@@ -181,12 +243,12 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
             })
             grupos[key]["monto_esperado"] += monto
 
-    # Aplicar descuento de retiros al efectivo
+    # Apertura, retiros y novedades sobre la línea de efectivo.
     if efectivo_medio:
         key = f"medio:{efectivo_medio.id}"
         if key in grupos:
             grupos[key]["monto_esperado"] = max(
-                Decimal("0"), grupos[key]["monto_esperado"] - retiros
+                Decimal("0"), grupos[key]["monto_esperado"] + ajuste_efectivo
             )
 
     items = list(grupos.values())

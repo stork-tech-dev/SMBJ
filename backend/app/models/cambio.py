@@ -34,6 +34,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.categoria import Categoria
+    from app.models.operaciones_caja import RetiroMercaderia
     from app.models.medio_pago import MedioDePago, PlanCuotas
     from app.models.producto import Variante
     from app.models.punto_de_venta import PuntoDeVenta
@@ -75,6 +76,14 @@ class Cambio(Base):
         ForeignKey("ventas.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
+    )
+
+    # Origen alternativo: el código de cambio de un retiro de mercadería de
+    # empleada (sesión 09). Se cambia como un cambio común, al precio de lista.
+    retiro_mercaderia_origen_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("retiros_mercaderia.id", ondelete="RESTRICT"),
+        nullable=True,
     )
 
     punto_de_venta_id: Mapped[int] = mapped_column(
@@ -141,6 +150,9 @@ class Cambio(Base):
     )
 
     venta_origen: Mapped["Venta | None"] = relationship(foreign_keys=[venta_origen_id])
+    retiro_mercaderia_origen: Mapped["RetiroMercaderia | None"] = relationship(
+        foreign_keys=[retiro_mercaderia_origen_id]
+    )
     punto_de_venta: Mapped["PuntoDeVenta"] = relationship()
     usuario: Mapped["Usuario"] = relationship(foreign_keys=[usuario_id])
     autorizador: Mapped["Usuario | None"] = relationship(foreign_keys=[autorizador_id])

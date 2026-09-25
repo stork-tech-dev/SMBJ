@@ -48,6 +48,8 @@ EFECTO: dict[TipoMovimiento, tuple[bool, bool]] = {
     # se contó menos que lo que decía el sistema resta, y si se contó más
     # suma. La punta la elige quien lo llama (ver `UNA_SOLA_PUNTA`).
     TipoMovimiento.AJUSTE_AUDITORIA: (True, True),
+    # Una empleada se lleva un producto: sale del local y no entra a ningún lado.
+    TipoMovimiento.RETIRO_MERCADERIA: (True, False),
 }
 
 # Tipos cuya dirección NO la fija la tabla de arriba sino el caso concreto.
@@ -124,6 +126,7 @@ def aplicar_movimiento(
     auditoria_id: int | None = None,
     referencia_venta_id: int | None = None,
     compra_id: int | None = None,
+    retiro_mercaderia_id: int | None = None,
     puntas: tuple[str, ...] | None = None,
     permitir_faltante: bool = False,
     notas: str | None = None,
@@ -235,6 +238,7 @@ def aplicar_movimiento(
         cantidad=cantidad,
         remito_id=remito_id,
         compra_id=compra_id,
+        retiro_mercaderia_id=retiro_mercaderia_id,
         motivo_baja_id=motivo_baja_id,
         auditoria_id=auditoria_id,
         referencia_venta_id=referencia_venta_id,

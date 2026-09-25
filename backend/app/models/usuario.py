@@ -39,6 +39,15 @@ class Usuario(Base):
         Boolean, nullable=False, server_default="false"
     )
 
+    # Código personal de 4 dígitos para retirar efectivo de la caja desde el
+    # celular del local (sesión 09). No es la contraseña: solo identifica
+    # quién retiró. Se guarda con bcrypt y NUNCA viaja en una respuesta.
+    # Lo asigna la Cuenta Maestra; no se habilita a usuarios con rol vendedor.
+    puede_retirar: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    codigo_retiro_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # --- Datos personales (opcionales, capas "Nuevo/Editar Usuario") ---
 
     # Fecha sin hora: no interesa el momento, solo el día. El formato

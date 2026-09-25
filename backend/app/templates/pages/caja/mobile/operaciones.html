@@ -1,0 +1,34 @@
+{# Operaciones de caja — menú (mobile, sesión 09).
+   Las cuatro operaciones que ocurren durante el turno además de las ventas.
+   Cada una se registra sobre el turno abierto del local del dispositivo. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+
+{% set operaciones = [
+    ('/caja/retiro-efectivo', 'billete', 'Retiro de efectivo', 'Sale plata de la caja con código personal'),
+    ('/caja/novedad', 'portapapeles', 'Novedad de caja', 'Un gasto o ajuste autorizado'),
+    ('/caja/retiro-mercaderia', 'box', 'Retiro de mercadería', 'Una empleada se lleva un producto'),
+    ('/caja/cobro-joyero', 'reloj', 'Cobro de joyero', 'El cliente paga un arreglo'),
+] %}
+
+{% block contenido_mobile %}
+{% if sin_asignacion or not puede_operar_caja %}
+    {% include "pages/caja/mobile/_sin_acceso.html" %}
+{% else %}
+<div class="mt-4 space-y-4">
+    {% for url, ic, titulo_op, detalle in operaciones %}
+    <a href="{{ url }}"
+       class="flex items-center gap-4 p-5 min-h-toque rounded-[10px] bg-surface tarjeta
+              hover:border-primary">
+        {{ icono(ic, clases='w-7 h-7 text-primary') }}
+        <span class="flex-1">
+            <span class="block text-base font-semibold text-texto">{{ titulo_op }}</span>
+            <span class="block text-xs text-texto-muted">{{ detalle }}</span>
+        </span>
+        {{ icono('chevron-derecha', clases='w-5 h-5 text-texto-disabled') }}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

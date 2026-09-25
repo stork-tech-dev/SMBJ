@@ -199,3 +199,229 @@ function cajaArqueo(turnoId) {
         },
     };
 }
+
+
+/* ==========================================================================
+   Operaciones de caja (sesión 09) — celular del local.
+
+   Las cuatro pantallas registran sobre el turno abierto del local del
+   dispositivo; el local lo decide el backend, no se manda desde acá.
+   Los errores del backend se muestran tal cual (`window.pedir`).
+   ========================================================================== */
+
+const API_OPERACIONES = '/api/v1';
+
+/** Comportamiento común: envío con toast de error y estado de "hecho". */
+function _operacionBase() {
+    return {
+        cargando: false,
+        enviando: false,
+        hecho: null,
+        pesos: (v) => window.pesos(v),
+
+        async _enviar(url, cuerpo) {
+            this.enviando = true;
+            try {
+                this.hecho = await window.pedir(url, {
+                    method: 'POST',
+                    body: JSON.stringify(cuerpo),
+                });
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.enviando = false;
+            }
+        },
+    };
+}
+
+function retiroEfectivo() {
+    return {
+        ..._operacionBase(),
+        cargando: true,
+        error: null,
+        disponible: 0,
+        monto: '',
+        codigo: '',
+
+        get superaDisponible() {
+            return this.monto !== '' && Number(this.monto) > Number(this.disponible);
+        },
+
+        async cargar() {
+            try {
+                const datos = await window.pedir(`${API_OPERACIONES}/retiros-efectivo/disponible`);
+                this.disponible = datos.disponible;
+            } catch (e) {
+                this.error = e.message;
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        async confirmar() {
+            if (this.superaDisponible) return;
+            await this._enviar(`${API_OPERACIONES}/retiros-efectivo`, {
+                monto: this.monto,
+                codigo: this.codigo,
+            });
+            // Código incorrecto o error: se limpia el código para reintentar.
+            if (!this.hecho) this.codigo = '';
+        },
+    };
+}
+
+function novedadCaja() {
+    return {
+        ..._operacionBase(),
+        cargando: true,
+        conceptos: [],
+        autorizadores: [],
+        conceptoId: '',
+        autorizadorId: '',
+        monto: '',
+        notas: '',
+
+        get concepto() {
+            return this.conceptos.find((c) => String(c.id) === String(this.conceptoId)) || null;
+        },
+
+        async cargar() {
+            try {
+                [this.conceptos, this.autorizadores] = await Promise.all([
+                    window.pedir(`${API_OPERACIONES}/novedades-caja/conceptos`),
+                    window.pedir(`${API_OPERACIONES}/usuarios/autorizadores`),
+                ]);
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        confirmar() {
+            return this._enviar(`${API_OPERACIONES}/novedades-caja`, {
+                concepto_id: Number(this.conceptoId),
+                monto: this.monto,
+                autorizador_id: Number(this.autorizadorId),
+                notas: this.notas || null,
+            });
+        },
+    };
+}
+
+function retiroMercaderia() {
+    return {
+        ..._operacionBase(),
+        busqueda: '',
+        resultados: [],
+        empleada: null,
+        otraEmpresa: false,
+        nombreManual: '',
+        dniManual: '',
+        codigo: '',
+        producto: null,
+
+        get nombreEmpleada() {
+            if (this.empleada) return this.empleada.nombre + ' (esta empresa)';
+            return this.nombreManual.trim() + ' (otra empresa)';
+        },
+
+        get sinStock() {
+            return !!this.producto && !this.producto.stock_infinito && this.producto.stock <= 0;
+        },
+
+        async buscarEmpleada() {
+            const q = this.busqueda.trim();
+            if (q.length < 2) { this.resultados = []; return; }
+            try {
+                this.resultados = await window.pedir(
+                    `${API_OPERACIONES}/retiros-mercaderia/buscar-empleada?q=${encodeURIComponent(q)}`
+                );
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
+
+        elegirEmpleada(usuario) {
+            this.empleada = usuario;
+            this.resultados = [];
+            this.busqueda = '';
+        },
+
+        async buscarProducto() {
+            const codigo = this.codigo.trim();
+            if (!codigo) return;
+            try {
+                this.producto = await window.pedir(
+                    `${API_OPERACIONES}/retiros-mercaderia/cotizar?codigo=${encodeURIComponent(codigo)}`
+                );
+            } catch (e) {
+                this.producto = null;
+                window.toast(e.message, 'error');
+            }
+        },
+
+        confirmar() {
+            return this._enviar(`${API_OPERACIONES}/retiros-mercaderia`, {
+                variante_id: this.producto.variante_id,
+                empleada_usuario_id: this.empleada ? this.empleada.id : null,
+                empleada_nombre: this.empleada ? null : this.nombreManual.trim(),
+                empleada_dni: this.empleada ? null : (this.dniManual.trim() || null),
+            });
+        },
+    };
+}
+
+function cobroJoyero() {
+    return {
+        ..._operacionBase(),
+        cargando: true,
+        medios: [],
+        montoEfectivo: '',
+        montoOtros: '',
+        reclamo: '',
+        notas: '',
+        forma: 'efectivo',
+        medioId: '',
+
+        get medioEfectivo() {
+            return this.medios.find((m) => m.es_efectivo) || null;
+        },
+
+        get otrosMedios() {
+            return this.medios.filter((m) => !m.es_efectivo);
+        },
+
+        get total() {
+            const valor = this.forma === 'efectivo' ? this.montoEfectivo : this.montoOtros;
+            return Number(valor || 0);
+        },
+
+        get puedeConfirmar() {
+            if (this.total <= 0) return false;
+            return this.forma === 'efectivo' ? !!this.medioEfectivo : !!this.medioId;
+        },
+
+        async cargar() {
+            try {
+                this.medios = await window.pedir(`${API_OPERACIONES}/cobros-joyero/medios-de-pago`);
+            } catch (e) {
+                window.toast(e.message, 'error');
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        confirmar() {
+            const medio = this.forma === 'efectivo' ? this.medioEfectivo.id : Number(this.medioId);
+            return this._enviar(`${API_OPERACIONES}/cobros-joyero`, {
+                medio_de_pago_id: medio,
+                monto_efectivo: this.montoEfectivo || 0,
+                monto_otros: this.montoOtros || 0,
+                numero_reclamo: this.reclamo || null,
+                notas: this.notas || null,
+            });
+        },
+    };
+}

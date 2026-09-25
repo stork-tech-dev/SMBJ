@@ -163,27 +163,24 @@ def test_arqueo_sin_ninguna_venta_lista_igual_todos_los_medios_activos(
     assert resultado["total_esperado"] == Decimal("0")
 
 
-def test_retiro_sin_ventas_en_efectivo_deja_el_medio_en_cero_no_ausente(
-    db, autor, local,
+def test_retiro_sin_ventas_en_efectivo_se_descuenta_de_la_apertura(
+    db, autor, local, crear_usuario,
 ):
-    """Antes del fix, el descuento de retiros solo se aplicaba si Efectivo
-    ya tenía pagos ese turno (`if key in grupos`): sin ventas en efectivo,
-    la fila no existía y el retiro quedaba sin reflejarse en el arqueo."""
-    turno = _turno(db, autor, local)
-    servicio_turnos.registrar_retiro(
-        turno_id=turno.id,
-        monto=500,
-        motivo="Compra de insumos",
-        autorizado_por_id=autor.id,
-        realizado_por_id=autor.id,
-        db=db,
+    """Sin ventas en efectivo, la línea de Efectivo igual existe y refleja
+    apertura menos retiros (antes del fix, sin pagos el retiro no se veía)."""
+    from app.services import retiros as servicio_retiros
+
+    dueno = crear_usuario("dueno1", "dueno")
+    servicio_retiros.asignar_codigo(db, autor, dueno.id, "4321")
+    turno = _turno(db, autor, local, efectivo_apertura=1000)
+    servicio_retiros.registrar_retiro(
+        db, autor, punto_de_venta_id=local.id, monto=Decimal("400"), codigo="4321"
     )
 
     resultado = servicio_arqueo.calcular_esperado(turno.id, db)
     montos = {i["medio_nombre"]: i["monto_esperado"] for i in resultado["items"]}
 
-    assert "Efectivo" in montos
-    assert montos["Efectivo"] == Decimal("0")
+    assert montos["Efectivo"] == Decimal("600")
 
 
 def test_registrar_arqueo_cierra_el_turno_sin_diferencia(db, autor, local):

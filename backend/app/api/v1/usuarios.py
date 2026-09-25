@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.permisos import Modulo, requiere_permiso
+from app.core.permisos import Modulo, requiere_cuenta_maestra, requiere_permiso
 from app.core.utils import ip_de_request
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.permisos import (
@@ -20,6 +20,7 @@ from app.schemas.permisos import (
     ActualizarPermisosRequest,
     ModuloPermisoEfectivo,
 )
+from app.schemas.operaciones_caja import CodigoRetiroAsignar
 from app.schemas.roles import RolResponse
 from app.schemas.usuarios import (
     AutorizadorResumen,
@@ -443,3 +444,58 @@ def resetear_clave_especial(
 
     db.commit()
     return ClaveEspecialResultado(valida=True)
+
+
+# ----------------------------------------------------------------------------
+# Código de retiro de efectivo (sesión 09) — solo la Cuenta Maestra.
+# El código nunca vuelve en ninguna respuesta: solo `puede_retirar`.
+# ----------------------------------------------------------------------------
+
+
+@router.post(
+    "/{usuario_id}/codigo-retiro",
+    response_model=UsuarioResponse,
+    summary="Asignar o cambiar el código de retiro",
+)
+def asignar_codigo_retiro(
+    usuario_id: int,
+    datos: CodigoRetiroAsignar,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_cuenta_maestra),
+):
+    from app.services import retiros as servicio_retiros
+
+    try:
+        usuario = servicio_retiros.asignar_codigo(
+            db, autor, usuario_id, datos.codigo, ip_de_request(request)
+        )
+    except servicio_roles.NoEncontrado as exc:
+        raise _404(exc) from exc
+    except servicio_roles.ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+
+    db.commit()
+    return usuario
+
+
+@router.delete(
+    "/{usuario_id}/codigo-retiro",
+    response_model=UsuarioResponse,
+    summary="Revocar el código de retiro",
+)
+def revocar_codigo_retiro(
+    usuario_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_cuenta_maestra),
+):
+    from app.services import retiros as servicio_retiros
+
+    try:
+        usuario = servicio_retiros.revocar_codigo(db, autor, usuario_id, ip_de_request(request))
+    except servicio_roles.NoEncontrado as exc:
+        raise _404(exc) from exc
+
+    db.commit()
+    return usuario

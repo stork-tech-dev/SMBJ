@@ -43,6 +43,12 @@ from app.schemas.medios_pago import (
     PlanCuotasEditar,
     PlanCuotasResponse,
 )
+from app.schemas.operaciones_caja import (
+    ConceptoNovedadCrear,
+    ConceptoNovedadEditar,
+    ConceptoNovedadEstado,
+    ConceptoNovedadResponse,
+)
 from app.schemas.promociones import (
     AlcanceResponse,
     PromocionCrear,
@@ -59,6 +65,7 @@ from app.schemas.ventas import (
 )
 from app.services import descuentos as servicio_descuentos
 from app.services import medios_pago as servicio_medios
+from app.services import novedades_caja as servicio_novedades
 from app.services import promociones as servicio_promociones
 from app.core.utils import ahora_db
 from app.services.roles import NoEncontrado, ReglaDeNegocio
@@ -706,3 +713,102 @@ def cambiar_estado_plataforma(
     db.commit()
     db.refresh(p)
     return PlataformaGiftCardResponse(id=p.id, nombre=p.nombre, activo=p.activo)
+
+
+# ============================================================================
+# Conceptos de novedad de caja (sesión 09) — Cuenta Maestra
+# ============================================================================
+# Van en este archivo porque comparten prefijo, permiso y la regla de "nada
+# se borra, todo se desactiva": las novedades registradas apuntan al concepto.
+
+
+def _concepto_response(c) -> ConceptoNovedadResponse:
+    return ConceptoNovedadResponse(id=c.id, nombre=c.nombre, tipo=c.tipo.value, activo=c.activo)
+
+
+@router.get(
+    "/conceptos-novedad",
+    response_model=list[ConceptoNovedadResponse],
+    summary="Conceptos de novedad de caja",
+)
+def listar_conceptos_novedad(
+    nombre: str | None = Query(default=None),
+    tipo: str | None = Query(default=None, pattern="^(entrada|salida)$"),
+    activo: bool | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.CONFIGURACION, "ver")),
+):
+    return [
+        _concepto_response(c)
+        for c in servicio_novedades.listar_conceptos(db, nombre=nombre, tipo=tipo, activo=activo)
+    ]
+
+
+@router.post(
+    "/conceptos-novedad",
+    response_model=ConceptoNovedadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Alta de concepto de novedad",
+)
+def crear_concepto_novedad(
+    datos: ConceptoNovedadCrear,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_permiso(Modulo.CONFIGURACION, "editar")),
+):
+    try:
+        concepto = servicio_novedades.crear_concepto(
+            db, autor, datos.nombre, datos.tipo, ip_origen=ip_de_request(request)
+        )
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+    db.commit()
+    return _concepto_response(concepto)
+
+
+@router.put(
+    "/conceptos-novedad/{concepto_id}",
+    response_model=ConceptoNovedadResponse,
+    summary="Editar un concepto de novedad",
+)
+def editar_concepto_novedad(
+    concepto_id: int,
+    datos: ConceptoNovedadEditar,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_permiso(Modulo.CONFIGURACION, "editar")),
+):
+    """Cambiar el tipo no altera las novedades ya registradas."""
+    try:
+        concepto = servicio_novedades.editar_concepto(
+            db, autor, concepto_id, nombre=datos.nombre, tipo=datos.tipo,
+            ip_origen=ip_de_request(request),
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+    db.commit()
+    return _concepto_response(concepto)
+
+
+@router.patch(
+    "/conceptos-novedad/{concepto_id}/estado",
+    response_model=ConceptoNovedadResponse,
+    summary="Activar o desactivar un concepto de novedad",
+)
+def estado_concepto_novedad(
+    concepto_id: int,
+    datos: ConceptoNovedadEstado,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_permiso(Modulo.CONFIGURACION, "editar")),
+):
+    try:
+        concepto = servicio_novedades.cambiar_estado_concepto(
+            db, autor, concepto_id, datos.activo, ip_origen=ip_de_request(request)
+        )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+    db.commit()
+    return _concepto_response(concepto)

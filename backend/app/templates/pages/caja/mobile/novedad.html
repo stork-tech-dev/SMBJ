@@ -1,0 +1,75 @@
+{# Novedad de caja — mobile (sesión 09).
+   El tipo (entrada/salida) lo define el concepto y se muestra, no se edita.
+   El autorizador se elige de la lista de usuarios habilitados. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% block contenido_mobile %}
+{% if sin_asignacion or not puede_operar_caja %}
+    {% include "pages/caja/mobile/_sin_acceso.html" %}
+{% else %}
+<div x-data="novedadCaja()" x-init="cargar()" class="mt-4">
+
+    <p x-show="cargando" class="mt-16 text-center text-sm text-texto-disabled">Cargando…</p>
+
+    <form x-show="!cargando && !hecho" x-cloak @submit.prevent="confirmar()" class="space-y-6">
+        <div>
+            <label for="nv-concepto" class="text-sm font-semibold text-texto-header">Concepto</label>
+            <select id="nv-concepto" x-model="conceptoId" required class="campo-linea appearance-none">
+                <option value="">Elegí un concepto</option>
+                <template x-for="c in conceptos" :key="c.id">
+                    <option :value="c.id" x-text="c.nombre + (c.tipo === 'entrada' ? ' (entrada)' : ' (salida)')"></option>
+                </template>
+            </select>
+            <span x-show="concepto" x-cloak
+                  class="inline-block mt-2 px-3 py-0.5 rounded-pill text-xs font-semibold"
+                  :class="concepto?.tipo === 'entrada' ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'"
+                  x-text="concepto?.tipo === 'entrada' ? 'Entrada: suma al efectivo' : 'Salida: resta del efectivo'"></span>
+        </div>
+
+        <div>
+            <label for="nv-monto" class="text-sm font-semibold text-texto-header">Monto</label>
+            <input id="nv-monto" type="number" inputmode="decimal" min="0" step="0.01"
+                   x-model="monto" required class="campo-linea" placeholder="$0">
+        </div>
+
+        <div>
+            <label for="nv-autorizador" class="text-sm font-semibold text-texto-header">Autorizó</label>
+            <select id="nv-autorizador" x-model="autorizadorId" required class="campo-linea appearance-none">
+                <option value="">Elegí quién autorizó</option>
+                <template x-for="a in autorizadores" :key="a.id">
+                    <option :value="a.id" x-text="a.nombre"></option>
+                </template>
+            </select>
+        </div>
+
+        <div>
+            <label for="nv-notas" class="text-sm font-semibold text-texto-header">Notas (opcional)</label>
+            <input id="nv-notas" x-model="notas" maxlength="500" class="campo-linea">
+        </div>
+
+        <div class="flex gap-3">
+            <a href="/caja/operaciones"
+               class="flex-1 h-boton grid place-items-center rounded-input border border-borde
+                      text-sm text-texto-muted">Cancelar</a>
+            <button type="submit" :disabled="enviando"
+                    class="flex-1 h-boton rounded-input bg-primary text-white text-sm font-semibold
+                           disabled:opacity-60"
+                    x-text="enviando ? 'Registrando…' : 'Registrar novedad'"></button>
+        </div>
+    </form>
+
+    <div x-show="hecho" x-cloak class="mt-10 text-center space-y-3">
+        <p class="text-lg font-black text-welcome">Novedad registrada</p>
+        <p class="text-base text-texto"
+           x-text="(hecho?.concepto_nombre || '') + ' · ' + pesos(hecho?.monto)"></p>
+        <a href="/caja/operaciones"
+           class="inline-grid place-items-center h-boton px-8 rounded-input bg-primary text-white
+                  text-sm font-semibold">Listo</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/caja.js') }}"></script>
+{% endblock %}

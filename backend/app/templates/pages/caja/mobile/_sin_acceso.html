@@ -1,0 +1,10 @@
+{# Aviso común de las pantallas de operaciones de caja cuando el equipo no
+   tiene local o el perfil no tiene permiso de caja. Un solo lugar para el
+   texto (Principio 2). Se incluye dentro de `contenido_mobile`. #}
+<p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+    {% if sin_asignacion %}
+        {{ mensaje_sin_asignacion }}
+    {% else %}
+        Tu perfil no tiene permiso para operar la caja.
+    {% endif %}
+</p>

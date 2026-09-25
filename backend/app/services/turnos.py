@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.utils import ahora_db
-from app.models.turno import EstadoTurno, RetiroEfectivo, Turno, TurnoVendedora
+from app.models.turno import EstadoTurno, Turno, TurnoVendedora
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
 
@@ -172,49 +172,20 @@ def unirse_a_turno(
     return turno
 
 
-def registrar_retiro(
-    turno_id: int,
-    monto: float,
-    motivo: str,
-    autorizado_por_id: int,
-    realizado_por_id: int,
-    db: Session,
-    ip: str | None = None,
-) -> RetiroEfectivo:
+def turno_para_operar(punto_de_venta_id: int, db: Session) -> Turno:
     """
-    Registra un retiro de efectivo en el turno activo.
-    La autorización del Dueño se verifica en el endpoint (requiere_permiso CAJA_RETIRO).
+    El turno sobre el que se registra una operación de caja del local.
+
+    Exige un turno abierto HOY: un turno de un día anterior sin cerrar es el
+    bloqueo duro de siempre, y sin turno no hay caja donde registrar nada.
+    Única puerta para retiros, novedades, retiros de mercadería y cobros de
+    joyero (Principio 2).
     """
-    turno = db.get(Turno, turno_id)
-    if not turno:
-        raise NoEncontrado("Turno no encontrado")
-    if turno.estado != EstadoTurno.ABIERTO:
-        raise ReglaDeNegocio("Solo se pueden registrar retiros en turnos abiertos.")
-    if monto <= 0:
-        raise ReglaDeNegocio("El monto del retiro debe ser mayor a cero.")
-
-    ahora = ahora_db()
-    retiro = RetiroEfectivo(
-        turno_id=turno_id,
-        monto=monto,
-        motivo=motivo,
-        autorizado_por=autorizado_por_id,
-        realizado_por=realizado_por_id,
-        timestamp=ahora,
-    )
-    db.add(retiro)
-    db.flush()
-
-    registrar_auditoria(
-        db=db,
-        usuario_id=realizado_por_id,
-        accion="caja.retiro_efectivo",
-        entidad="retiros_efectivo",
-        entidad_id=retiro.id,
-        estado_nuevo=snapshot(retiro),
-        ip_origen=ip,
-    )
-    return retiro
+    verificar_bloqueo_turno(punto_de_venta_id, db)
+    turno = obtener_turno_activo(punto_de_venta_id, db)
+    if turno is None:
+        raise ReglaDeNegocio("No hay un turno abierto en este local: iniciá el turno primero.")
+    return turno
 
 
 def listar_turnos(

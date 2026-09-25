@@ -263,6 +263,22 @@ def _sincronizar_restricciones(
         )
 
 
+def _validar_unico_de_empleada(db: Session, excluir_id: int | None = None) -> None:
+    """
+    Solo un motivo puede ser el de empleadas: el retiro de mercadería lo busca
+    por esta marca. La garantía real es el índice único parcial; esto da el
+    mensaje entendible.
+    """
+    consulta = select(MotivoDescuento).where(MotivoDescuento.es_descuento_empleada.is_(True))
+    if excluir_id is not None:
+        consulta = consulta.where(MotivoDescuento.id != excluir_id)
+    otro = db.execute(consulta).scalars().first()
+    if otro is not None:
+        raise ReglaDeNegocio(
+            f"El motivo '{otro.nombre}' ya es el descuento de empleada: desmarcalo primero"
+        )
+
+
 def crear_motivo(
     db: Session,
     autor: Usuario,
@@ -271,6 +287,7 @@ def crear_motivo(
     nota: str | None = None,
     porcentaje_sugerido: Decimal | None = None,
     habilita_cuotas_sin_interes: bool = False,
+    es_descuento_empleada: bool = False,
     fecha_inicio=None,
     fecha_fin=None,
     restricciones: list[dict] | None = None,
@@ -290,12 +307,15 @@ def crear_motivo(
     # cargado con 12% sería un porcentaje libre entrando por la puerta de
     # atrás, preseleccionado y sin que nadie lo hubiera elegido.
     sugerido = None if porcentaje_sugerido is None else validar_porcentaje(porcentaje_sugerido)
+    if es_descuento_empleada:
+        _validar_unico_de_empleada(db)
 
     motivo = MotivoDescuento(
         nombre=limpio,
         nota=nota or None,
         porcentaje_sugerido=sugerido,
         habilita_cuotas_sin_interes=habilita_cuotas_sin_interes,
+        es_descuento_empleada=es_descuento_empleada,
         activo=True,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
@@ -330,6 +350,7 @@ def editar_motivo(
     porcentaje_sugerido: Decimal | None = None,
     editar_sugerido: bool = False,
     habilita_cuotas_sin_interes: bool | None = None,
+    es_descuento_empleada: bool | None = None,
     activo: bool | None = None,
     fecha_inicio=None,
     fecha_fin=None,
@@ -366,6 +387,10 @@ def editar_motivo(
 
     if habilita_cuotas_sin_interes is not None:
         motivo.habilita_cuotas_sin_interes = habilita_cuotas_sin_interes
+    if es_descuento_empleada is not None:
+        if es_descuento_empleada and not motivo.es_descuento_empleada:
+            _validar_unico_de_empleada(db, excluir_id=motivo.id)
+        motivo.es_descuento_empleada = es_descuento_empleada
 
     if activo is not None:
         motivo.activo = activo

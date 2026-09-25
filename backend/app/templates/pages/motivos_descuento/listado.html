@@ -87,6 +87,8 @@
                             <td class="px-8 py-3 align-middle font-medium">
                                 <span class="inline-flex items-center gap-1.5">
                                     <span x-text="m.nombre"></span>
+                                    <span x-show="m.es_descuento_empleada" x-cloak
+                                          class="ml-2 px-2 py-0.5 rounded-pill bg-accent text-white text-xs">Empleadas</span>
                                     {# Ícono de nota: visible solo si hay nota #}
                                     <span x-show="m.nota" class="relative group/nota inline-flex">
                                         <span class="cursor-help text-texto-muted hover:text-primary">
@@ -225,6 +227,20 @@
                             Ofrece los planes sin interés aunque la venta no llegue al monto
                             mínimo del plan. Solo los sin interés: un motivo de descuento no
                             puede habilitar un plan que le sale más caro al cliente.
+                        </span>
+                    </span>
+                </label>
+
+                {# Descuento de empleada (sesión 09): el que se aplica en los
+                   retiros de mercadería. Uno solo en todo el sistema. #}
+                <label class="flex items-start gap-3 min-h-toque">
+                    <input type="checkbox" x-model="form.es_descuento_empleada"
+                           class="mt-1 w-5 h-5 accent-[color:var(--color-primary)]">
+                    <span>
+                        <span class="text-base text-texto">Descuento de empleada</span>
+                        <span class="block text-xs text-texto-disabled">
+                            Es el que se aplica cuando una empleada retira mercadería. Solo
+                            un motivo puede tenerlo, y necesita un porcentaje sugerido.
                         </span>
                     </span>
                 </label>

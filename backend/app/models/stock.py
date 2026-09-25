@@ -51,6 +51,7 @@ class TipoMovimiento(str, enum.Enum):
     DEVOLUCION_VENTA = "devolucion_venta"        # reingreso por devolución
     BAJA = "baja"                                # rotura, robo, muestra, merma
     AJUSTE_AUDITORIA = "ajuste_auditoria"        # aprobado por el Dueño
+    RETIRO_MERCADERIA = "retiro_mercaderia"      # una empleada se lleva un producto
 
 
 def _enum(tipo, nombre):
@@ -206,6 +207,10 @@ class MovimientoStock(Base):
 
     compra_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("compras.id", ondelete="RESTRICT"), index=True
+    )
+
+    retiro_mercaderia_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("retiros_mercaderia.id", ondelete="RESTRICT"), index=True
     )
 
     # Sin FK todavía: la tabla `ventas` llega en el módulo 06. La columna se

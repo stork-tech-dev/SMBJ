@@ -374,8 +374,39 @@
                        class="mt-5 flex items-center gap-2 min-h-toque text-sm font-light
                               text-texto-header cursor-pointer">
                     <input type="checkbox" class="acceso-check" x-model="form.es_autorizador">
-                    <span>Autorizador de cambios (por falla)</span>
+                    <span>Autorizador de cambios y novedades de caja</span>
                 </label>
+
+                {# Código de retiro de efectivo (sesión 09): 4 dígitos con los
+                   que esta persona se identifica al retirar plata de la caja
+                   desde el celular del local. Se guarda al instante (tiene su
+                   propio endpoint) y nunca se vuelve a mostrar. No se ofrece a
+                   vendedores. #}
+                <div x-show="form.id && !esVendedorForm" x-cloak
+                     class="mt-5 p-4 rounded-input bg-surface-alt space-y-3">
+                    <p class="text-sm font-semibold text-texto-header">
+                        Código de retiro de efectivo
+                        <span class="ml-2 text-xs font-medium"
+                              :class="form.puede_retirar ? 'text-success' : 'text-texto-disabled'"
+                              x-text="form.puede_retirar ? 'Habilitado' : 'Sin código'"></span>
+                    </p>
+                    <div class="flex flex-wrap items-end gap-3">
+                        <input type="password" inputmode="numeric" maxlength="4" autocomplete="off"
+                               x-model="form.codigo_retiro" placeholder="4 dígitos"
+                               aria-label="Nuevo código de retiro"
+                               class="campo-linea w-32 tracking-[0.4em]">
+                        <button type="button" @click="asignarCodigoRetiro()"
+                                class="h-boton px-4 rounded-input border border-borde text-sm
+                                       hover:border-primary hover:text-primary"
+                                x-text="form.puede_retirar ? 'Cambiar código' : 'Asignar código'"></button>
+                        <button type="button" x-show="form.puede_retirar" x-cloak
+                                @click="revocarCodigoRetiro()"
+                                class="h-boton px-4 rounded-input text-sm text-danger">Revocar</button>
+                    </div>
+                    <p class="text-xs text-texto-disabled">
+                        No es la contraseña: solo identifica quién retiró.
+                    </p>
+                </div>
                 {% endif %}
 
                 {# --- Accesos permitidos --- #}

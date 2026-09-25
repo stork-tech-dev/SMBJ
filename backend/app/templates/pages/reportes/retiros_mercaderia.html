@@ -1,0 +1,122 @@
+{# Reporte: retiros de mercadería de empleadas (sesión 09). Los datos salen
+   de /api/v1/retiros-mercaderia/reporte: esta página no consulta la base
+   (Principio 1). Orden: primero las empleadas de esta empresa, después las
+   de la otra. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/paginacion.html" import paginacion %}
+{% from "components/icons.html" import icono %}
+
+{% block contenido %}
+<div x-data="reporteRetirosMercaderia()" x-init="cargar()">
+
+    {% call encabezado('Retiros de mercadería', volver_url='/reportes',
+                       volver_texto='Reportes') %}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
+
+    <p class="mt-4 max-w-3xl text-sm text-texto-muted">
+        Productos que se llevaron las empleadas, con lo que se descuenta del
+        sueldo. Primero las empleadas de esta empresa y después las de la otra.
+    </p>
+
+    {# ---------- Filtros (Principio 5): tabla de movimientos → botón Buscar ---------- #}
+    <form @submit.prevent="pagina = 1; cargar()" class="flex flex-wrap items-end gap-4 mt-6">
+        <label class="flex flex-col gap-1 text-sm text-texto-muted">
+            Desde
+            <input type="date" x-model="filtros.desde"
+                   class="h-control px-4 text-sm bg-surface border-2 border-borde rounded-input text-texto">
+        </label>
+        <label class="flex flex-col gap-1 text-sm text-texto-muted">
+            Hasta
+            <input type="date" x-model="filtros.hasta"
+                   class="h-control px-4 text-sm bg-surface border-2 border-borde rounded-input text-texto">
+        </label>
+
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto-de-venta', 'puntosDeVenta', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Local', label_oculto=true,
+                        placeholder='Local',
+                        vacio='Todos los locales',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+
+        <button type="submit"
+                class="h-boton px-6 rounded-input bg-primary text-white text-sm font-semibold
+                       hover:bg-primary-hover">Buscar</button>
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">Limpiar filtros</button>
+
+        <p class="text-sm text-texto-muted self-center">
+            <span x-text="total"></span>
+            <span x-text="total === 1 ? 'retiro' : 'retiros'"></span>
+        </p>
+    </form>
+
+    {# ---------- Tabla ---------- #}
+    <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-base">
+                <thead>
+                    <tr>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Empleada</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Empresa</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Fecha</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Local</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Producto</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Precio lista</th>
+                        <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Descuento</th>
+                        <th class="px-8 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">A descontar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="r in resultados" :key="r.id">
+                        <tr class="border-t border-borde transition-shadow
+                                   hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]">
+                            <td class="px-8 py-3 align-middle font-medium">
+                                <span x-text="r.empleada_nombre"></span>
+                                <span x-show="r.empleada_dni" x-cloak class="block text-xs text-texto-muted"
+                                      x-text="'DNI ' + r.empleada_dni"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle text-sm"
+                                x-text="r.es_empresa_propia ? 'Esta empresa' : 'Otra empresa'"></td>
+                            <td class="px-4 py-3 align-middle whitespace-nowrap" x-text="fecha(r.timestamp)"></td>
+                            <td class="px-4 py-3 align-middle" x-text="r.punto_de_venta_nombre"></td>
+                            <td class="px-4 py-3 align-middle">
+                                <span class="font-mono text-sm" x-text="r.codigo"></span>
+                                <span class="block" x-text="r.descripcion"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums" x-text="pesos(r.precio_lista)"></td>
+                            <td class="px-4 py-3 align-middle text-right tabular-nums"
+                                x-text="Number(r.descuento_aplicado) + '%'"></td>
+                            <td class="px-8 py-3 align-middle text-right tabular-nums font-semibold"
+                                x-text="pesos(r.precio_con_descuento)"></td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!resultados.length && !cargando">
+                        <td colspan="8" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {{ paginacion() }}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/reportes_retiros_mercaderia.js') }}"></script>
+{% endblock %}

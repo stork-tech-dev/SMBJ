@@ -1,0 +1,118 @@
+{# Retiro de mercadería de empleada — mobile (sesión 09).
+   Paso 1: identificar a la empleada (usuario del sistema, o de la otra
+   empresa con datos a mano). Paso 2: el producto por código. Paso 3:
+   confirmar y mostrar el código de cambio. No toca la caja. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+
+{% block contenido_mobile %}
+{% if sin_asignacion or not puede_operar_caja %}
+    {% include "pages/caja/mobile/_sin_acceso.html" %}
+{% else %}
+<div x-data="retiroMercaderia()" class="mt-4">
+
+    {# ---------- Resultado ---------- #}
+    <div x-show="hecho" x-cloak class="mt-6 text-center space-y-3">
+        <p class="text-lg font-black text-welcome">Retiro registrado</p>
+        <p class="text-sm text-texto-muted">Código de cambio</p>
+        <p class="text-3xl font-black tracking-widest text-texto" x-text="hecho?.codigo_cambio"></p>
+        <p class="text-sm text-texto-muted">Anotá este código si el producto es para regalo.</p>
+        <a href="/caja/operaciones"
+           class="inline-grid place-items-center h-boton px-8 rounded-input bg-primary text-white
+                  text-sm font-semibold">Listo</a>
+    </div>
+
+    <div x-show="!hecho" class="space-y-8">
+        {# ---------- Paso 1: empleada ---------- #}
+        <section>
+            <p class="text-sm font-semibold text-texto-header">1. Empleada</p>
+
+            <template x-if="empleada">
+                <div class="mt-2 flex items-center justify-between gap-3 p-4 rounded-input bg-surface-alt">
+                    <span class="text-base text-texto" x-text="empleada.nombre + ' (esta empresa)'"></span>
+                    <button type="button" @click="empleada = null" class="text-sm text-primary">Cambiar</button>
+                </div>
+            </template>
+
+            <div x-show="!empleada && !otraEmpresa" class="relative mt-2">
+                <input type="search" x-model="busqueda" @input.debounce.300ms="buscarEmpleada()"
+                       placeholder="Usuario o nombre" class="campo-linea" aria-label="Buscar empleada">
+                <ul x-show="resultados.length" x-cloak
+                    class="absolute z-20 inset-x-0 mt-1 bg-surface border border-borde rounded-input shadow-lg">
+                    <template x-for="u in resultados" :key="u.id">
+                        <li>
+                            <button type="button" @click="elegirEmpleada(u)"
+                                    class="w-full text-left px-4 min-h-toque py-2 hover:bg-surface-alt">
+                                <span class="text-base text-texto" x-text="u.nombre"></span>
+                                <span class="text-xs text-texto-muted" x-text="'@' + u.username"></span>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+                <button type="button" @click="otraEmpresa = true"
+                        class="mt-3 text-sm text-primary">Es de la otra empresa</button>
+            </div>
+
+            <div x-show="otraEmpresa" x-cloak class="mt-2 space-y-3">
+                <p class="text-sm text-texto-muted">Empleada de otra empresa — datos manuales</p>
+                <input x-model="nombreManual" maxlength="150" placeholder="Nombre y apellido"
+                       class="campo-linea" aria-label="Nombre y apellido">
+                <input x-model="dniManual" maxlength="15" inputmode="numeric" placeholder="DNI"
+                       class="campo-linea" aria-label="DNI">
+                <button type="button" @click="otraEmpresa = false; nombreManual = ''; dniManual = ''"
+                        class="text-sm text-primary">Buscar en esta empresa</button>
+            </div>
+        </section>
+
+        {# ---------- Paso 2: producto ---------- #}
+        <section>
+            <p class="text-sm font-semibold text-texto-header">2. Producto</p>
+            <form @submit.prevent="buscarProducto()" class="mt-2 flex gap-2">
+                <input x-model="codigo" placeholder="Escanear o tipear código"
+                       class="campo-linea flex-1" aria-label="Código del producto">
+                <button type="submit" class="h-boton px-4 rounded-input border border-borde text-sm">Buscar</button>
+            </form>
+
+            <template x-if="producto">
+                <div class="mt-3 flex gap-3 p-4 rounded-input bg-surface-alt">
+                    <img x-show="producto.foto" :src="producto.foto" alt=""
+                         class="w-16 h-16 object-cover rounded-input">
+                    <div class="flex-1 text-sm">
+                        <p class="text-base text-texto" x-text="producto.descripcion"></p>
+                        <p class="text-texto-muted" x-text="producto.codigo"></p>
+                        <p class="text-texto-muted"
+                           x-text="producto.stock_infinito ? 'Stock infinito' : 'Stock en este local: ' + producto.stock"></p>
+                    </div>
+                </div>
+            </template>
+        </section>
+
+        {# ---------- Paso 3: confirmar ---------- #}
+        <section x-show="producto && (empleada || nombreManual.trim())" x-cloak
+                 class="p-5 rounded-[10px] bg-surface tarjeta space-y-2 text-base">
+            <p class="text-sm font-semibold text-texto-header">3. Confirmar</p>
+            <p>Empleada: <span class="font-semibold" x-text="nombreEmpleada"></span></p>
+            <p>Precio lista: <span x-text="pesos(producto?.precio_lista)"></span></p>
+            <p>Descuento empleada:
+                <span x-text="Number(producto?.descuento) + '% → -' + pesos(producto?.precio_lista - producto?.precio_con_descuento)"></span></p>
+            <p class="font-semibold">A descontar del sueldo:
+                <span x-text="pesos(producto?.precio_con_descuento)"></span></p>
+            <div class="flex gap-3 pt-3">
+                <a href="/caja/operaciones"
+                   class="flex-1 h-boton grid place-items-center rounded-input border border-borde
+                          text-sm text-texto-muted">Cancelar</a>
+                <button type="button" @click="confirmar()" :disabled="enviando || sinStock"
+                        class="flex-1 h-boton rounded-input bg-primary text-white text-sm font-semibold
+                               disabled:opacity-60"
+                        x-text="enviando ? 'Registrando…' : 'Confirmar retiro'"></button>
+            </div>
+            <p x-show="sinStock" x-cloak class="text-sm text-danger">No hay stock de este producto en el local.</p>
+        </section>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/caja.js') }}"></script>
+{% endblock %}

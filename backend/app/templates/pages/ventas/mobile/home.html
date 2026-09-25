@@ -224,6 +224,24 @@
         </div>
         {% endif %}
 
+        {# Operaciones de caja (sesión 09): retiros de efectivo, novedades,
+           retiros de mercadería y cobros de joyero. #}
+        {% if puede_operar_caja %}
+        <a href="/caja/operaciones"
+           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
+            {{ icono('billete', clases='w-8 h-8 text-primary') }}
+            <span class="text-sm font-semibold text-texto">Operaciones de caja</span>
+        </a>
+        {% else %}
+        <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
+                    rounded-[10px] bg-surface tarjeta text-center opacity-50">
+            {{ icono('billete', clases='w-8 h-8 text-texto-muted') }}
+            <span class="text-sm font-semibold text-texto-muted">Operaciones de caja</span>
+            <span class="text-[0.625rem] text-texto-disabled">Sin permiso</span>
+        </div>
+        {% endif %}
+
         {% if puede_vender %}
         <a href="/cambios/nuevo"
            class="aspect-square flex flex-col items-center justify-center gap-3 p-4

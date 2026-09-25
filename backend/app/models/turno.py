@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Computed,
     DateTime,
     Enum,
@@ -121,29 +122,46 @@ class TurnoVendedora(Base):
 
 
 class RetiroEfectivo(Base):
+    """
+    Plata que sale de la caja durante el turno (sesión 09).
+
+    `usuario_id` es quien retira, identificado por su código personal de 4
+    dígitos; `registrado_por_id` es quien lo cargó en el celular del local.
+    Sin motivo obligatorio: el retiro no lo pide. La columna `motivo` quedó de
+    la versión anterior de la tabla y se conserva como texto opcional.
+    """
+
     __tablename__ = "retiros_efectivo"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     turno_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("turnos.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    motivo: Mapped[str] = mapped_column(String, nullable=False)
-    # Solo puede autorizar alguien con rol dueño.
-    autorizado_por: Mapped[int] = mapped_column(
+    punto_de_venta_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("puntos_de_venta.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    usuario_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False
     )
-    realizado_por: Mapped[int] = mapped_column(
+    monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    motivo: Mapped[str | None] = mapped_column(String, nullable=True)
+    registrado_por_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
 
     turno: Mapped["Turno"] = relationship("Turno", back_populates="retiros")
-    usuario_autoriza: Mapped["Usuario"] = relationship(
-        "Usuario", foreign_keys=[autorizado_por]
+    punto_de_venta: Mapped["PuntoDeVenta"] = relationship("PuntoDeVenta")
+    usuario: Mapped["Usuario"] = relationship("Usuario", foreign_keys=[usuario_id])
+    registrado_por: Mapped["Usuario"] = relationship(
+        "Usuario", foreign_keys=[registrado_por_id]
     )
-    usuario_realiza: Mapped["Usuario"] = relationship(
-        "Usuario", foreign_keys=[realizado_por]
+
+    __table_args__ = (
+        CheckConstraint("monto > 0", name="ck_retiros_efectivo_monto_positivo"),
     )
 
 

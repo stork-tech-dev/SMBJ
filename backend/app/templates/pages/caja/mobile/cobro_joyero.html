@@ -1,0 +1,85 @@
+{# Cobro de joyero — mobile (sesión 09).
+   Dos precios; se cobra el que corresponde al medio con que paga el cliente.
+   Siempre en un pago: no hay selector de cuotas. No es venta. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% block contenido_mobile %}
+{% if sin_asignacion or not puede_operar_caja %}
+    {% include "pages/caja/mobile/_sin_acceso.html" %}
+{% else %}
+<div x-data="cobroJoyero()" x-init="cargar()" class="mt-4">
+
+    <p x-show="cargando" class="mt-16 text-center text-sm text-texto-disabled">Cargando…</p>
+
+    <form x-show="!cargando && !hecho" x-cloak @submit.prevent="confirmar()" class="space-y-6">
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="cj-efectivo" class="text-sm font-semibold text-texto-header">Precio en efectivo</label>
+                <input id="cj-efectivo" type="number" inputmode="decimal" min="0" step="0.01"
+                       x-model="montoEfectivo" class="campo-linea" placeholder="$0">
+            </div>
+            <div>
+                <label for="cj-otros" class="text-sm font-semibold text-texto-header">Precio otros medios</label>
+                <input id="cj-otros" type="number" inputmode="decimal" min="0" step="0.01"
+                       x-model="montoOtros" class="campo-linea" placeholder="$0">
+            </div>
+        </div>
+
+        <div>
+            <label for="cj-reclamo" class="text-sm font-semibold text-texto-header">N° de reclamo (opcional)</label>
+            <input id="cj-reclamo" x-model="reclamo" maxlength="50" class="campo-linea">
+        </div>
+
+        <fieldset class="space-y-3">
+            <legend class="text-sm font-semibold text-texto-header">¿Cómo paga el cliente?</legend>
+            <label class="flex items-center gap-3 min-h-toque">
+                <input type="radio" value="efectivo" x-model="forma">
+                <span>Efectivo</span>
+            </label>
+            <label class="flex items-center gap-3 min-h-toque">
+                <input type="radio" value="otro" x-model="forma">
+                <span>Otro medio</span>
+            </label>
+            <select x-show="forma === 'otro'" x-cloak x-model="medioId" class="campo-linea appearance-none"
+                    aria-label="Medio de pago">
+                <option value="">Elegí un medio</option>
+                <template x-for="m in otrosMedios" :key="m.id">
+                    <option :value="m.id" x-text="m.nombre"></option>
+                </template>
+            </select>
+        </fieldset>
+
+        <details>
+            <summary class="text-sm text-primary cursor-pointer">Notas</summary>
+            <input x-model="notas" maxlength="500" class="campo-linea mt-2" aria-label="Notas">
+        </details>
+
+        <p class="text-base">Total a cobrar:
+            <span class="text-lg font-black text-texto" x-text="pesos(total)"></span></p>
+
+        <div class="flex gap-3">
+            <a href="/caja/operaciones"
+               class="flex-1 h-boton grid place-items-center rounded-input border border-borde
+                      text-sm text-texto-muted">Cancelar</a>
+            <button type="submit" :disabled="enviando || !puedeConfirmar"
+                    class="flex-1 h-boton rounded-input bg-primary text-white text-sm font-semibold
+                           disabled:opacity-60"
+                    x-text="enviando ? 'Registrando…' : 'Confirmar cobro'"></button>
+        </div>
+    </form>
+
+    <div x-show="hecho" x-cloak class="mt-10 text-center space-y-3">
+        <p class="text-lg font-black text-welcome">Cobro registrado</p>
+        <p class="text-base text-texto"
+           x-text="pesos(hecho?.monto_cobrado) + ' · ' + (hecho?.medio_de_pago_nombre || '')"></p>
+        <a href="/caja/operaciones"
+           class="inline-grid place-items-center h-boton px-8 rounded-input bg-primary text-white
+                  text-sm font-semibold">Listo</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/caja.js') }}"></script>
+{% endblock %}
