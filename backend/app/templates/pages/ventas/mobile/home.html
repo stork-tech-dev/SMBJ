@@ -187,9 +187,10 @@
     </a>
 
     {# ---------- Accesos rápidos ----------
-       Grilla de 2 columnas con `auto-fit`: en un teléfono muy angosto las
-       tarjetas se apilan solas en vez de aplastarse (Principio 6). #}
-    <div class="mt-5 grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr))">
+       Siempre dos columnas de tarjetas cuadradas. Si la cantidad es impar, la
+       última ocupa las dos columnas con la mitad de alto (`.accesos-rapidos`
+       en custom.css), así la grilla nunca queda con un hueco. #}
+    <div class="accesos-rapidos mt-5">
         <a href="/ventas/consulta-stock"
            class="aspect-square flex flex-col items-center justify-center gap-3 p-4
                   rounded-[10px] bg-surface tarjeta text-center hover:border-primary">

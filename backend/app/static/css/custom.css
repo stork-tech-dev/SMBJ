@@ -296,6 +296,32 @@ select.campo-linea {
     border-bottom-color: var(--color-danger);
 }
 
+/* Accesos rápidos del home mobile: dos columnas de tarjetas cuadradas.
+   Si la cantidad es impar, la última cubre las dos columnas con la mitad de
+   alto de una tarjeta. La regla depende de la cantidad y no de cuál es la
+   tarjeta, porque las que se muestran dependen del perfil.
+
+   El alto se calcula con el ancho del contenedor (`cqw`): una columna mide
+   (100cqw - gap) / 2 y la mitad de eso es (100cqw - gap) / 4. La
+   especificidad (0,3,0) le gana a `aspect-square` de Tailwind aunque el CDN
+   inyecte sus estilos después de este archivo. */
+.accesos-rapidos {
+    --gap-accesos: 1rem;
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gap-accesos);
+}
+
+.accesos-rapidos > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    aspect-ratio: auto;
+    height: calc((100cqw - var(--gap-accesos)) / 4);
+    /* A media altura el ícono va al costado del texto: apilados no entran. */
+    flex-direction: row;
+    padding-block: 0.5rem;
+}
+
 /* Casillero de "Accesos permitidos": el diseño lo dibuja como un círculo
    con punto interior. Se mantiene <input type="checkbox"> por accesibilidad
    y semántica (son opciones múltiples) y solo se cambia su apariencia. */
