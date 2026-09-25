@@ -173,6 +173,16 @@ SECCIONES_VENTAS = [
             "cobrado con cada medio de pago. Solo cuenta ventas confirmadas."
         ),
     },
+    {
+        "nombre": "Resumen diario consolidado",
+        "descripcion": "Todos los turnos del día, con su cantidad de ventas y total",
+        "url": "/ventas/resumen-diario",
+        "modulo": Modulo.VENTAS,
+        "title": (
+            "Un turno por fila, con su local, franja horaria, cantidad de "
+            "ventas confirmadas y total. Para controlar los cierres de caja."
+        ),
+    },
 ]
 
 # Tarjetas de la página de Gestión de Stock (diseño "CDGStock"). Mismo formato
@@ -1175,6 +1185,26 @@ async def ventas_resumen_por_punto(
         contexto_base(
             request, db, usuario,
             titulo="Resumen por Punto de Venta",
+            ruta_activa="/ventas",
+        ),
+    )
+
+
+@router.get("/ventas/resumen-diario", response_class=HTMLResponse)
+async def ventas_resumen_diario(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Un turno por fila, con su cantidad de ventas y total — para controlar
+    los cierres de caja. Sin aislamiento por dispositivo: es un reporte
+    global, igual que los otros del hub de Ventas.
+    """
+    return templates.TemplateResponse(
+        request,
+        "pages/ventas/desktop/resumen_diario.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Resumen diario consolidado",
             ruta_activa="/ventas",
         ),
     )

@@ -369,3 +369,26 @@ class ResumenPuntoVentaResponse(BaseModel):
     # Columnas de medio de pago a dibujar, ya ordenadas: solo las que
     # de verdad se usaron en el período filtrado.
     columnas_medios: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Reporte: resumen diario consolidado
+# ---------------------------------------------------------------------------
+
+
+class ResumenDiarioFila(BaseModel):
+    """Un turno: su local, su franja horaria y cuánto vendió."""
+
+    turno_id: int
+    punto_de_venta_id: int
+    punto_de_venta_nombre: str
+    fecha_apertura: datetime
+    # NULL si el turno todavía está abierto.
+    fecha_cierre: datetime | None
+    cantidad_ventas: int
+    total: Decimal
+
+
+class ResumenDiarioResponse(BaseModel):
+    filas: list[ResumenDiarioFila]
+    opciones_locales: list[PuntoResumen]

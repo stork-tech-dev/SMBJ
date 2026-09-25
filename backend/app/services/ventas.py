@@ -26,7 +26,7 @@ import string
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -42,6 +42,7 @@ from app.models.promocion import Promocion, TipoPromocion
 from app.models.punto_de_venta import PuntoDeVenta
 from app.models.sena import Sena
 from app.models.stock import TipoMovimiento
+from app.models.turno import Turno
 from app.models.usuario import Usuario
 from app.models.venta import EstadoVenta, Venta, VentaItem, VentaPago
 from app.services import clientes as servicio_clientes
@@ -1400,3 +1401,68 @@ def resumen_por_punto_de_venta(
         })
 
     return resultados, columnas_medios
+
+
+def resumen_diario_consolidado(
+    db: Session,
+    fecha: date,
+    punto_de_venta_id: int | None = None,
+) -> list[dict]:
+    """
+    Un turno por fila (no un local por fila): dos turnos del mismo local en
+    el mismo día —uno que quedó abierto de más y se reabrió, por ejemplo—
+    tienen que poder controlarse por separado, que es justamente para lo
+    que sirve este reporte.
+
+    Las ventas de cada turno son las CONFIRMADAS de su mismo local dentro
+    de su franja horaria (`fecha_apertura`..`fecha_cierre`, o hasta ahora si
+    todavía está abierto) — el mismo criterio que ya usa el arqueo de caja
+    (`_pagos_del_turno` en `services/arqueo.py`), para que este reporte
+    cuadre con lo que la vendedora arqueó al cerrar.
+
+    Un solo `LEFT JOIN` con agregación, no una consulta por turno: un turno
+    sin ventas tiene que aparecer igual, con 0 y $0, para que sea visible en
+    el control de cierres.
+    """
+    condicion_venta = and_(
+        Venta.punto_de_venta_id == Turno.punto_de_venta_id,
+        Venta.estado == EstadoVenta.CONFIRMADA,
+        Venta.created_at >= Turno.fecha_apertura,
+        or_(Turno.fecha_cierre.is_(None), Venta.created_at <= Turno.fecha_cierre),
+    )
+
+    consulta = (
+        select(
+            Turno.id.label("turno_id"),
+            Turno.punto_de_venta_id,
+            PuntoDeVenta.nombre.label("punto_de_venta_nombre"),
+            Turno.fecha_apertura,
+            Turno.fecha_cierre,
+            func.count(Venta.id).label("cantidad_ventas"),
+            func.coalesce(func.sum(Venta.total), 0).label("total"),
+        )
+        .join(PuntoDeVenta, PuntoDeVenta.id == Turno.punto_de_venta_id)
+        .outerjoin(Venta, condicion_venta)
+        .where(func.date(Turno.fecha_apertura) == fecha)
+        .group_by(
+            Turno.id, Turno.punto_de_venta_id, PuntoDeVenta.nombre,
+            Turno.fecha_apertura, Turno.fecha_cierre,
+        )
+        .order_by(func.lower(PuntoDeVenta.nombre), Turno.fecha_apertura)
+    )
+    if punto_de_venta_id is not None:
+        consulta = consulta.where(Turno.punto_de_venta_id == punto_de_venta_id)
+
+    filas = db.execute(consulta).all()
+    return [
+        {
+            "turno_id": f.turno_id,
+            "punto_de_venta_id": f.punto_de_venta_id,
+            "punto_de_venta_nombre": f.punto_de_venta_nombre,
+            "fecha_apertura": f.fecha_apertura,
+            "fecha_cierre": f.fecha_cierre,
+            "cantidad_ventas": f.cantidad_ventas,
+            "total": f.total,
+        }
+        for f in filas
+    ]

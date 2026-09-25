@@ -21,7 +21,7 @@ from app.core.database import get_db
 from app.core.device_deps import get_active_device
 from app.core.device_scope import DeviceScope, get_device_scope
 from app.core.permisos import Modulo, Recurso, requiere_permiso
-from app.core.utils import ip_de_request
+from app.core.utils import ahora_db, ip_de_request
 from app.models.venta import EstadoVenta, Venta
 from app.schemas.comunes import MensajeResponse, RespuestaPaginada
 from app.schemas.medios_pago import MedioDisponible, PlanCuotasResponse
@@ -37,6 +37,7 @@ from app.schemas.ventas import (
     PagosRegistrar,
     ProductoEscaneado,
     PromocionAplicar,
+    ResumenDiarioResponse,
     ResumenPuntoVentaResponse,
     VentaAnular,
     VentaEnCursoResponse,
@@ -453,6 +454,61 @@ def resumen_por_punto_exportar(
         content=generar_xls_resumen_por_punto(filas, columnas_medios),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="resumen-por-punto-de-venta.xlsx"'},
+    )
+
+
+@router.get(
+    "/resumen-diario",
+    response_model=ResumenDiarioResponse,
+    summary="Reporte: resumen diario consolidado (control de cierres)",
+)
+def resumen_diario(
+    fecha: date | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "ver")),
+):
+    """
+    Un turno por fila, con su local, franja horaria, cantidad de ventas
+    confirmadas y total. `fecha` en NULL toma el día de hoy.
+
+    Declarado ANTES de `GET /{venta_id}` (mismo motivo que
+    `/analisis-productos` y `/resumen-por-punto`): si no, FastAPI leería
+    "resumen-diario" como un id numérico y devolvería 422.
+    """
+    filas = servicio.resumen_diario_consolidado(
+        db,
+        fecha=fecha or ahora_db().date(),
+        punto_de_venta_id=punto_de_venta_id,
+    )
+    return ResumenDiarioResponse(
+        filas=filas, opciones_locales=servicio_stock.opciones_locales(db)
+    )
+
+
+@router.get(
+    "/resumen-diario/exportar",
+    response_class=Response,
+    summary="Exportar a Excel el resumen diario consolidado",
+)
+def resumen_diario_exportar(
+    fecha: date | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "ver")),
+):
+    """Mismo filtro que `/resumen-diario`."""
+    from app.reports.resumen_diario_excel import generar_xls_resumen_diario
+
+    filas = servicio.resumen_diario_consolidado(
+        db,
+        fecha=fecha or ahora_db().date(),
+        punto_de_venta_id=punto_de_venta_id,
+    )
+    return Response(
+        content=generar_xls_resumen_diario(filas),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="resumen-diario-consolidado.xlsx"'},
     )
 
 

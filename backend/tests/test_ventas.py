@@ -1317,3 +1317,102 @@ def test_resumen_por_punto_no_choca_con_el_detalle_de_venta(client, crear_usuari
     cuerpo = resp.json()
     assert "filas" in cuerpo
     assert "columnas_medios" in cuerpo
+
+
+# ============================================================================
+# REPORTE: RESUMEN DIARIO CONSOLIDADO
+# ============================================================================
+
+
+def test_resumen_diario_consolidado_un_turno_por_fila(
+    db, autor, dispositivo, local, otro_local, crear_variante, con_stock, efectivo
+):
+    """
+    Una fila por turno del día (no una por local): un turno sin ninguna
+    venta aparece igual, en 0 — es justo lo que hay que poder controlar al
+    cerrar caja. Un turno de otro día no entra, aunque sea del mismo local.
+    """
+    from datetime import timedelta
+
+    from app.core.utils import ahora_db
+    from app.models.turno import EstadoTurno, Turno
+    from app.services import turnos as servicio_turnos
+
+    vendida = crear_variante("Anillo plata", "1000")
+    con_stock(vendida, 10)
+
+    ahora = ahora_db()
+    hoy = ahora.date()
+
+    # Local 1: turno de hoy, todavía abierto, con una venta confirmada.
+    turno_hoy = servicio_turnos.abrir_turno(
+        punto_de_venta_id=local.id, usuario_id=autor.id,
+        efectivo_apertura=Decimal("0"), notas=None, db=db,
+    )
+    venta = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
+    servicio.agregar_item(db, autor, venta, variante_id=vendida.id)
+    _cobrar_todo(db, autor, venta, efectivo)
+    servicio.confirmar_venta(db, autor, venta, LIBRE)
+
+    # Local 2: turno de hoy YA CERRADO, sin ninguna venta.
+    turno_sin_ventas = Turno(
+        punto_de_venta_id=otro_local.id,
+        estado=EstadoTurno.CERRADO,
+        efectivo_apertura=Decimal("0"),
+        usuario_apertura_id=autor.id,
+        usuario_cierre_id=autor.id,
+        fecha_apertura=ahora,
+        fecha_cierre=ahora,
+    )
+    db.add(turno_sin_ventas)
+
+    # Local 1: turno de AYER — no tiene que entrar al filtrar por hoy.
+    db.add(Turno(
+        punto_de_venta_id=local.id,
+        estado=EstadoTurno.CERRADO,
+        efectivo_apertura=Decimal("0"),
+        usuario_apertura_id=autor.id,
+        usuario_cierre_id=autor.id,
+        fecha_apertura=ahora - timedelta(days=1),
+        fecha_cierre=ahora - timedelta(days=1) + timedelta(hours=8),
+    ))
+    db.flush()
+
+    filas = servicio.resumen_diario_consolidado(db, fecha=hoy)
+
+    assert len(filas) == 2
+    por_local = {f["punto_de_venta_id"]: f for f in filas}
+
+    fila_local = por_local[local.id]
+    assert fila_local["turno_id"] == turno_hoy.id
+    assert fila_local["cantidad_ventas"] == 1
+    assert fila_local["total"] == venta.total
+    assert fila_local["fecha_cierre"] is None
+
+    fila_otro = por_local[otro_local.id]
+    assert fila_otro["turno_id"] == turno_sin_ventas.id
+    assert fila_otro["cantidad_ventas"] == 0
+    assert fila_otro["total"] == Decimal("0")
+
+    # Filtrado por local: solo esa fila.
+    solo_local = servicio.resumen_diario_consolidado(db, fecha=hoy, punto_de_venta_id=local.id)
+    assert len(solo_local) == 1
+    assert solo_local[0]["punto_de_venta_id"] == local.id
+
+
+def test_resumen_diario_no_choca_con_el_detalle_de_venta(client, crear_usuario):
+    """
+    Mismo bug que `analisis-productos` y `resumen-por-punto`:
+    `/ventas/resumen-diario` tiene que estar declarado ANTES de
+    `/ventas/{venta_id}`, o FastAPI intenta leer "resumen-diario" como un
+    id numérico y devuelve 422.
+    """
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    resp = client.get("/api/v1/ventas/resumen-diario")
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert "filas" in cuerpo
+    assert "opciones_locales" in cuerpo
