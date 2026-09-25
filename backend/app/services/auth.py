@@ -263,6 +263,7 @@ def _registrar_intento(
     ip_origen: str | None,
     detalle: str | None = None,
     username_intentado: str | None = None,
+    punto_de_venta_id: int | None = None,
 ) -> None:
     """
     Deja constancia del intento de login en las dos tablas que corresponde.
@@ -279,6 +280,7 @@ def _registrar_intento(
                 ip_origen=ip_origen,
                 resultado=resultado,
                 detalle=detalle,
+                punto_de_venta_id=punto_de_venta_id,
             )
         )
 
@@ -298,11 +300,16 @@ def _registrar_intento(
 
 
 def autenticar_usuario(
-    db: Session, username: str, password: str, ip_origen: str | None = None
+    db: Session,
+    username: str,
+    password: str,
+    ip_origen: str | None = None,
+    punto_de_venta_id: int | None = None,
 ) -> Usuario:
     """
     Verifica credenciales y registra el intento (exitoso o fallido) en
-    `historial_accesos` y en `auditoria`.
+    `historial_accesos` y en `auditoria`. `punto_de_venta_id` es el local
+    del dispositivo desde el que se entra (None si no tiene).
 
     No hace commit: lo hace el router, junto con el resto de la operación.
 
@@ -323,23 +330,28 @@ def autenticar_usuario(
 
     if not verificar_password(password, usuario.password_hash):
         _registrar_intento(
-            db, usuario, ResultadoAcceso.FALLIDO, ip_origen, detalle="Contraseña incorrecta"
+            db, usuario, ResultadoAcceso.FALLIDO, ip_origen,
+            punto_de_venta_id=punto_de_venta_id, detalle="Contraseña incorrecta"
         )
         raise CredencialesInvalidas("Usuario o contraseña incorrectos")
 
     if not usuario.activo:
         _registrar_intento(
-            db, usuario, ResultadoAcceso.FALLIDO, ip_origen, detalle="Usuario inactivo"
+            db, usuario, ResultadoAcceso.FALLIDO, ip_origen,
+            punto_de_venta_id=punto_de_venta_id, detalle="Usuario inactivo"
         )
         raise CredencialesInvalidas("Usuario o contraseña incorrectos")
 
     if usuario.rol is None or not usuario.rol.activo:
         _registrar_intento(
-            db, usuario, ResultadoAcceso.FALLIDO, ip_origen, detalle="Rol inactivo"
+            db, usuario, ResultadoAcceso.FALLIDO, ip_origen,
+            punto_de_venta_id=punto_de_venta_id, detalle="Rol inactivo"
         )
         raise CredencialesInvalidas("Usuario o contraseña incorrectos")
 
-    _registrar_intento(db, usuario, ResultadoAcceso.EXITOSO, ip_origen)
+    _registrar_intento(
+        db, usuario, ResultadoAcceso.EXITOSO, ip_origen, punto_de_venta_id=punto_de_venta_id
+    )
     return usuario
 
 

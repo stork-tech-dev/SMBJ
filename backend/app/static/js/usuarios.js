@@ -6,13 +6,6 @@
    (Principios 1 y 5): acá no se filtra nada sobre datos ya cargados.
    ========================================================================== */
 
-/* Abreviaturas de mes fijas y no `toLocaleDateString('es-AR', {month:'short'})`:
-   ese resultado depende del locale del navegador (un Chrome en inglés daría
-   "Oct", y algunas implementaciones agregan punto: "oct."). Con la constante
-   la columna se ve igual en cualquier navegador. */
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
-               'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
 function abmUsuarios() {
     return {
         usuarios: [],
@@ -141,23 +134,6 @@ function abmUsuarios() {
             if (!iso) return '—';
             const [anio, mes, dia] = iso.split('-');
             return `${dia}/${mes}/${anio}`;
-        },
-
-        /**
-         * Cumpleaños en dd-mmm ("06-oct"), para la columna del listado.
-         *
-         * Sin el año a propósito: en la tabla el dato sirve como
-         * recordatorio de cumpleaños, no como fecha de nacimiento. El
-         * año completo se ve en el panel "Ver".
-         *
-         * Parte el string por el mismo motivo que formatearFechaCorta:
-         * new Date("1995-10-06") se interpreta como UTC y en Argentina
-         * mostraría el día anterior.
-         */
-        formatearCumple(iso) {
-            if (!iso) return '—';
-            const [, mes, dia] = iso.split('-');
-            return `${dia}-${MESES[Number(mes) - 1]}`;
         },
 
         /* --- Alta y edición --- */

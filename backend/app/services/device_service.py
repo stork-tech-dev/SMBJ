@@ -249,6 +249,18 @@ def local_a_saludar(db: Session, uuid_dispositivo: str | None) -> str | None:
     un dispositivo si no lo encuentra. Renderizar el login no debe tener
     efectos secundarios.
     """
+    punto = local_del_dispositivo(db, uuid_dispositivo)
+    return punto.nombre if punto is not None else None
+
+
+def local_del_dispositivo(db: Session, uuid_dispositivo: str | None) -> PuntoDeVenta | None:
+    """
+    Punto de venta del dispositivo de la cookie, o None si el dispositivo no
+    existe, no está activo, no tiene local o su local está dado de baja.
+
+    De solo lectura, como `local_a_saludar` (que la usa): el login la llama
+    antes de autenticar, y un intento fallido no debe dar de alta equipos.
+    """
     if not uuid_dispositivo:
         return None
 
@@ -263,7 +275,7 @@ def local_a_saludar(db: Session, uuid_dispositivo: str | None) -> str | None:
         return None
 
     punto = db.get(PuntoDeVenta, dispositivo.punto_de_venta_id)
-    # Un local dado de baja no se saluda: sería confuso.
+    # Un local dado de baja no cuenta: sería confuso saludarlo o mostrarlo.
     if punto is None or not punto.activo:
         return None
-    return punto.nombre
+    return punto

@@ -87,7 +87,7 @@
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Rol</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Celular</th>
-                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Cumpleaños</th>
+                        <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Local</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Último acceso</th>
                         <th class="px-8 pt-8 pb-4 text-right"><span class="sr-only">Acciones</span></th>
                     </tr>
@@ -114,8 +114,9 @@
                             <td class="px-4 py-3 align-middle font-medium whitespace-nowrap"
                                 x-text="u.celular || '—'"></td>
 
-                            <td class="px-4 py-3 align-middle font-medium whitespace-nowrap"
-                                x-text="formatearCumple(u.fecha_nacimiento)"></td>
+                            <td class="px-4 py-3 align-middle font-medium"
+                                x-text="u.local_ultimo_acceso?.codigo || '—'"
+                                :title="u.local_ultimo_acceso?.nombre"></td>
 
                             <td class="px-4 py-3 align-middle font-medium"
                                 x-text="formatearFecha(u.ultimo_acceso)"></td>

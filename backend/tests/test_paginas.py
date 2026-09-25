@@ -1310,14 +1310,14 @@ def test_estatico_inexistente_no_rompe_el_render():
     assert estatico("/js/no-existe.js") == "/static/js/no-existe.js"
 
 
-def test_tabla_de_usuarios_tiene_la_columna_cumpleanos(client, crear_usuario):
-    """La columna sale de `fecha_nacimiento`, formateada en el frontend."""
+def test_tabla_de_usuarios_tiene_la_columna_local(client, crear_usuario):
+    """La columna muestra las iniciales del local del último acceso."""
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
     html = client.get("/usuarios").text
-    assert ">Cumpleaños</th>" in html
-    assert "formatearCumple(u.fecha_nacimiento)" in html
+    assert ">Local</th>" in html
+    assert "u.local_ultimo_acceso?.codigo" in html
 
 
 def test_el_colspan_de_la_fila_vacia_acompana_a_las_columnas(client, crear_usuario):

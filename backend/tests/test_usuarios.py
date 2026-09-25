@@ -752,3 +752,99 @@ def test_listar_autorizadores_solo_activos_y_marcados(db, crear_usuario):
     resultado = servicio_usuarios.listar_autorizadores(db)
 
     assert [u.id for u in resultado] == [marcado.id]
+
+
+# ---------------------------------------------------------------------------
+# Columna "Local" del listado: el local del último acceso exitoso, tomado
+# del dispositivo con el que se entró y guardado en `historial_accesos`.
+# ---------------------------------------------------------------------------
+
+
+def _entrar(client, username, dispositivo=None):
+    """Login por la API, desde el dispositivo dado (cookie) o sin ninguno."""
+    from config import settings
+
+    client.cookies.clear()
+    if dispositivo is not None:
+        client.cookies.set(settings.DEVICE_COOKIE_NAME, str(dispositivo.uuid))
+    resp = client.post(
+        "/api/v1/auth/login", json={"username": username, "password": "Test1234!"}
+    )
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+def _celular(db, local, activo=True):
+    from app.models.dispositivo import Dispositivo
+
+    equipo = Dispositivo(punto_de_venta_id=local.id, activo=activo, descripcion="Celu")
+    db.add(equipo)
+    db.flush()
+    return equipo
+
+
+def _local_en_listado(client, headers, username):
+    resp = client.get(f"/api/v1/usuarios?nombre={username}", headers=headers)
+    assert resp.status_code == 200
+    fila = next(u for u in resp.json()["resultados"] if u["username"] == username)
+    return fila["local_ultimo_acceso"]
+
+
+def test_listado_muestra_el_local_del_ultimo_acceso(client, db, crear_usuario, local):
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    crear_usuario("vendedora", ROL_VENDEDOR)
+    celular = _celular(db, local)
+    db.commit()
+
+    _entrar(client, "vendedora", celular)
+    headers = _entrar(client, "admin")
+
+    assert _local_en_listado(client, headers, "vendedora") == {
+        "id": local.id, "codigo": local.codigo, "nombre": local.nombre,
+    }
+    # Admin entró desde un equipo sin local: queda vacío.
+    assert _local_en_listado(client, headers, "admin") is None
+
+
+def test_el_local_es_el_del_ultimo_acceso_y_no_uno_anterior(client, db, crear_usuario, local):
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    crear_usuario("vendedora", ROL_VENDEDOR)
+    celular = _celular(db, local)
+    db.commit()
+
+    _entrar(client, "vendedora", celular)
+    _entrar(client, "vendedora")  # después entra desde una PC sin local
+    headers = _entrar(client, "admin")
+
+    assert _local_en_listado(client, headers, "vendedora") is None
+
+
+def test_dispositivo_inactivo_no_registra_local(client, db, crear_usuario, local):
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    crear_usuario("vendedora", ROL_VENDEDOR)
+    celular = _celular(db, local, activo=False)
+    db.commit()
+
+    _entrar(client, "vendedora", celular)
+    headers = _entrar(client, "admin")
+
+    assert _local_en_listado(client, headers, "vendedora") is None
+
+
+def test_intento_fallido_no_cambia_el_local(client, db, crear_usuario, local):
+    from config import settings
+
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    crear_usuario("vendedora", ROL_VENDEDOR)
+    celular = _celular(db, local)
+    db.commit()
+
+    _entrar(client, "vendedora")
+    client.cookies.set(settings.DEVICE_COOKIE_NAME, str(celular.uuid))
+    resp = client.post(
+        "/api/v1/auth/login", json={"username": "vendedora", "password": "mala"}
+    )
+    assert resp.status_code == 401
+    headers = _entrar(client, "admin")
+
+    assert _local_en_listado(client, headers, "vendedora") is None

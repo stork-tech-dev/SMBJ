@@ -16,7 +16,7 @@ from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_SUPERVISOR, ROL_VENDEDOR
 from app.core.utils import ahora_db, normalizar_texto
 from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.rol import Rol
-from app.models.usuario import HistorialAcceso, Usuario
+from app.models.usuario import HistorialAcceso, ResultadoAcceso, Usuario
 from app.services.auth import hash_password, revocar_sesiones_de_usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio, obtener_rol
 
@@ -181,6 +181,40 @@ def listar_usuarios(
         .all()
     )
     return list(resultados), total
+
+
+def locales_ultimo_acceso(db: Session, usuario_ids: list[int]) -> dict[int, PuntoDeVenta]:
+    """
+    Local del último acceso exitoso de cada usuario, para la columna "Local"
+    del listado. Una sola consulta para toda la página (sin N+1).
+
+    Solo aparecen los usuarios cuyo último acceso fue desde un dispositivo
+    con local; si entraron por última vez desde otro equipo, no hay local
+    aunque antes hayan entrado desde uno.
+    """
+    if not usuario_ids:
+        return {}
+
+    ultimos = (
+        select(HistorialAcceso.usuario_id, HistorialAcceso.punto_de_venta_id)
+        .where(
+            HistorialAcceso.usuario_id.in_(usuario_ids),
+            HistorialAcceso.resultado == ResultadoAcceso.EXITOSO,
+        )
+        .distinct(HistorialAcceso.usuario_id)
+        .order_by(
+            HistorialAcceso.usuario_id,
+            HistorialAcceso.timestamp.desc(),
+            HistorialAcceso.id.desc(),
+        )
+        .subquery()
+    )
+    filas = db.execute(
+        select(ultimos.c.usuario_id, PuntoDeVenta).join(
+            PuntoDeVenta, PuntoDeVenta.id == ultimos.c.punto_de_venta_id
+        )
+    ).all()
+    return {usuario_id: punto for usuario_id, punto in filas}
 
 
 def listar_autorizadores(db: Session) -> list[Usuario]:

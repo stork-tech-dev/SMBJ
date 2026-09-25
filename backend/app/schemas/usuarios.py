@@ -102,6 +102,20 @@ class AutorizadorResumen(BaseModel):
     nombre: str
 
 
+class LocalAccesoResumen(BaseModel):
+    """
+    Local desde el que entró el usuario por última vez. A diferencia de
+    `LocalResumen` lleva el `codigo`: la columna "Local" del listado muestra
+    las iniciales, con el nombre como tooltip.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    nombre: str
+
+
 class UsuarioEstado(BaseModel):
     activo: bool
 
@@ -128,6 +142,15 @@ class UsuarioResponse(BaseModel):
     updated_at: datetime
     ultimo_acceso: datetime | None
     # No hay campo de hashes: ni de contraseña ni de clave especial.
+
+
+class UsuarioListadoItem(UsuarioResponse):
+    """
+    Fila del listado: suma el local del último acceso exitoso, que sale de
+    `historial_accesos` y solo se calcula para la página pedida.
+    """
+
+    local_ultimo_acceso: LocalAccesoResumen | None = None
 
 
 class HistorialAccesoResponse(BaseModel):

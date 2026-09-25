@@ -137,6 +137,13 @@ class HistorialAcceso(Base):
     )
     # Motivo del fallo cuando aplica: "contraseña incorrecta", "usuario inactivo".
     detalle: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Local del dispositivo desde el que se intentó entrar. NULL si el equipo
+    # no está activo o no tiene local asignado (una PC de oficina, un
+    # celular nuevo). Es el local de ESE momento, aunque el dispositivo se
+    # reasigne después.
+    punto_de_venta_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("puntos_de_venta.id"), nullable=True, index=True
+    )
 
     usuario: Mapped["Usuario"] = relationship(back_populates="accesos")
 

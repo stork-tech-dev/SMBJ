@@ -28,10 +28,12 @@ from app.schemas.usuarios import (
     ClaveEspecialResultado,
     ClaveEspecialValidar,
     HistorialAccesoResponse,
+    LocalAccesoResumen,
     LocalResumen,
     UsuarioCrear,
     UsuarioEditar,
     UsuarioEstado,
+    UsuarioListadoItem,
     UsuarioResponse,
 )
 from app.services import permisos as servicio_permisos
@@ -53,7 +55,7 @@ def _409(exc: Exception):
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
-@router.get("", response_model=RespuestaPaginada[UsuarioResponse], summary="Listado de usuarios")
+@router.get("", response_model=RespuestaPaginada[UsuarioListadoItem], summary="Listado de usuarios")
 def listar(
     nombre: str | None = Query(default=None),
     username: str | None = Query(default=None),
@@ -78,8 +80,19 @@ def listar(
         pagina=pagina,
         tamano=tamano,
     )
-    return RespuestaPaginada[UsuarioResponse](
-        total=total, pagina=pagina, tamano=tamano, resultados=resultados  # type: ignore[arg-type]
+    locales = servicio_usuarios.locales_ultimo_acceso(db, [u.id for u in resultados])
+    filas = [
+        UsuarioListadoItem.model_validate(u).model_copy(
+            update={
+                "local_ultimo_acceso": (
+                    LocalAccesoResumen.model_validate(locales[u.id]) if u.id in locales else None
+                )
+            }
+        )
+        for u in resultados
+    ]
+    return RespuestaPaginada[UsuarioListadoItem](
+        total=total, pagina=pagina, tamano=tamano, resultados=filas
     )
 
 

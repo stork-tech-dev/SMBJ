@@ -26,7 +26,7 @@ from app.schemas.auth import (
 )
 from app.schemas.comunes import MensajeResponse
 from app.services import auth as servicio_auth
-from app.services.device_service import DeviceService
+from app.services.device_service import DeviceService, local_del_dispositivo
 from config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -100,8 +100,16 @@ def login(
     """
     ip = ip_de_request(request)
 
+    # Local del equipo desde el que se entra, para el historial. Se resuelve
+    # antes de autenticar y sin dar de alta nada: los intentos fallidos
+    # también lo registran.
+    punto = local_del_dispositivo(db, request.cookies.get(settings.DEVICE_COOKIE_NAME))
+
     try:
-        usuario = servicio_auth.autenticar_usuario(db, datos.username, datos.password, ip)
+        usuario = servicio_auth.autenticar_usuario(
+            db, datos.username, datos.password, ip,
+            punto_de_venta_id=punto.id if punto is not None else None,
+        )
     except servicio_auth.CredencialesInvalidas as exc:
         # El registro del intento fallido ya quedó en la sesión: se commitea
         # igual, porque la auditoría no depende de que el login salga bien.
