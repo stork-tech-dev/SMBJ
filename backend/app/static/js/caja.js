@@ -10,6 +10,9 @@ function cajaTurno(puntoDeVentaId) {
         cargando: true,
         overlay: null,        // 'iniciar' | 'sumarse' | null
         efectivoApertura: '',
+        // Lo contado en efectivo al cerrar el turno anterior del local
+        // ({efectivo, fecha_cierre}), o null. Precarga el efectivo inicial.
+        cierreAnterior: null,
         enviando: false,
 
         pesos: (v) => window.pesos(v),
@@ -46,6 +49,34 @@ function cajaTurno(puntoDeVentaId) {
 
         abrirOverlay() {
             this.overlay = this.turno ? 'sumarse' : 'iniciar';
+            if (this.overlay === 'iniciar') this.precargarEfectivo();
+        },
+
+        /**
+         * Completa "Efectivo inicial en caja" con lo que se contó al cerrar el
+         * turno anterior. Queda editable: si la vendedora cuenta otra cosa,
+         * lo corrige. Si falla o no hubo cierre, el campo queda vacío como
+         * siempre.
+         */
+        async precargarEfectivo() {
+            this.cierreAnterior = null;
+            try {
+                const resp = await fetch(`${URL_TURNOS}/efectivo-cierre-anterior`, {
+                    credentials: 'same-origin',
+                });
+                if (!resp.ok) return;
+                const datos = await resp.json();
+                if (datos.efectivo === null || this.overlay !== 'iniciar') return;
+                this.cierreAnterior = datos;
+                if (this.efectivoApertura === '') this.efectivoApertura = Number(datos.efectivo);
+            } catch {
+                // Silencioso: es una ayuda, no puede trabar la apertura.
+            }
+        },
+
+        get distintoDelCierre() {
+            return this.cierreAnterior !== null && this.efectivoApertura !== ''
+                && Number(this.efectivoApertura) !== Number(this.cierreAnterior.efectivo);
         },
 
         cerrarOverlay() {

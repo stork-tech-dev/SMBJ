@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.utils import ahora_db
-from app.models.turno import EstadoTurno, Turno, TurnoVendedora
+from app.models.turno import Arqueo, ArqueoItem, EstadoTurno, Turno, TurnoVendedora
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
 
@@ -82,6 +82,38 @@ def obtener_turno_activo(punto_de_venta_id: int, db: Session) -> Turno | None:
     return db.execute(stmt).unique().scalar_one_or_none()
 
 
+def efectivo_cierre_anterior(punto_de_venta_id: int, db: Session) -> dict | None:
+    """
+    El efectivo que quedó en la caja al cerrar el último turno del local:
+    lo CONTADO (declarado) en la línea de efectivo de su arqueo, que es lo que
+    físicamente quedó. Precarga el "Efectivo inicial" del turno siguiente.
+
+    None si el local nunca cerró un turno o si ese arqueo no tiene línea de
+    efectivo.
+    """
+    from app.services.arqueo import medio_efectivo
+
+    efectivo = medio_efectivo(db)
+    if efectivo is None:
+        return None
+
+    fila = db.execute(
+        select(Turno.id, Turno.fecha_cierre, ArqueoItem.monto_declarado)
+        .join(Arqueo, Arqueo.turno_id == Turno.id)
+        .join(ArqueoItem, ArqueoItem.arqueo_id == Arqueo.id)
+        .where(
+            Turno.punto_de_venta_id == punto_de_venta_id,
+            Turno.estado == EstadoTurno.CERRADO,
+            ArqueoItem.medio_de_pago_id == efectivo.id,
+        )
+        .order_by(Turno.fecha_cierre.desc(), Turno.id.desc())
+        .limit(1)
+    ).first()
+    if fila is None:
+        return None
+    return {"turno_id": fila[0], "fecha_cierre": fila[1], "efectivo": fila[2]}
+
+
 def abrir_turno(
     punto_de_venta_id: int,
     usuario_id: int,
@@ -112,6 +144,8 @@ def abrir_turno(
             "Ya hay un turno abierto hoy. Usá 'Unirme al turno' para sumarte."
         )
 
+    anterior = efectivo_cierre_anterior(punto_de_venta_id, db)
+
     ahora = ahora_db()
     turno = Turno(
         punto_de_venta_id=punto_de_venta_id,
@@ -140,7 +174,12 @@ def abrir_turno(
         accion="turno.abierto",
         entidad="turnos",
         entidad_id=turno.id,
-        estado_nuevo=snapshot(turno),
+        # Con lo que dejó el cierre anterior: si la vendedora corrigió el
+        # valor precargado, la diferencia queda a la vista.
+        estado_nuevo=snapshot({
+            **snapshot(turno),
+            "efectivo_cierre_anterior": (anterior or {}).get("efectivo"),
+        }),
         ip_origen=ip,
     )
     return turno

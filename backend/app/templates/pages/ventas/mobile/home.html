@@ -109,6 +109,16 @@
                     placeholder="$0"
                     class="w-full h-boton border border-borde rounded-input px-3 text-center text-base">
 
+                {# Precargado con lo contado al cerrar el turno anterior; se
+                   puede corregir, y si difiere se avisa. #}
+                <p x-show="cierreAnterior" x-cloak class="mt-2 text-xs text-texto-muted text-center">
+                    Cierre anterior: <span class="font-semibold" x-text="pesos(cierreAnterior?.efectivo)"></span>
+                    (<span x-text="fecha(cierreAnterior?.fecha_cierre)"></span>)
+                </p>
+                <p x-show="distintoDelCierre" x-cloak class="mt-1 text-xs font-medium text-warning text-center">
+                    Distinto del cierre anterior
+                </p>
+
                 <button
                     @click="confirmarApertura()"
                     :disabled="enviando"

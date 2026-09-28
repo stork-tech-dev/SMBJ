@@ -231,3 +231,74 @@ def test_registrar_arqueo_calcula_diferencia_cuando_lo_declarado_no_coincide(
     )
 
     assert arqueo.diferencia == Decimal("200")
+
+
+# ── Efectivo inicial: lo contado al cierre anterior ─────────────────────────
+
+
+def _cerrar_declarando_efectivo(db, autor, turno, efectivo):
+    """Cierra el turno declarando `efectivo` en la línea de Efectivo."""
+    esperado = servicio_arqueo.calcular_esperado(turno.id, db)
+    items = [{**i, "monto_declarado": i["monto_esperado"]} for i in esperado["items"]]
+    linea = next(i for i in items if i["medio_nombre"] == "Efectivo")
+    linea["monto_declarado"] = Decimal(efectivo)
+    servicio_arqueo.registrar_arqueo(
+        turno_id=turno.id, items_declarados=items,
+        total_declarado=sum(i["monto_declarado"] for i in items),
+        usuario_id=autor.id, db=db,
+    )
+
+
+def test_sin_cierre_anterior_no_hay_efectivo_sugerido(db, local):
+    assert servicio_turnos.efectivo_cierre_anterior(local.id, db) is None
+
+
+def test_efectivo_del_cierre_anterior_es_lo_contado_del_ultimo_cierre(
+    db, autor, local, crear_punto_de_venta,
+):
+    otro = crear_punto_de_venta("MPJ", "Paseo del Jockey", TipoPuntoVenta.LOCAL)
+
+    primero = _turno(db, autor, local, efectivo_apertura=1000)
+    _cerrar_declarando_efectivo(db, autor, primero, "900")  # contó menos de lo esperado
+    segundo = _turno(db, autor, local, efectivo_apertura=900)
+    _cerrar_declarando_efectivo(db, autor, segundo, "15000")
+    _cerrar_declarando_efectivo(db, autor, _turno(db, autor, otro), "1")
+
+    anterior = servicio_turnos.efectivo_cierre_anterior(local.id, db)
+    assert anterior["efectivo"] == Decimal("15000")
+    assert anterior["turno_id"] == segundo.id
+
+
+def test_abrir_turno_deja_en_la_auditoria_el_cierre_anterior(db, autor, local):
+    from sqlalchemy import select
+
+    from app.models.auditoria import Auditoria
+
+    _cerrar_declarando_efectivo(db, autor, _turno(db, autor, local), "15000")
+    nuevo = _turno(db, autor, local, efectivo_apertura=14000)  # la vendedora corrigió
+
+    registro = db.execute(
+        select(Auditoria).where(
+            Auditoria.accion == "turno.abierto", Auditoria.entidad_id == nuevo.id
+        )
+    ).scalar_one()
+    assert Decimal(str(registro.estado_nuevo["efectivo_cierre_anterior"])) == Decimal("15000")
+    assert Decimal(str(registro.estado_nuevo["efectivo_apertura"])) == Decimal("14000")
+
+
+def test_api_efectivo_cierre_anterior(
+    client, db, autor, local, dispositivo, crear_usuario, dar_permiso, roles,
+):
+    """Una vendedora en el celular del local, que es quien abre el turno."""
+    from app.core.permisos import ROL_VENDEDOR
+
+    _cerrar_declarando_efectivo(db, autor, _turno(db, autor, local), "15000")
+    crear_usuario("vende", ROL_VENDEDOR)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo="caja", ver=True, crear=True)
+    db.commit()
+    client.cookies.set("device_uuid", str(dispositivo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    datos = client.get("/api/v1/turnos/efectivo-cierre-anterior").json()
+    assert Decimal(str(datos["efectivo"])) == Decimal("15000")
+    assert datos["fecha_cierre"] is not None

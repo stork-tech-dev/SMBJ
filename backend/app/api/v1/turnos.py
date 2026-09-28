@@ -23,6 +23,7 @@ from app.schemas.turnos import (
     ArqueoItemResponse,
     ArqueoRegistrarRequest,
     ArqueoResponse,
+    EfectivoCierreAnterior,
     TurnoAbrirRequest,
     TurnoResponse,
     TurnoResumen,
@@ -123,6 +124,22 @@ def turno_activo(
     if not turno:
         return None
     return _turno_to_response(turno)
+
+
+@router.get("/efectivo-cierre-anterior", response_model=EfectivoCierreAnterior)
+def efectivo_cierre_anterior(
+    scope: DeviceScope = Depends(get_device_scope),
+    _=Depends(requiere_permiso(Modulo.CAJA, "ver")),
+    db: Session = Depends(get_db),
+):
+    """
+    Efectivo contado al cerrar el último turno del local del dispositivo.
+    Precarga (editable) el "Efectivo inicial en caja" al abrir el turno.
+    Declarado antes de `/{turno_id}`: si no, "efectivo-cierre-anterior" se
+    leería como un id.
+    """
+    anterior = srv_turnos.efectivo_cierre_anterior(_punto_id(scope), db)
+    return EfectivoCierreAnterior(**(anterior or {}))
 
 
 @router.post("/abrir", response_model=TurnoResponse, status_code=status.HTTP_201_CREATED)

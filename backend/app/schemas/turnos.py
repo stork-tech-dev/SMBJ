@@ -14,6 +14,17 @@ class TurnoAbrirRequest(BaseModel):
     notas: str | None = None
 
 
+class EfectivoCierreAnterior(BaseModel):
+    """
+    Lo contado en efectivo al cerrar el último turno del local, para precargar
+    el "Efectivo inicial" del turno que se abre. Todo None si no hubo cierre.
+    """
+
+    efectivo: Decimal | None = None
+    turno_id: int | None = None
+    fecha_cierre: datetime | None = None
+
+
 class TurnoUnirseRequest(BaseModel):
     pass  # No requiere body: el usuario se infiere del token
 
