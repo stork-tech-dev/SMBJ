@@ -202,6 +202,16 @@ textarea {
     color: var(--color-text);
 }
 
+/* Y el fondo: un campo sin clase de fondo propia quedaba con el blanco del
+   navegador, y en modo oscuro el texto claro de arriba no se leía (p. ej.
+   "Código de artículo" y "Notas" de /remitos en el celular). Va dentro de
+   :where() para tener especificidad 0: cualquier clase de fondo del campo
+   (bg-surface-alt, bg-transparent, campo-linea…) sigue ganando. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+       textarea) {
+    background-color: var(--color-surface);
+}
+
 /* Los select con campo-linea tienen background-color: transparent, lo que
    hace que el dropdown nativo abra sin fondo visible en modo oscuro. Este
    selector tiene especificidad mayor que .campo-linea y lo corrige. */
