@@ -2,6 +2,7 @@
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "pages/cambios/mobile/_diferencia.html" import resumen_diferencia %}
 
 {% block contenido_mobile %}
 <div x-data="cambioNuevos()" x-init="init()">
@@ -74,10 +75,17 @@
                 <span x-text="pesos(total)"></span>
             </div>
 
+            {# La diferencia al día: se recalcula con cada producto que se suma. #}
+            <template x-if="items.length && diferencia">
+                <div class="mt-5 p-4 rounded-input bg-surface-alt">
+                    {{ resumen_diferencia('diferencia') }}
+                </div>
+            </template>
+
             <button type="button" @click="continuar()" :disabled="!items.length || enviando"
                     class="mt-6 w-full h-boton rounded-input bg-primary text-white text-base
                            font-medium hover:bg-primary-hover disabled:opacity-60">
-                <span x-text="enviando ? 'Calculando…' : 'Ver diferencia'"></span>
+                Finalizar Cambio
             </button>
         </div>
     </template>

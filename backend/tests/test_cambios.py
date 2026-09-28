@@ -153,3 +153,19 @@ def test_no_se_devuelve_dos_veces_lo_mismo_en_un_cambio(db, autor, local, venta)
         servicio_cambios.agregar_item_devuelto(
             db, cambio, anillo["variante_id"], anillo["venta_item_id"]
         )
+
+
+def test_items_nuevos_muestra_la_diferencia_y_finalizar_cambio(client, db, autor, dispositivo):
+    """La diferencia se ve al sumar lo nuevo, con el mismo bloque que Confirmar."""
+    db.commit()
+    client.cookies.set("device_uuid", str(dispositivo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    nuevos = client.get("/cambios/nuevo/nuevos?id=1").text
+    assert "Finalizar Cambio" in nuevos
+    assert "Ver diferencia" not in nuevos
+    assert "pesos(diferencia.total_devuelto)" in nuevos
+    assert "El cliente paga" in nuevos
+
+    confirmar = client.get("/cambios/nuevo/confirmar?id=1").text
+    assert "pesos(diferencia.total_devuelto)" in confirmar

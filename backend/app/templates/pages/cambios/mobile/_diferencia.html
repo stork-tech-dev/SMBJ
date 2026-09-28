@@ -1,0 +1,36 @@
+{# ===========================================================================
+   Macro: resumen de la diferencia de un cambio (Total devuelto, Total nuevo
+   y quién paga), sobre la respuesta de GET /cambios/{id}/diferencia.
+
+   Lo usan "Ítems nuevos" —se actualiza con cada producto que se suma— y
+   "Confirmar", para que los dos muestren exactamente lo mismo.
+
+   Parámetros:
+     d  expresión Alpine con la respuesta (ej. `diferencia`).
+   =========================================================================== #}
+
+{% macro resumen_diferencia(d) %}
+<dl class="grid gap-2 text-base">
+    <div class="flex justify-between">
+        <dt class="text-texto-muted">Total devuelto</dt>
+        <dd class="tabular-nums" x-text="pesos({{ d }}.total_devuelto)"></dd>
+    </div>
+    <div class="flex justify-between">
+        <dt class="text-texto-muted">Total nuevo</dt>
+        <dd class="tabular-nums" x-text="pesos({{ d }}.total_nuevo)"></dd>
+    </div>
+    <div class="flex justify-between text-lg font-black border-t border-borde pt-2"
+         :class="Number({{ d }}.diferencia) > 0 ? 'text-danger' :
+                 (Number({{ d }}.diferencia) < 0 ? 'text-success' : 'text-texto')">
+        <dt x-text="Number({{ d }}.diferencia) > 0 ? 'El cliente paga' :
+                    (Number({{ d }}.diferencia) < 0 ? 'A favor del cliente' : 'Sin diferencia')"></dt>
+        <dd class="tabular-nums"
+            x-text="Number({{ d }}.diferencia) === 0 ? '—' :
+                    pesos(Math.abs(Number({{ d }}.diferencia)))"></dd>
+    </div>
+</dl>
+
+<p x-show="{{ d }}.mensaje" x-cloak
+   class="mt-4 text-sm text-texto-muted bg-surface-alt rounded-input px-3 py-2"
+   x-text="{{ d }}.mensaje"></p>
+{% endmacro %}

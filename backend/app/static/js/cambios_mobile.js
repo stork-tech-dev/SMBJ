@@ -255,6 +255,8 @@ function cambioNuevos() {
         cargando: true,
         enviando: false,
         items: [],
+        // Respuesta de GET /cambios/{id}/diferencia, al día con lo agregado.
+        diferencia: null,
         scan: { codigo: '', resultados: [], sinResultados: false },
 
         pesos: (v) => window.pesos(v),
@@ -271,6 +273,7 @@ function cambioNuevos() {
             try {
                 const cambio = await pedir(`${URL_CAMBIOS}/${this.cambioId}`);
                 this.items = cambio.items_nuevos;
+                if (this.items.length) await this.calcularDiferencia();
             } catch (e) {
                 window.toast(e.message, 'error');
             } finally {
@@ -309,6 +312,7 @@ function cambioNuevos() {
                 });
                 this.items.push(item);
                 this.scan = { codigo: '', resultados: [], sinResultados: false };
+                await this.calcularDiferencia();
             } catch (e) {
                 window.toast(e.message, 'error');
             } finally {
@@ -316,18 +320,20 @@ function cambioNuevos() {
             }
         },
 
-        async continuar() {
-            if (!this.items.length) return;
-            this.enviando = true;
+        /**
+         * Misma cuenta que la pantalla de confirmar (promociones, precio
+         * reconocido): la hace el backend. Silenciosa si falla: el resumen
+         * simplemente no se actualiza.
+         */
+        async calcularDiferencia() {
             try {
-                // Solo dispara el cálculo del lado del backend antes de
-                // navegar: la pantalla de confirmar lo vuelve a pedir sola.
-                await pedir(`${URL_CAMBIOS}/${this.cambioId}/diferencia`);
-                window.location.href = `/cambios/nuevo/confirmar?id=${this.cambioId}`;
-            } catch (e) {
-                window.toast(e.message, 'error');
-                this.enviando = false;
-            }
+                this.diferencia = await pedir(`${URL_CAMBIOS}/${this.cambioId}/diferencia`);
+            } catch (_) { /* se vuelve a pedir en confirmar */ }
+        },
+
+        continuar() {
+            if (!this.items.length) return;
+            window.location.href = `/cambios/nuevo/confirmar?id=${this.cambioId}`;
         },
     };
 }
