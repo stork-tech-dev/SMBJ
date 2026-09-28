@@ -1259,6 +1259,27 @@ def test_consulta_cruzada_sin_paginar_trae_todo(db, con_stock, otra_variante):
     assert otra_variante.codigo_completo in codigos
 
 
+def test_consulta_cruzada_trae_la_foto_para_la_miniatura(db, con_stock, otra_variante):
+    """
+    Cada fila trae `foto_url` con el mismo criterio que /productos: la foto
+    de la variante si tiene, si no la del producto; None si no hay ninguna.
+    """
+    from app.models.producto_foto import ProductoFoto
+
+    db.add(ProductoFoto(
+        producto_id=con_stock.producto_id, url="/media/productos/p.jpg", es_principal=True,
+    ))
+    db.flush()
+    db.expire_all()
+
+    filas, _columnas, _total, _opciones = servicio.consulta_cruzada(db, tamano=None)
+    fotos = {f["variante_id"]: f["foto_url"] for f in filas}
+
+    assert fotos[con_stock.id] == "/media/productos/p.jpg"
+    if otra_variante.producto_id != con_stock.producto_id:
+        assert fotos[otra_variante.id] is None
+
+
 def test_consulta_cruzada_sin_paginar_respeta_filtros(db, con_stock, otra_variante):
     """El export no ignora los filtros activos: solo trae lo que matchea."""
     filas, _columnas, total, _opciones = servicio.consulta_cruzada(

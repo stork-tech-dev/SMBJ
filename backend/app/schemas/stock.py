@@ -197,6 +197,8 @@ class ConsultaStockFila(BaseModel):
     verificador: str
     descripcion: str
     descripcion_sufijo: str | None
+    # Foto principal de la variante (o la del producto), para la miniatura.
+    foto_url: str | None = None
     # Claves son los id de punto_de_venta; ausente en el dict = 0 (sin fila de stock aún)
     stocks: dict[int, int]
 

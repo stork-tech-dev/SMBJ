@@ -18,7 +18,7 @@ invertir el sentido de una operación.
 from decimal import Decimal
 
 from sqlalchemy import case, func, or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.device_scope import DeviceScope
@@ -636,7 +636,12 @@ def consulta_cruzada(
         select(Variante)
         .join(Producto, Producto.id == Variante.producto_id)
         .where(Producto.activo.is_(True))
-        .options(joinedload(Variante.producto))
+        .options(
+            # Las fotos, para la miniatura (`Variante.foto_url`): en tandas
+            # y no una consulta por fila.
+            joinedload(Variante.producto).selectinload(Producto.fotos),
+            selectinload(Variante.fotos),
+        )
     )
     if busqueda:
         # Mismo criterio que `listar_stock` (Principio 2): código de
@@ -701,6 +706,7 @@ def consulta_cruzada(
             "verificador": v.verificador,
             "descripcion": v.producto.descripcion,
             "descripcion_sufijo": None if v.es_base else v.descripcion_sufijo,
+            "foto_url": v.foto_url,
             "stocks": pivot[v.id],
         })
 
