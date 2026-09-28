@@ -47,7 +47,7 @@ function listadoCambios() {
         },
 
         etiquetaEstado(estado) {
-            return { pendiente: 'Pendiente', confirmado: 'Confirmado', cancelado: 'Cancelado' }[estado] || estado;
+            return { pendiente: 'Sin realizar', confirmado: 'Confirmado', cancelado: 'Cancelado' }[estado] || estado;
         },
 
         colorEstado(estado) {

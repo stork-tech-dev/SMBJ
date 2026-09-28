@@ -26,13 +26,54 @@
     </div>
 
     <div x-show="form.tipo !== 'falla'" class="mt-4 flex flex-col gap-1">
-        <label class="text-sm font-semibold text-texto-header">Código de cambio del ticket</label>
-        <input x-model="form.codigo_cambio" type="search" inputmode="text"
-               placeholder="ABCD1234" maxlength="8" enterkeyhint="done"
-               class="campo-linea uppercase" @keydown.enter="iniciar()">
+        <label for="codigo-cambio" class="text-sm font-semibold text-texto-header">Código de cambio del ticket</label>
+        <div class="flex gap-2">
+            <input id="codigo-cambio" x-model="form.codigo_cambio" type="search" inputmode="text"
+                   placeholder="ABCD1234" maxlength="8" enterkeyhint="search"
+                   class="campo-linea uppercase flex-1"
+                   @input="codigoCambiado()" @keydown.enter.prevent="buscarTicket()">
+            <button type="button" @click="buscarTicket()" :disabled="buscando" aria-label="Buscar ticket"
+                    class="grid place-items-center min-h-toque min-w-toque rounded-input
+                           border-2 border-borde text-texto-muted hover:text-primary disabled:opacity-60">
+                {{ icono('lupa', clases='w-5 h-5') }}
+            </button>
+        </div>
         <p class="text-xs text-texto-muted">
             El código de 8 caracteres impreso en el ticket de la compra original.
         </p>
+    </div>
+
+    {# Productos del ticket: se elige acá qué devuelve el cliente (uno o
+       varios), así que la pantalla "Ítems devueltos" se saltea. #}
+    <div x-show="form.tipo !== 'falla' && ticket" x-cloak class="mt-5">
+        <p class="text-sm font-semibold text-texto-header">¿Qué devuelve el cliente?</p>
+        <ul class="mt-2 divide-y divide-borde">
+            <template x-for="it in ticket?.items || []" :key="it.venta_item_id ?? it.variante_id">
+                <li>
+                    <label class="flex items-center gap-3 py-3 min-h-toque"
+                           :class="it.disponible ? 'cursor-pointer' : 'opacity-50'">
+                        <input type="checkbox" :disabled="!it.disponible"
+                               :checked="elegido(it)" @change="alternar(it)"
+                               class="w-5 h-5 shrink-0 accent-[color:var(--color-primary)]">
+                        <template x-if="it.foto_url">
+                            <img :src="it.foto_url" alt="" class="w-12 h-12 rounded object-cover shrink-0">
+                        </template>
+                        <template x-if="!it.foto_url">
+                            <span class="w-12 h-12 rounded bg-surface-alt grid place-items-center shrink-0
+                                         text-texto-disabled">{{ icono('box', clases='w-5 h-5') }}</span>
+                        </template>
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-base font-medium truncate" x-text="it.descripcion"></span>
+                            <span class="block text-sm text-texto-muted font-mono" x-text="it.codigo"></span>
+                            <span x-show="!it.disponible" class="block text-xs font-medium text-danger">
+                                Ya devuelto
+                            </span>
+                        </span>
+                        <span class="shrink-0 text-base font-semibold tabular-nums" x-text="pesos(it.precio)"></span>
+                    </label>
+                </li>
+            </template>
+        </ul>
     </div>
 
     <div x-show="form.tipo === 'falla'" class="mt-4 flex flex-col gap-1">
@@ -54,7 +95,7 @@
         </p>
     </div>
 
-    <button type="button" @click="iniciar()" :disabled="enviando"
+    <button type="button" @click="iniciar()" :disabled="enviando || !puedeContinuar"
             class="mt-6 w-full h-boton rounded-input bg-primary text-white text-base
                    font-medium hover:bg-primary-hover disabled:opacity-60">
         <span x-text="enviando ? 'Iniciando…' : 'Continuar'"></span>

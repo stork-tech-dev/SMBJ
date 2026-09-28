@@ -364,7 +364,8 @@ def test_el_codigo_del_retiro_se_cambia_al_precio_de_lista(
     item, _ = servicio_cambios.agregar_item_devuelto(db, cambio, variante.id)
     assert item.precio_reconocido == Decimal("10000")
 
-    with pytest.raises(ReglaDeNegocio, match="ya se devolvió"):
+    # El retiro es una unidad: no entra dos veces en el mismo cambio.
+    with pytest.raises(ReglaDeNegocio, match="ya está entre los devueltos"):
         servicio_cambios.agregar_item_devuelto(db, cambio, variante.id)
 
 

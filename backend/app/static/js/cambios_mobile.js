@@ -43,15 +43,76 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
             autorizador_id: null,
         },
 
+        // Productos del ticket del código ({origen, items}) y los elegidos
+        // para devolver (claves de `claveItem`).
+        ticket: null,
+        elegidos: [],
+        buscando: false,
+
+        pesos: (v) => window.pesos(v),
+
         async init() {
             try {
                 this.autorizadores = await pedir(URL_AUTORIZADORES);
             } catch (_) { /* no bloquea: el selector queda vacío */ }
+            if (this.form.codigo_cambio.trim().length === 8) this.buscarTicket();
+        },
+
+        get puedeContinuar() {
+            return this.form.tipo === 'falla' || this.elegidos.length > 0;
+        },
+
+        claveItem(it) {
+            return it.venta_item_id ?? `v${it.variante_id}`;
+        },
+
+        elegido(it) {
+            return this.elegidos.includes(this.claveItem(it));
+        },
+
+        alternar(it) {
+            const clave = this.claveItem(it);
+            this.elegidos = this.elegido(it)
+                ? this.elegidos.filter((c) => c !== clave)
+                : [...this.elegidos, clave];
+        },
+
+        // Otro código: lo elegido ya no corresponde. Con los 8 caracteres
+        // busca solo, sin tener que tocar la lupa.
+        codigoCambiado() {
+            this.ticket = null;
+            this.elegidos = [];
+            if (this.form.codigo_cambio.trim().length === 8) this.buscarTicket();
+        },
+
+        async buscarTicket() {
+            const codigo = this.form.codigo_cambio.trim().toUpperCase();
+            if (!codigo) return;
+            this.buscando = true;
+            try {
+                const params = new URLSearchParams({ codigo });
+                this.ticket = await pedir(`${URL_CAMBIOS}/ticket?${params}`);
+                // Un solo producto posible (retiro, o ticket de un ítem): ya elegido.
+                const disponibles = this.ticket.items.filter((i) => i.disponible);
+                this.elegidos = disponibles.length === 1 ? [this.claveItem(disponibles[0])] : [];
+                if (!disponibles.length) {
+                    window.toast('Todos los productos de ese ticket ya se devolvieron', 'error');
+                }
+            } catch (e) {
+                this.ticket = null;
+                window.toast(e.message, 'error');
+            } finally {
+                this.buscando = false;
+            }
         },
 
         async iniciar() {
             if (this.form.tipo !== 'falla' && !this.form.codigo_cambio.trim()) {
                 window.toast('Ingresá el código de cambio del ticket', 'error');
+                return;
+            }
+            if (this.form.tipo !== 'falla' && !this.elegidos.length) {
+                window.toast('Elegí qué productos del ticket devuelve el cliente', 'error');
                 return;
             }
             if (this.form.tipo === 'falla' && !this.form.autorizador_id) {
@@ -71,7 +132,33 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
                         autorizador_id: this.form.tipo === 'falla' ? this.form.autorizador_id : null,
                     }),
                 });
-                window.location.href = `/cambios/nuevo/devueltos?id=${cambio.id}`;
+                if (this.form.tipo === 'falla') {
+                    window.location.href = `/cambios/nuevo/devueltos?id=${cambio.id}`;
+                    return;
+                }
+
+                // Lo elegido del ticket entra como devuelto y se sigue directo
+                // a los ítems nuevos. Si alguno no entra, se va a "Ítems
+                // devueltos" (el cambio ya existe) para corregirlo ahí.
+                const seleccion = this.ticket.items.filter((i) => this.elegido(i));
+                let fallo = false;
+                for (const it of seleccion) {
+                    try {
+                        await pedir(`${URL_CAMBIOS}/${cambio.id}/items-devueltos`, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                variante_id: it.variante_id,
+                                venta_item_id: it.venta_item_id,
+                            }),
+                        });
+                    } catch (e) {
+                        fallo = true;
+                        window.toast(`${it.codigo}: ${e.message}`, 'error');
+                    }
+                }
+                window.location.href = fallo
+                    ? `/cambios/nuevo/devueltos?id=${cambio.id}`
+                    : `/cambios/nuevo/nuevos?id=${cambio.id}`;
             } catch (e) {
                 window.toast(e.message, 'error');
                 this.enviando = false;

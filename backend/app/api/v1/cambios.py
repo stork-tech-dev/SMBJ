@@ -35,6 +35,7 @@ from app.schemas.cambios import (
     ItemDevueltoResponse,
     ItemNuevoRequest,
     ItemNuevoResponse,
+    TicketCambioResponse,
     VentaParaCambioResponse,
 )
 from app.schemas.comunes import RespuestaPaginada
@@ -272,6 +273,30 @@ def agregar_item_nuevo(
     db.refresh(item)
 
     return _item_nuevo_response(item)
+
+
+@router.get(
+    "/ticket",
+    response_model=TicketCambioResponse,
+    summary="Productos del ticket de un código de cambio",
+)
+def ticket(
+    codigo: str = Query(..., min_length=1, max_length=20),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
+):
+    """
+    Lo que se compró con ese código de cambio (o el producto del retiro de
+    mercadería), para elegir en la primera pantalla qué se devuelve. Mismas
+    validaciones que iniciar el cambio: 404 si el código no existe, 409 si ya
+    se usó o la venta fue anulada. Declarado antes de `/{cambio_id}`.
+    """
+    try:
+        return servicio.items_del_ticket(db, codigo)
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
 
 
 @router.get(

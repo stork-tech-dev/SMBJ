@@ -71,10 +71,66 @@ def _material_de_variante(db: Session, variante: Variante) -> Categoria | None:
     return cat if cat.nivel == 1 else None
 
 
+def _venta_items_ya_devueltos(excepto_cambio_id: int | None = None):
+    """
+    Subconsulta: ítems de venta ya devueltos en un cambio CONFIRMADO.
+
+    Un cambio pendiente es un cambio sin realizar: no reserva nada. Hasta que
+    se confirma, sus ítems siguen siendo de la venta original y otro cambio
+    puede tomarlos (`confirmar_cambio` vuelve a controlar al confirmar).
+    """
+    consulta = (
+        select(CambioItemDevuelto.venta_item_id)
+        .join(Cambio, CambioItemDevuelto.cambio_id == Cambio.id)
+        .where(
+            CambioItemDevuelto.venta_item_id.is_not(None),
+            Cambio.estado == EstadoCambio.CONFIRMADO,
+        )
+    )
+    if excepto_cambio_id is not None:
+        consulta = consulta.where(Cambio.id != excepto_cambio_id)
+    return consulta
+
+
+def _retiro_ya_devuelto(db: Session, retiro_id: int, excepto_cambio_id: int | None = None) -> bool:
+    """Si el producto de ese retiro ya se devolvió en un cambio CONFIRMADO."""
+    consulta = (
+        select(CambioItemDevuelto.id)
+        .join(Cambio, CambioItemDevuelto.cambio_id == Cambio.id)
+        .where(
+            Cambio.retiro_mercaderia_origen_id == retiro_id,
+            Cambio.estado == EstadoCambio.CONFIRMADO,
+        )
+    )
+    if excepto_cambio_id is not None:
+        consulta = consulta.where(Cambio.id != excepto_cambio_id)
+    return db.execute(consulta.limit(1)).first() is not None
+
+
+def _en_este_cambio(db: Session, cambio: Cambio) -> set[int]:
+    """
+    Ítems de venta que este mismo cambio ya tiene como devueltos. Consulta la
+    base y no `cambio.items_devueltos`, que no se entera de lo agregado en
+    la misma sesión.
+    """
+    return set(db.execute(
+        select(CambioItemDevuelto.venta_item_id).where(
+            CambioItemDevuelto.cambio_id == cambio.id,
+            CambioItemDevuelto.venta_item_id.is_not(None),
+        )
+    ).scalars())
+
+
+def _tiene_devueltos(db: Session, cambio: Cambio) -> bool:
+    return db.execute(
+        select(CambioItemDevuelto.id).where(CambioItemDevuelto.cambio_id == cambio.id).limit(1)
+    ).first() is not None
+
+
 def _venta_item_disponible(db: Session, cambio: Cambio, variante_id: int) -> int:
     """
-    El ítem de la venta de origen para esta variante que todavía no se usó
-    en otro cambio no cancelado.
+    El ítem de la venta de origen para esta variante que todavía no se
+    devolvió en un cambio confirmado ni está ya en este mismo cambio.
 
     El frontend nunca manda `venta_item_id`: el buscador de producto del
     wizard es el catálogo general (`/productos/variantes`), que no sabe
@@ -83,20 +139,15 @@ def _venta_item_disponible(db: Session, cambio: Cambio, variante_id: int) -> int
     dos veces la misma unidad física cuando la venta tenía la variante
     repetida (ej. compró dos anillos iguales).
     """
-    ya_usados = (
-        select(CambioItemDevuelto.venta_item_id)
-        .join(Cambio, CambioItemDevuelto.cambio_id == Cambio.id)
-        .where(
-            CambioItemDevuelto.venta_item_id.is_not(None),
-            Cambio.estado != EstadoCambio.CANCELADO,
-        )
-    )
+    ya_usados = _venta_items_ya_devueltos()
+    en_este = _en_este_cambio(db, cambio)
     disponible = db.execute(
         select(VentaItem.id)
         .where(
             VentaItem.venta_id == cambio.venta_origen_id,
             VentaItem.variante_id == variante_id,
             VentaItem.id.not_in(ya_usados),
+            *([VentaItem.id.not_in(en_este)] if en_este else []),
         )
         .order_by(VentaItem.id)
         .limit(1)
@@ -283,6 +334,92 @@ def obtener_cambio(db: Session, cambio_id: int) -> Cambio:
     return cambio
 
 
+def _origen_por_codigo(
+    db: Session, codigo_cambio: str
+) -> tuple[Venta | None, RetiroMercaderia | None]:
+    """
+    La venta del código de cambio del ticket o, si no hay, el retiro de
+    mercadería de empleada con ese código (sesión 09: un producto para regalo
+    que quien lo recibió viene a cambiar, como un cambio común al precio de
+    lista). NoEncontrado si no es ninguno de los dos.
+    """
+    codigo_clean = codigo_cambio.strip().upper()
+    venta = db.execute(
+        select(Venta)
+        .where(Venta.codigo_cambio == codigo_clean)
+        .options(
+            joinedload(Venta.items).joinedload(VentaItem.variante)
+            .joinedload(Variante.producto)
+        )
+    ).unique().scalar_one_or_none()
+    if venta is not None:
+        return venta, None
+
+    retiro = db.execute(
+        select(RetiroMercaderia).where(RetiroMercaderia.codigo_cambio == codigo_clean)
+    ).scalar_one_or_none()
+    if retiro is None:
+        raise NoEncontrado(f"No hay ninguna venta con el código '{codigo_clean}'")
+    return None, retiro
+
+
+def _validar_venta_origen(venta: Venta) -> None:
+    """Una venta sirve de origen si su código sigue activo y está confirmada."""
+    if not venta.codigo_cambio_activo:
+        raise ReglaDeNegocio(
+            "Este código de cambio ya fue utilizado o la venta fue anulada"
+        )
+    if venta.estado != EstadoVenta.CONFIRMADA:
+        raise ReglaDeNegocio("Solo se pueden cambiar artículos de ventas confirmadas")
+
+
+def _descripcion(variante: Variante) -> str:
+    descripcion = variante.producto.descripcion
+    if variante.descripcion_sufijo:
+        descripcion = f"{descripcion} — {variante.descripcion_sufijo}"
+    return descripcion
+
+
+def items_del_ticket(db: Session, codigo_cambio: str) -> dict:
+    """
+    Los productos del ticket del código de cambio, para elegir en la primera
+    pantalla del cambio cuáles devuelve el cliente. Cada ítem dice si todavía
+    se puede devolver (`disponible`): una unidad ya devuelta en otro cambio
+    no cancelado no vuelve a ofrecerse. Mismas validaciones que
+    `iniciar_cambio`, para que el error aparezca apenas se ingresa el código.
+    """
+    venta, retiro = _origen_por_codigo(db, codigo_cambio)
+
+    def _item(variante, venta_item_id, precio, disponible):
+        return {
+            "venta_item_id": venta_item_id,
+            "variante_id": variante.id,
+            "descripcion": _descripcion(variante),
+            "codigo": variante.codigo_con_verificador,
+            "foto_url": variante.foto_url,
+            "precio": precio,
+            "disponible": disponible,
+        }
+
+    if retiro is not None:
+        variante = _variante(db, retiro.variante_id)
+        return {
+            "origen": "retiro",
+            "items": [_item(variante, None, retiro.precio_lista,
+                            not _retiro_ya_devuelto(db, retiro.id))],
+        }
+
+    _validar_venta_origen(venta)
+    usados = set(db.execute(_venta_items_ya_devueltos()).scalars())
+    return {
+        "origen": "venta",
+        "items": [
+            _item(vi.variante, vi.id, vi.precio_unitario, vi.id not in usados)
+            for vi in sorted(venta.items, key=lambda i: i.id)
+        ],
+    }
+
+
 def iniciar_cambio(
     db: Session,
     autor: Usuario,
@@ -307,26 +444,7 @@ def iniciar_cambio(
             raise ReglaDeNegocio(
                 "Ingresá el código de cambio del ticket"
             )
-        codigo_clean = codigo_cambio.strip().upper()
-        venta_origen = db.execute(
-            select(Venta)
-            .where(Venta.codigo_cambio == codigo_clean)
-            .options(
-                joinedload(Venta.items).joinedload(VentaItem.variante)
-                .joinedload(Variante.producto)
-            )
-        ).unique().scalar_one_or_none()
-
-        # El código también puede ser de un retiro de mercadería de empleada
-        # (sesión 09): un producto para regalo que quien lo recibió viene a
-        # cambiar. Se cambia como un cambio común, al precio de lista.
-        if venta_origen is None:
-            retiro_origen = db.execute(
-                select(RetiroMercaderia).where(RetiroMercaderia.codigo_cambio == codigo_clean)
-            ).scalar_one_or_none()
-
-        if venta_origen is None and retiro_origen is None:
-            raise NoEncontrado(f"No hay ninguna venta con el código '{codigo_clean}'")
+        venta_origen, retiro_origen = _origen_por_codigo(db, codigo_cambio)
 
     if retiro_origen is not None:
         if tipo != TipoCambio.COMUN:
@@ -340,12 +458,7 @@ def iniciar_cambio(
                 "Podés continuar igual o cancelar."
             )
     elif venta_origen is not None:
-        if not venta_origen.codigo_cambio_activo:
-            raise ReglaDeNegocio(
-                "Este código de cambio ya fue utilizado o la venta fue anulada"
-            )
-        if venta_origen.estado != EstadoVenta.CONFIRMADA:
-            raise ReglaDeNegocio("Solo se pueden cambiar artículos de ventas confirmadas")
+        _validar_venta_origen(venta_origen)
 
         # Aviso de plazo
         dias = (ahora_db().date() - venta_origen.created_at.date()).days
@@ -432,6 +545,12 @@ def agregar_item_devuelto(
             raise ReglaDeNegocio("El ítem no pertenece a la venta de origen del cambio")
         if venta_item.variante_id != variante_id:
             raise ReglaDeNegocio("El ítem de venta no corresponde a la variante indicada")
+        if venta_item.id in _en_este_cambio(db, cambio):
+            raise ReglaDeNegocio("Ese producto ya está entre los devueltos de este cambio")
+        if db.execute(
+            _venta_items_ya_devueltos().where(CambioItemDevuelto.venta_item_id == venta_item.id)
+        ).first():
+            raise ReglaDeNegocio("Ese producto ya se devolvió en otro cambio confirmado")
 
     # Contar cambios previos de esta variante
     cambios_previos = db.execute(
@@ -502,16 +621,9 @@ def _agregar_devuelto_de_retiro(
     if retiro.variante_id != variante.id:
         raise ReglaDeNegocio("Ese producto no es el del retiro de mercadería del código")
 
-    ya_devuelto = db.execute(
-        select(CambioItemDevuelto.id)
-        .join(Cambio, CambioItemDevuelto.cambio_id == Cambio.id)
-        .where(
-            Cambio.retiro_mercaderia_origen_id == retiro.id,
-            Cambio.estado != EstadoCambio.CANCELADO,
-        )
-        .limit(1)
-    ).first()
-    if ya_devuelto:
+    if _tiene_devueltos(db, cambio):
+        raise ReglaDeNegocio("Ese producto ya está entre los devueltos de este cambio")
+    if _retiro_ya_devuelto(db, retiro.id):
         raise ReglaDeNegocio("El producto de ese retiro de mercadería ya se devolvió")
 
     material = _material_de_variante(db, variante)
@@ -597,6 +709,35 @@ def calcular_diferencia(db: Session, cambio: Cambio) -> dict:
     }
 
 
+def _controlar_que_no_se_devolvio_antes(db: Session, cambio: Cambio) -> None:
+    """
+    Al confirmar: ninguno de sus devueltos puede estar ya en OTRO cambio
+    confirmado. Pasa si dos cambios pendientes tomaron la misma unidad (los
+    pendientes no reservan) y el otro se confirmó primero.
+    """
+    if cambio.retiro_mercaderia_origen_id is not None:
+        if _retiro_ya_devuelto(db, cambio.retiro_mercaderia_origen_id, excepto_cambio_id=cambio.id):
+            raise ReglaDeNegocio(
+                "El producto de ese retiro de mercadería ya se devolvió en otro cambio confirmado"
+            )
+        return
+    ids = _en_este_cambio(db, cambio)
+    if not ids:
+        return
+    repetidos = set(db.execute(
+        _venta_items_ya_devueltos(excepto_cambio_id=cambio.id)
+        .where(CambioItemDevuelto.venta_item_id.in_(ids))
+    ).scalars())
+    if repetidos:
+        codigos = [
+            i.variante.codigo_con_verificador
+            for i in cambio.items_devueltos if i.venta_item_id in repetidos
+        ]
+        raise ReglaDeNegocio(
+            f"{', '.join(codigos)} ya se devolvió en otro cambio confirmado"
+        )
+
+
 def confirmar_cambio(
     db: Session,
     autor: Usuario,
@@ -617,6 +758,7 @@ def confirmar_cambio(
         raise ReglaDeNegocio("El cambio debe tener al menos un ítem devuelto")
     if not cambio.items_nuevos:
         raise ReglaDeNegocio("El cambio debe tener al menos un ítem nuevo")
+    _controlar_que_no_se_devolvio_antes(db, cambio)
 
     calculo = calcular_diferencia(db, cambio)
     diferencia = calculo["diferencia"]

@@ -133,3 +133,25 @@ class VentaParaCambioResponse(BaseModel):
     dias_desde_venta: int
     plazo_vencido: bool  # más de 30 días
     items: list[dict]
+
+
+# ── Productos del ticket (primera pantalla del cambio en el celular) ─────────
+
+
+class TicketItem(BaseModel):
+    """Un producto del ticket del código de cambio."""
+
+    # None si el código es de un retiro de mercadería (no hay venta).
+    venta_item_id: int | None
+    variante_id: int
+    descripcion: str
+    codigo: str
+    foto_url: str | None
+    precio: Decimal
+    # False si esa unidad ya se devolvió en otro cambio no cancelado.
+    disponible: bool
+
+
+class TicketCambioResponse(BaseModel):
+    origen: str  # "venta" | "retiro"
+    items: list[TicketItem]
