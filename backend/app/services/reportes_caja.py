@@ -26,7 +26,13 @@ from app.models.medio_pago import MedioDePago
 from app.models.operaciones_caja import CobroJoyero, NovedadCaja, TipoNovedad
 from app.models.punto_de_venta import PuntoDeVenta
 from app.models.sena import Sena
-from app.models.turno import Arqueo, ArqueoItem, RetiroEfectivo, Turno
+from app.models.turno import (
+    Arqueo,
+    ArqueoItem,
+    MedioPagoArqueoConfig,
+    RetiroEfectivo,
+    Turno,
+)
 from app.models.venta import EstadoVenta, Venta, VentaPago
 from app.services import arqueo as servicio_arqueo
 from app.services import configuracion as servicio_configuracion
@@ -144,10 +150,29 @@ def novedades(db: Session, fecha: date, punto_de_venta_id: int | None = None) ->
 # ---------------------------------------------------------------------------
 
 
-def _nombre_item(item: ArqueoItem) -> str:
-    """Columna del item: el grupo de terminal si agrupa, si no el medio."""
+def _grupos_vigentes(db: Session) -> dict[int, str]:
+    """{medio_de_pago_id: grupo_terminal} de los medios que hoy se arquean agrupados."""
+    return dict(
+        db.execute(
+            select(MedioPagoArqueoConfig.medio_de_pago_id, MedioPagoArqueoConfig.grupo_terminal)
+            .where(
+                MedioPagoArqueoConfig.agrupa_en_terminal.is_(True),
+                MedioPagoArqueoConfig.grupo_terminal.is_not(None),
+            )
+        ).all()
+    )
+
+
+def _nombre_item(item: ArqueoItem, grupos: dict[int, str]) -> str:
+    """
+    Columna del item: su grupo de terminal; si no tiene, el grupo en que su
+    medio se arquea HOY (así los arqueos anteriores a agrupar Crédito y Débito
+    caen en la misma columna que los nuevos); si no, el nombre del medio.
+    """
     if item.grupo_terminal:
         return item.grupo_terminal
+    if item.medio_de_pago_id in grupos:
+        return grupos[item.medio_de_pago_id]
     return item.medio_de_pago.nombre if item.medio_de_pago else "Sin medio"
 
 
@@ -176,21 +201,28 @@ def arqueos(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> d
     orden = {t.id: i for i, t in enumerate(turnos)}
     registros = sorted(registros, key=lambda a: orden[a.turno_id])
 
+    grupos = _grupos_vigentes(db)
     columnas: list[str] = []
     filas = []
     for arqueo in registros:
-        items = []
+        # Un item por columna: si dos renglones viejos caen en el mismo grupo
+        # (Crédito y Débito de antes de agruparlos), se suman.
+        items: dict[str, dict] = {}
         for item in sorted(arqueo.items, key=lambda i: i.id):
-            nombre = _nombre_item(item)
+            nombre = _nombre_item(item, grupos)
             if nombre not in columnas:
                 columnas.append(nombre)
-            items.append({
+            actual = items.setdefault(nombre, {
                 "columna": nombre,
-                "monto_esperado": item.monto_esperado,
-                "monto_declarado": item.monto_declarado,
-                "diferencia": item.diferencia,
+                "monto_esperado": CERO,
+                "monto_declarado": CERO,
+                "diferencia": CERO,
                 "es_informativo": item.es_informativo,
             })
+            actual["monto_esperado"] += item.monto_esperado
+            actual["monto_declarado"] += item.monto_declarado
+            actual["diferencia"] += item.diferencia
+        items = list(items.values())
         filas.append({
             **_datos_turno(por_turno[arqueo.turno_id]),
             "arqueo_id": arqueo.id,

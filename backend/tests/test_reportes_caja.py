@@ -323,3 +323,39 @@ def test_vigencia_de_senas_se_cambia_por_api_y_queda_auditada(client, db, autor,
     assert db.execute(
         select(Auditoria).where(Auditoria.accion == "configuracion.vigencia_senas")
     ).scalar_one_or_none() is not None
+
+
+def test_arqueos_viejos_con_credito_y_debito_sueltos_van_a_la_columna_del_grupo(
+    db, autor, local, turno,
+):
+    """
+    Un arqueo guardado antes de agrupar Crédito y Débito tiene un renglón por
+    medio: el reporte los muestra en la columna del grupo, sumados.
+    """
+    from app.models.turno import Arqueo, ArqueoItem
+
+    arqueo = Arqueo(
+        turno_id=turno.id, usuario_id=autor.id, total_esperado=Decimal("1500"),
+        total_declarado=Decimal("1400"), notificacion_enviada=False, created_at=ahora_db(),
+    )
+    db.add(arqueo)
+    db.flush()
+    for medio, esperado, declarado in (("Tarjeta de Crédito", "1000", "1000"),
+                                       ("Débito", "500", "400")):
+        db.add(ArqueoItem(
+            arqueo_id=arqueo.id, medio_de_pago_id=_medio(db, medio).id,
+            monto_esperado=Decimal(esperado), monto_declarado=Decimal(declarado),
+            es_informativo=False,
+        ))
+    db.flush()
+    db.expire_all()
+
+    datos = servicio.arqueos(db, _hoy())
+
+    assert "Débito" not in datos["columnas"]
+    assert "Tarjeta de Crédito" not in datos["columnas"]
+    item = next(i for i in datos["filas"][0]["items"]
+                if i["columna"] == servicio_arqueo.GRUPO_TARJETAS)
+    assert item["monto_esperado"] == Decimal("1500")
+    assert item["monto_declarado"] == Decimal("1400")
+    assert item["diferencia"] == Decimal("-100")
