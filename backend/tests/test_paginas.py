@@ -2685,3 +2685,52 @@ def test_sin_permiso_de_reportes_no_se_ve_el_grupo(client, crear_usuario):
     client.post("/api/v1/auth/login", json={"username": "vendedora", "password": "Test1234!"})
 
     assert 'href="/reportes/productos"' not in client.get("/reportes").text
+
+
+def test_la_consulta_de_stock_mobile_tiene_filtros_por_categoria(
+    client, db, crear_usuario, crear_punto_de_venta,
+):
+    """"Filtros" al lado de "Ver todos los locales", con la cascada de niveles."""
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/ventas/consulta-stock").text
+    assert "Ver todos los locales" in html
+    assert 'aria-controls="panel-filtros"' in html
+    assert "abrirFiltros()" in html
+    # Un selector por nivel, empezando por Categoría y Material.
+    assert 'id="fc-1"' in html and 'id="fc-2"' in html
+    assert 'placeholder="Categoría"' in html and 'placeholder="Material"' in html
+
+
+def test_la_consulta_de_stock_mobile_puede_agregar_varios_con_confirmacion(
+    client, db, crear_usuario, crear_punto_de_venta, dar_permiso, roles,
+):
+    """
+    Con un filtro aplicado y hasta 4 productos, el botón agrega varios, pero
+    antes pide confirmación (mismo diálogo del sistema, en azul).
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/ventas/consulta-stock").text
+    assert 'x-text="textoAgregar"' in html
+    assert 'aria-labelledby="titulo-confirmacion"' in html
+    assert "confirmacion.advertencia" in html

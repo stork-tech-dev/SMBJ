@@ -167,6 +167,28 @@ window.rutaCategoria = function (categorias, categoria) {
 };
 
 /**
+ * Categoría en cascada: opciones del selector de `nivel` (1 = raíz) según lo
+ * ya elegido en `ruta` (array de ids, uno por nivel). Vacío si el nivel
+ * anterior no está elegido.
+ *
+ * La usan el formulario de producto y los filtros de la consulta de stock
+ * del celular: los dos arman la categoría eligiendo un nivel por vez.
+ */
+window.opcionesDeNivel = function (categorias, ruta, nivel) {
+    if (nivel === 1) return categorias.filter((c) => !c.parent_id);
+    const padre = ruta[nivel - 2];
+    if (!padre) return [];
+    return categorias.filter((c) => c.parent_id === Number(padre));
+};
+
+/** Si el selector de `nivel` se muestra: el anterior elegido y con hijos. */
+window.nivelVisible = function (categorias, ruta, nivel) {
+    if (nivel === 1) return true;
+    if (!ruta[nivel - 2]) return false;
+    return window.opcionesDeNivel(categorias, ruta, nivel).length > 0;
+};
+
+/**
  * Estado de un combobox: un campo con su lista desplegable propia. Lo usa el
  * macro `components/combobox.html`.
  *

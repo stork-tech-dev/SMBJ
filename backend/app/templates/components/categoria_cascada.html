@@ -1,0 +1,46 @@
+{# ===========================================================================
+   Macro: categoría en cascada, un selector por nivel.
+
+   Cada nivel aparece recién cuando el anterior está elegido y tiene hijos
+   (Categoría → Material → Subcategoría…), igual que en el formulario de
+   producto. La lógica es la compartida de app.js (`opcionesDeNivel`,
+   `nivelVisible`); acá solo el marcado.
+
+   Parámetros:
+     categorias  expresión Alpine con la lista plana (con `parent_id`).
+     ruta        expresión Alpine con el array de ids elegidos, uno por nivel.
+     al_elegir   función Alpine que recibe el nivel elegido (ej. `elegirCategoria`).
+     prefijo_id  prefijo para los ids de cada combobox.
+     nivel_maximo  cantidad de niveles del árbol (NIVEL_MAXIMO).
+     clases      clases del input de cada combobox.
+
+   Uso:
+     {% from "components/categoria_cascada.html" import categoria_cascada %}
+     {{ categoria_cascada('categorias', 'categoriaRuta', 'elegirCategoria', 'fc') }}
+   =========================================================================== #}
+
+{% from "components/combobox.html" import combobox %}
+
+{% macro categoria_cascada(categorias, ruta, al_elegir, prefijo_id, nivel_maximo=5,
+                           clases='w-full h-control pl-3 pr-9 text-base bg-surface text-texto
+                                   border-2 border-borde rounded-input
+                                   focus:outline-none focus:border-primary') %}
+<div class="flex flex-col gap-3">
+    {% for nivel in range(1, nivel_maximo + 1) %}
+    {% set nombre_nivel = ['Categoría', 'Material'][nivel - 1]
+                          if nivel <= 2
+                          else 'Subcategoría' ~ (' ' ~ (nivel - 2) if nivel_maximo > 3 else '') %}
+    <div x-show="window.nivelVisible({{ categorias }}, {{ ruta }}, {{ nivel }})"
+         {% if nivel > 1 %}x-cloak{% endif %}>
+        {{ combobox(prefijo_id ~ '-' ~ nivel,
+                    'window.opcionesDeNivel(' ~ categorias ~ ', ' ~ ruta ~ ', ' ~ nivel ~ ')',
+                    'o.nombre',
+                    ruta ~ '[' ~ (nivel - 1) ~ ']',
+                    etiqueta=nombre_nivel, label_oculto=true,
+                    placeholder=nombre_nivel,
+                    al_elegir=al_elegir ~ '(' ~ nivel ~ ');',
+                    clases=clases) }}
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}

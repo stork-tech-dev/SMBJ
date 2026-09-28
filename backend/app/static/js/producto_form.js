@@ -90,16 +90,11 @@ function productoForm({ proveedorFijo = null, alGuardar = null } = {}) {
         },
 
         opcionesCategoria(nivel) {
-            if (nivel === 1) return this.categorias.filter((c) => !c.parent_id);
-            const padre = this.form.categoriaRuta[nivel - 2];
-            if (!padre) return [];
-            return this.categorias.filter((c) => c.parent_id === Number(padre));
+            return window.opcionesDeNivel(this.categorias, this.form.categoriaRuta, nivel);
         },
 
         nivelCategoriaVisible(nivel) {
-            if (nivel === 1) return true;
-            if (!this.form.categoriaRuta[nivel - 2]) return false;
-            return this.opcionesCategoria(nivel).length > 0;
+            return window.nivelVisible(this.categorias, this.form.categoriaRuta, nivel);
         },
 
         nivelesCategoriaVisibles() {

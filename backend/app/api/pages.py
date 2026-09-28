@@ -1395,6 +1395,8 @@ _PANTALLAS_MOBILE = {
         "titulo": "Consulta de Stock",
         "volver": "/ventas",
         "activa": "stock",
+        # Niveles del filtro de categoría en cascada.
+        "extra": {"nivel_maximo": NIVEL_MAXIMO},
     },
     "/ventas/anular": {
         "plantilla": "pages/ventas/mobile/anular.html",
@@ -1464,6 +1466,7 @@ def _registrar_pantallas_mobile() -> None:
                     request, db, usuario, _p["titulo"],
                     volver_url=_p["volver"],
                     activa_mobile=_p["activa"],
+                    **_p.get("extra", {}),
                 ),
             )
 

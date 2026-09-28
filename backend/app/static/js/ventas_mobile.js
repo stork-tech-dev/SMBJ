@@ -19,6 +19,11 @@
 const API_VENTAS = '/api/v1/ventas';
 const API_CLIENTES = '/api/v1/clientes';
 const API_STOCK = '/api/v1/stock';
+
+// Cuántos productos distintos se pueden sumar juntos al carrito desde la
+// consulta de stock (con un filtro aplicado). Más que eso ya no es "estos
+// que encontré", es agregar a ciegas.
+const MAX_AGREGAR_JUNTOS = 4;
 const API_TURNOS = '/api/v1/turnos';
 
 // Implementación compartida en app.js (Principio 2): la usa también
@@ -578,6 +583,47 @@ function consultaStockMobile(puntoDeVentaId) {
         todosLosLocales: false,
         filtros: { busqueda: '' },
 
+        // Filtro por categoría, elegida nivel por nivel (Categoría →
+        // Material → Subcategoría). Filtra por la rama del último nivel
+        // elegido; lo resuelve el backend (`categoria_id`).
+        filtrosAbiertos: false,
+        categorias: [],
+        categoriaRuta: [],
+
+        get categoriaId() {
+            const elegidos = this.categoriaRuta.filter(Boolean);
+            return elegidos.length ? elegidos[elegidos.length - 1] : '';
+        },
+
+        get categoriaTexto() {
+            return this.categoriaId
+                ? window.rutaCategoria(this.categorias, { id: Number(this.categoriaId) })
+                : '';
+        },
+
+        async abrirFiltros() {
+            this.filtrosAbiertos = !this.filtrosAbiertos;
+            // Las categorías se piden una sola vez, la primera que se abre.
+            if (this.filtrosAbiertos && !this.categorias.length) {
+                try {
+                    this.categorias = await pedir('/api/v1/categorias');
+                } catch (e) {
+                    window.toast(e.message, 'error');
+                }
+            }
+        },
+
+        elegirCategoria(nivel) {
+            // Cambiar un nivel descarta lo elegido debajo.
+            this.categoriaRuta = this.categoriaRuta.slice(0, nivel);
+            this.buscar();
+        },
+
+        limpiarCategoria() {
+            this.categoriaRuta = [];
+            this.buscar();
+        },
+
         pesos: (v) => window.pesos(v),
 
         // La sucursal propia primero; el resto abajo bajo "Otras Sucursales"
@@ -600,12 +646,33 @@ function consultaStockMobile(puntoDeVentaId) {
             return Math.max(0, f.cantidad - (f.reservado_carrito || 0));
         },
 
-        // Un solo botón, no uno por fila: solo tiene sentido cuando la
-        // búsqueda resolvió a UN único producto con stock DISPONIBLE acá —
-        // con más de uno agregar sería adivinar cuál quiere la vendedora.
+        // Un solo botón, no uno por fila. Se ofrece cuando la búsqueda
+        // resolvió a UN producto con stock DISPONIBLE acá, o —si la
+        // vendedora ya acotó con un código o con los filtros de categoría—
+        // a unos pocos (hasta MAX_AGREGAR_JUNTOS): ahí agrega todos los que
+        // tienen disponible, previa confirmación.
         agregando: false,
+        confirmacion: { abierta: false, titulo: '', mensaje: '', advertencia: '', accion: () => {} },
+
+        get hayFiltro() {
+            return this.filtros.busqueda.trim() !== '' || Boolean(this.categoriaId);
+        },
+
+        // Lo que realmente se puede agregar: las filas de este local con
+        // disponible. Las que están en cero se muestran pero no se suman.
+        get paraAgregar() {
+            return this.misFilas.filter((f) => this.disponible(f) > 0);
+        },
+
         get puedeAgregar() {
-            return this.misFilas.length === 1 && this.disponible(this.misFilas[0]) > 0;
+            const n = this.misFilas.length;
+            if (n === 1) return this.paraAgregar.length === 1;
+            return this.hayFiltro && n <= MAX_AGREGAR_JUNTOS && this.paraAgregar.length > 0;
+        },
+
+        get textoAgregar() {
+            const n = this.paraAgregar.length;
+            return n > 1 ? `Agregar ${n} productos al carrito` : 'Agregar al carrito de compra';
         },
 
         async cargar() {
@@ -619,6 +686,7 @@ function consultaStockMobile(puntoDeVentaId) {
                     incluir_sin_stock: 'true',
                 });
                 if (this.filtros.busqueda) params.set('busqueda', this.filtros.busqueda);
+                if (this.categoriaId) params.set('categoria_id', this.categoriaId);
 
                 // Sin esto, un vendedor atado a un local por su dispositivo
                 // no puede ver el stock de otro ni del CD: es la única
@@ -656,18 +724,67 @@ function consultaStockMobile(puntoDeVentaId) {
         // segunda. Se queda en esta pantalla después de agregar — la
         // vendedora puede seguir consultando otros productos sin perder
         // la búsqueda.
-        async agregarAlCarrito() {
+        /**
+         * Un producto: lo agrega directo, como siempre. Varios: primero pide
+         * confirmación diciendo cuántos va a sumar, y solo con el "Agregar"
+         * del diálogo los agrega.
+         */
+        agregarAlCarrito() {
             if (!this.puedeAgregar) return;
+            const filas = this.paraAgregar;
+            if (filas.length === 1) {
+                this.agregarFilas(filas);
+                return;
+            }
 
+            const sinStock = this.misFilas.length - filas.length;
+            const nombre = (f) => `${f.variante.codigo_completo}${f.variante.verificador} `
+                + `${f.variante.producto?.descripcion || ''}`
+                + (f.variante.descripcion_sufijo ? ` — ${f.variante.descripcion_sufijo}` : '');
+            this.confirmacion = {
+                abierta: true,
+                titulo: `Agregar ${filas.length} productos`,
+                mensaje: filas.map(nombre).join(' · ')
+                    + (sinStock ? ` (${sinStock} sin stock disponible no se agregan)` : ''),
+                advertencia: `Vas a sumar ${filas.length} productos al carrito.`,
+                accion: () => {
+                    this.confirmacion.abierta = false;
+                    this.agregarFilas(filas);
+                },
+            };
+        },
+
+        /**
+         * Suma una unidad de cada fila a la venta en curso de este equipo
+         * (la abre o la recupera, nunca una segunda). En orden, una por vez:
+         * si una falla, sigue con las demás y avisa cuáles no entraron.
+         */
+        async agregarFilas(filas) {
             this.agregando = true;
             try {
                 const venta = await pedir(API_VENTAS, { method: 'POST', body: '{}' });
-                const datos = await pedir(`${API_VENTAS}/${venta.id}/items`, {
-                    method: 'POST',
-                    body: JSON.stringify({ variante_id: this.misFilas[0].variante.id }),
-                });
-                if (datos.aviso) window.toast(datos.aviso, 'error');
-                else window.toast('Agregado al carrito', 'exito');
+                const avisos = [];
+                let agregados = 0;
+                for (const f of filas) {
+                    try {
+                        const datos = await pedir(`${API_VENTAS}/${venta.id}/items`, {
+                            method: 'POST',
+                            body: JSON.stringify({ variante_id: f.variante.id }),
+                        });
+                        agregados += 1;
+                        if (datos.aviso) avisos.push(datos.aviso);
+                    } catch (e) {
+                        avisos.push(`${f.variante.codigo_completo}${f.variante.verificador}: ${e.message}`);
+                    }
+                }
+
+                if (avisos.length) window.toast(avisos.join(' · '), 'error');
+                if (agregados) {
+                    window.toast(
+                        agregados === 1 ? 'Agregado al carrito' : `${agregados} productos agregados al carrito`,
+                        'exito',
+                    );
+                }
 
                 // Refresca `reservado_carrito`: sin esto, el botón seguiría
                 // ofreciendo agregar de más allá de lo que real queda

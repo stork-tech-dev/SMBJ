@@ -1836,3 +1836,36 @@ def test_api_ver_minimos_y_guardar_con_campo_vacio(client, db, autor, variante, 
     assert client.put(url, json={"stock_minimo_cd": 3, "stock_minimo_local": None}).status_code == 200
     assert client.get(url).json()["stock_minimo_local"] == 4
     assert client.get(url).json()["stock_minimo_cd"] == 3
+
+
+
+def test_todos_los_locales_con_categoria_padre_trae_sus_subcategorias(
+    db, autor, config, local, otro_local,
+):
+    """El filtro por categoría del celular elige un nivel y trae toda su rama."""
+    aros = servicio_categorias.crear_categoria(db, autor, nombre="Aros")
+    plata = servicio_categorias.crear_categoria(db, autor, nombre="Plata", parent_id=aros.id)
+    anillos = servicio_categorias.crear_categoria(db, autor, nombre="Anillos")
+    proveedor = servicio_proveedores.crear_proveedor(
+        db, autor, nombre="Prov", dolar_actual=Decimal("1")
+    )
+    variantes = {}
+    for nombre, categoria in (("Aro de plata", plata), ("Anillo", anillos)):
+        producto = servicio_productos.crear_producto(
+            db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+            precio_usd=Decimal("10"), descripcion=nombre,
+        )
+        db.flush()
+        variantes[nombre] = producto.variantes[0]
+        servicio.aplicar_movimiento(
+            db, autor, tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+            variante_id=producto.variantes[0].id, cantidad=2,
+            punto_venta_destino_id=otro_local.id,
+        )
+    db.flush()
+
+    filas, _ = servicio.listar_stock(
+        db, DeviceScope(restringido=True, punto_de_venta_id=local.id),
+        todos_los_locales=True, categoria_id=aros.id,
+    )
+    assert {f.variante_id for f in filas} == {variantes["Aro de plata"].id}
