@@ -297,20 +297,144 @@ def test_las_alertas_traen_lo_que_esta_en_el_minimo_o_por_debajo(
     assert len(servicio.alertas(db, LIBRE)) == 1
 
 
-def test_las_alertas_ignoran_las_filas_sin_minimo_configurado(db, autor, variante, cd):
+def test_las_alertas_ignoran_las_filas_con_minimo_en_cero(db, autor, variante, cd):
     """
-    Si entraran, todo artículo sin stock aparecería como alerta y la lista
-    dejaría de servir para decidir qué pedir.
+    El mínimo nace en 1, pero se puede bajar a 0 para que un artículo deje de
+    avisar: en cero no es alerta aunque no haya stock.
     """
     servicio.fila_de_stock(db, variante.id, cd.id)
     db.flush()
+    assert len(servicio.alertas(db, LIBRE)) == 1
 
+    servicio.definir_minimos(db, autor, variante.id, stock_minimo_cd=0)
+    db.flush()
     assert servicio.alertas(db, LIBRE) == []
 
 
 def test_los_minimos_no_pueden_ser_negativos(db, autor, variante, cd):
     with pytest.raises(ReglaDeNegocio, match="no puede ser negativo"):
         servicio.definir_minimos(db, autor, variante.id, stock_minimo_cd=-1)
+
+
+@pytest.fixture
+def online(crear_punto_de_venta):
+    return crear_punto_de_venta("WEB", "Tienda online", TipoPuntoVenta.ONLINE)
+
+
+@pytest.fixture
+def especial(crear_punto_de_venta):
+    return crear_punto_de_venta("FAL", "Productos Fallados", TipoPuntoVenta.ESPECIAL)
+
+
+def _filas(db, variante_id) -> dict[int, Stock]:
+    from sqlalchemy import select
+
+    return {
+        f.punto_de_venta_id: f
+        for f in db.execute(select(Stock).where(Stock.variante_id == variante_id)).scalars()
+    }
+
+
+def test_una_variante_nueva_nace_con_minimo_1_en_cada_sucursal(
+    db, autor, config, cd, local, online, especial,
+):
+    """CD, online y locales activos: fila en 0 con mínimo 1. Especiales, no."""
+    producto = servicio_productos.crear_producto(
+        db, autor,
+        categoria_id=servicio_categorias.crear_categoria(db, autor, nombre="Aros").id,
+        proveedor_id=servicio_proveedores.crear_proveedor(
+            db, autor, nombre="Prov", dolar_actual=Decimal("1")
+        ).id,
+        precio_usd=Decimal("10"),
+        descripcion="Aro",
+    )
+    db.flush()
+    filas = _filas(db, producto.variantes[0].id)
+
+    assert set(filas) == {cd.id, local.id, online.id}
+    assert all(f.cantidad == 0 and f.stock_minimo == 1 for f in filas.values())
+    # Nace pidiendo reposición en todos lados.
+    assert len(servicio.alertas(db, LIBRE)) == 3
+
+
+def test_la_primera_fila_en_una_sucursal_nueva_nace_con_minimo_1(db, autor, variante, local):
+    assert servicio.fila_de_stock(db, variante.id, local.id).stock_minimo == 1
+
+
+def test_online_usa_su_propio_minimo_y_especial_no_lleva(
+    db, autor, variante, cd, local, online, especial,
+):
+    for punto in (cd, local, online, especial):
+        servicio.fila_de_stock(db, variante.id, punto.id)
+    db.flush()
+
+    servicio.definir_minimos(
+        db, autor, variante.id,
+        stock_minimo_cd=20, stock_minimo_online=7, stock_minimo_local=3,
+    )
+    filas = _filas(db, variante.id)
+
+    assert filas[cd.id].stock_minimo == 20
+    assert filas[online.id].stock_minimo == 7
+    assert filas[local.id].stock_minimo == 3
+    assert filas[especial.id].stock_minimo == 0
+    # La especial está en 0 unidades y sin mínimo: no es alerta.
+    assert especial.id not in {f.punto_de_venta_id for f in servicio.alertas(db, LIBRE)}
+
+
+def test_minimo_de_un_solo_local(db, autor, variante, cd, local, otro_local):
+    for punto in (cd, local, otro_local):
+        servicio.fila_de_stock(db, variante.id, punto.id)
+    db.flush()
+
+    servicio.definir_minimos(
+        db, autor, variante.id,
+        stock_minimo_cd=9, stock_minimo_local=5, solo_punto_de_venta_id=local.id,
+    )
+    filas = _filas(db, variante.id)
+
+    assert filas[local.id].stock_minimo_local == 5
+    assert filas[otro_local.id].stock_minimo_local == 1  # no se tocó
+    assert filas[cd.id].stock_minimo_cd == 9  # CD aplica igual
+
+
+def test_minimo_de_un_solo_local_exige_la_fila_de_un_local(db, autor, variante, cd):
+    servicio.fila_de_stock(db, variante.id, cd.id)
+    with pytest.raises(ReglaDeNegocio, match="un solo local"):
+        servicio.definir_minimos(
+            db, autor, variante.id, stock_minimo_local=5, solo_punto_de_venta_id=cd.id,
+        )
+
+
+def test_api_minimos_con_aplica_a_todos_los_locales(
+    client, db, autor, variante, local, otro_local, online,
+):
+    for punto in (local, otro_local, online):
+        servicio.fila_de_stock(db, variante.id, punto.id)
+    db.commit()
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+    url = f"/api/v1/stock/minimos/{variante.id}"
+
+    # Sin decir qué local, "No" no tiene sentido.
+    assert client.put(url, json={
+        "stock_minimo_local": 4, "aplica_a_todos_los_locales": False,
+    }).status_code == 422
+
+    resp = client.put(url, json={
+        "stock_minimo_online": 6, "stock_minimo_local": 4,
+        "aplica_a_todos_los_locales": False, "punto_de_venta_id": local.id,
+    })
+    assert resp.status_code == 200, resp.text
+    db.expire_all()
+    filas = _filas(db, variante.id)
+    assert filas[local.id].stock_minimo_local == 4
+    assert filas[otro_local.id].stock_minimo_local == 1
+    assert filas[online.id].stock_minimo_online == 6
+
+    client.put(url, json={"stock_minimo_local": 2})
+    db.expire_all()
+    filas = _filas(db, variante.id)
+    assert filas[local.id].stock_minimo_local == filas[otro_local.id].stock_minimo_local == 2
 
 
 # ============================================================================
@@ -1620,3 +1744,68 @@ def test_endpoint_ubicaciones_incluir_especiales_para_vendedor_restringido(
     # seed de la migración 0032 — es otra Ubicación Especial activa más.
     assert nombres >= {local.nombre, cd.nombre, especial.nombre}
     assert otro_local.nombre not in nombres
+
+
+# ── Precarga del modal de mínimos ───────────────────────────────────────────
+
+
+def test_los_minimos_se_leen_de_la_fila_de_cada_tipo_no_de_la_clickeada(
+    db, autor, variante, cd, local, online,
+):
+    """
+    Cada fila guarda las tres columnas pero solo rige la de su tipo: las
+    otras pueden tener valores viejos, y el modal no tiene que mostrarlos.
+    """
+    for punto in (cd, local, online):
+        servicio.fila_de_stock(db, variante.id, punto.id)
+    servicio.definir_minimos(
+        db, autor, variante.id, stock_minimo_cd=8, stock_minimo_online=5, stock_minimo_local=2,
+    )
+    # Basura en columnas que no rigen: lo que causaba el valor "pegado".
+    _filas(db, variante.id)[local.id].stock_minimo_cd = 99
+    _filas(db, variante.id)[cd.id].stock_minimo_local = 77
+    db.flush()
+
+    desde_local = servicio.minimos_de_variante(db, variante.id, local.id)
+    desde_cd = servicio.minimos_de_variante(db, variante.id, cd.id)
+
+    esperado = {"stock_minimo_cd": 8, "stock_minimo_online": 5,
+                "stock_minimo_local": 2, "locales_distintos": False}
+    assert desde_local == esperado
+    assert desde_cd == esperado
+
+
+def test_minimo_de_local_desde_otra_fila_cuando_los_locales_difieren(
+    db, autor, variante, cd, local, otro_local,
+):
+    for punto in (cd, local, otro_local):
+        servicio.fila_de_stock(db, variante.id, punto.id)
+    servicio.definir_minimos(
+        db, autor, variante.id, stock_minimo_local=6, solo_punto_de_venta_id=local.id,
+    )
+
+    desde_cd = servicio.minimos_de_variante(db, variante.id, cd.id)
+    assert desde_cd["stock_minimo_local"] is None
+    assert desde_cd["locales_distintos"] is True
+    # Desde un local, el de ese local.
+    assert servicio.minimos_de_variante(db, variante.id, local.id)["stock_minimo_local"] == 6
+    assert servicio.minimos_de_variante(db, variante.id, otro_local.id)["stock_minimo_local"] == 1
+
+
+def test_api_ver_minimos_y_guardar_con_campo_vacio(client, db, autor, variante, cd, local):
+    for punto in (cd, local):
+        servicio.fila_de_stock(db, variante.id, punto.id)
+    servicio.definir_minimos(db, autor, variante.id, stock_minimo_local=4)
+    db.commit()
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+    url = f"/api/v1/stock/minimos/{variante.id}"
+
+    resp = client.get(url, params={"punto_de_venta_id": local.id})
+    assert resp.status_code == 200
+    assert resp.json() == {"stock_minimo_cd": 1, "stock_minimo_online": None,
+                           "stock_minimo_local": 4, "locales_distintos": False}
+
+    # Local vacío (null) = no se toca.
+    assert client.put(url, json={"stock_minimo_cd": 3, "stock_minimo_local": None}).status_code == 200
+    assert client.get(url).json()["stock_minimo_local"] == 4
+    assert client.get(url).json()["stock_minimo_cd"] == 3

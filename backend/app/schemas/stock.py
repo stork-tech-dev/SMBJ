@@ -8,7 +8,7 @@ flujos con estado, no consultas.
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.productos import ProductoResumen
 
@@ -52,11 +52,12 @@ class StockResponse(BaseModel):
 
     id: int
     cantidad: int
-    # Los dos que se cargan y el que efectivamente rige acá. Cuál de los dos
-    # aplica lo decide el tipo del punto de venta, y lo resuelve el backend:
-    # es una regla de negocio, no formato de pantalla (Principio 1).
+    # Los tres que se cargan y el que efectivamente rige acá. Cuál aplica lo
+    # decide el tipo del punto de venta, y lo resuelve el backend: es una
+    # regla de negocio, no formato de pantalla (Principio 1).
     stock_minimo_cd: int
     stock_minimo_local: int
+    stock_minimo_online: int
     stock_minimo: int
     bajo_minimo: bool
     updated_at: datetime
@@ -77,6 +78,19 @@ class StockResponse(BaseModel):
     reservado_carrito: int = 0
 
 
+class MinimosVariante(BaseModel):
+    """
+    Mínimos de una variante como rigen en cada ubicación (lo que muestra el
+    listado), para precargar el modal. None = no hay fila de ese tipo, o los
+    locales tienen valores distintos (`locales_distintos`).
+    """
+
+    stock_minimo_cd: int | None
+    stock_minimo_online: int | None
+    stock_minimo_local: int | None
+    locales_distintos: bool
+
+
 class StockMinimos(BaseModel):
     """
     Lo único editable a mano de una fila de stock.
@@ -87,7 +101,18 @@ class StockMinimos(BaseModel):
     """
 
     stock_minimo_cd: int | None = Field(default=None, ge=0)
+    stock_minimo_online: int | None = Field(default=None, ge=0)
     stock_minimo_local: int | None = Field(default=None, ge=0)
+    # False: el mínimo de local va solo al local `punto_de_venta_id` (la fila
+    # desde la que se abrió "Mínimos"); True: a todos los locales.
+    aplica_a_todos_los_locales: bool = True
+    punto_de_venta_id: int | None = None
+
+    @model_validator(mode="after")
+    def _local_elegido(self):
+        if not self.aplica_a_todos_los_locales and self.punto_de_venta_id is None:
+            raise ValueError("Para aplicar a un solo local hay que indicar cuál (punto_de_venta_id)")
+        return self
 
 
 class IngresoCrear(BaseModel):

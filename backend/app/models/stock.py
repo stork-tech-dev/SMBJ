@@ -24,16 +24,18 @@ from sqlalchemy import (
     Integer,
     Text,
     UniqueConstraint,
+    case,
     func,
+    literal,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 
 if TYPE_CHECKING:
     from app.models.motivo_baja import MotivoBaja
     from app.models.producto import Variante
-    from app.models.punto_de_venta import PuntoDeVenta
     from app.models.usuario import Usuario
 
 
@@ -57,6 +59,18 @@ class TipoMovimiento(str, enum.Enum):
 def _enum(tipo, nombre):
     """Enum de PostgreSQL que persiste el .value, no el nombre del miembro."""
     return Enum(tipo, name=nombre, values_callable=lambda e: [i.value for i in e])
+
+
+# Mínimo con el que nace toda fila de stock.
+MINIMO_POR_DEFECTO = 1
+
+# Qué mínimo rige en cada tipo de ubicación. Las Ubicaciones Especiales no
+# están: no son stock vendible, no se reponen y su mínimo es 0 (sin alerta).
+COLUMNA_MINIMO = {
+    TipoPuntoVenta.CD: "stock_minimo_cd",
+    TipoPuntoVenta.ONLINE: "stock_minimo_online",
+    TipoPuntoVenta.LOCAL: "stock_minimo_local",
+}
 
 
 class Stock(Base):
@@ -87,15 +101,19 @@ class Stock(Base):
 
     cantidad: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    # Dos mínimos y no uno: el mismo artículo necesita un colchón muy
-    # distinto en el CD —que abastece a todos los locales— que en un local,
-    # que solo repone su propia góndola. Cuál de los dos aplica lo decide el
-    # TIPO del punto de venta, no quien carga el dato.
+    # Tres mínimos y no uno: el mismo artículo necesita un colchón muy
+    # distinto en el CD —que abastece a todos los locales—, en la tienda
+    # online y en un local, que solo repone su propia góndola. Cuál aplica lo
+    # decide el TIPO del punto de venta (`COLUMNA_MINIMO`), no quien carga el
+    # dato. Nacen en 1: todo producto avisa cuando falta en una sucursal.
     stock_minimo_cd: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
+        Integer, nullable=False, server_default=str(MINIMO_POR_DEFECTO)
     )
     stock_minimo_local: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
+        Integer, nullable=False, server_default=str(MINIMO_POR_DEFECTO)
+    )
+    stock_minimo_online: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=str(MINIMO_POR_DEFECTO)
     )
 
     updated_at: Mapped[datetime] = mapped_column(
@@ -121,7 +139,7 @@ class Stock(Base):
         # sigue rechazando el faltante para todo salvo la confirmación de una
         # venta — un remito no puede mandar mercadería que no está.
         CheckConstraint(
-            "stock_minimo_cd >= 0 AND stock_minimo_local >= 0",
+            "stock_minimo_cd >= 0 AND stock_minimo_local >= 0 AND stock_minimo_online >= 0",
             name="ck_stock_minimos_no_negativos",
         ),
     )
@@ -136,11 +154,8 @@ class Stock(Base):
         eligiera la columna por su cuenta, alcanzaría con que uno se
         equivocara para avisar de una falta que no existe.
         """
-        from app.models.punto_de_venta import TipoPuntoVenta
-
-        if self.punto_de_venta.tipo == TipoPuntoVenta.CD:
-            return self.stock_minimo_cd
-        return self.stock_minimo_local
+        columna = COLUMNA_MINIMO.get(self.punto_de_venta.tipo)
+        return getattr(self, columna) if columna else 0
 
     @property
     def bajo_minimo(self) -> bool:
@@ -152,6 +167,20 @@ class Stock(Base):
             f"cantidad={self.cantidad}>"
         )
 
+
+
+def minimo_aplicable_sql():
+    """
+    La regla de `Stock.stock_minimo` para usar dentro de una query (necesita
+    `PuntoDeVenta` en el FROM). Especiales y cualquier tipo sin mínimo: 0.
+    """
+    return case(
+        *[
+            (PuntoDeVenta.tipo == tipo, getattr(Stock, columna))
+            for tipo, columna in COLUMNA_MINIMO.items()
+        ],
+        else_=literal(0),
+    )
 
 class MovimientoStock(Base):
     """

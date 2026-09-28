@@ -14,6 +14,11 @@
    nada especial.
    ========================================================================== */
 
+/** Valor de un input numérico para la API: null si quedó vacío. */
+function numeroOVacio(valor) {
+    return valor === '' || valor === null || valor === undefined ? null : Number(valor);
+}
+
 function abmStock({ puntoFijo = null } = {}) {
     return {
         filas: [],
@@ -42,11 +47,24 @@ function abmStock({ puntoFijo = null } = {}) {
 
         minimos: {
             abierto: false, guardando: false, variante_id: null,
-            punto_de_venta_id: null, codigo: '', tipo: '',
-            stock_minimo_cd: 0, stock_minimo_local: 0,
-            /** El que rige en esta ubicación, que es lo que decide la alerta. */
+            punto_de_venta_id: null, codigo: '', tipo: '', ubicacion: '',
+            cargando: false, pedido: null, locales_distintos: false,
+            stock_minimo_cd: '', stock_minimo_online: '', stock_minimo_local: '',
+            // Sí = el mínimo de local va a todos los locales (como siempre);
+            // No = solo al local de la fila desde la que se abrió.
+            todos_los_locales: true,
+            /**
+             * El que rige en esta ubicación, que es lo que decide la alerta.
+             * Solo de muestra: la regla de verdad está en el backend
+             * (`COLUMNA_MINIMO`); las Ubicaciones Especiales no llevan mínimo.
+             */
             aplicable() {
-                return this.tipo === 'cd' ? this.stock_minimo_cd : this.stock_minimo_local;
+                const porTipo = {
+                    cd: this.stock_minimo_cd,
+                    online: this.stock_minimo_online,
+                    local: this.stock_minimo_local,
+                };
+                return porTipo[this.tipo] ?? 0;
             },
         },
 
@@ -159,18 +177,50 @@ function abmStock({ puntoFijo = null } = {}) {
 
         /* --- Mínimos --- */
 
-        abrirMinimos(fila) {
+        /**
+         * Abre el modal y pide los mínimos VIGENTES a la API: los que muestra
+         * el listado en cada ubicación. No se leen de la fila clickeada —cada
+         * fila guarda las tres columnas pero solo rige la de su tipo, y las
+         * otras tienen valores viejos—.
+         */
+        async abrirMinimos(fila) {
+            const pedido = Symbol();   // descarta la respuesta de un clic anterior
             this.minimos = {
                 ...this.minimos,
                 abierto: true,
+                cargando: true,
                 guardando: false,
+                pedido,
                 variante_id: fila.variante.id,
                 punto_de_venta_id: fila.punto_de_venta.id,
                 codigo: fila.variante.codigo_completo + fila.variante.verificador,
                 tipo: fila.punto_de_venta.tipo,
-                stock_minimo_cd: fila.stock_minimo_cd,
-                stock_minimo_local: fila.stock_minimo_local,
+                ubicacion: fila.punto_de_venta.nombre,
+                stock_minimo_cd: '',
+                stock_minimo_online: '',
+                stock_minimo_local: '',
+                locales_distintos: false,
+                todos_los_locales: true,
             };
+            try {
+                const params = new URLSearchParams({ punto_de_venta_id: fila.punto_de_venta.id });
+                const resp = await fetch(
+                    `/api/v1/stock/minimos/${fila.variante.id}?` + params,
+                    { credentials: 'same-origin' }
+                );
+                if (!resp.ok) throw new Error('No se pudieron leer los mínimos');
+                const datos = await resp.json();
+                if (this.minimos.pedido !== pedido) return;
+                this.minimos.stock_minimo_cd = datos.stock_minimo_cd ?? '';
+                this.minimos.stock_minimo_online = datos.stock_minimo_online ?? '';
+                this.minimos.stock_minimo_local = datos.stock_minimo_local ?? '';
+                this.minimos.locales_distintos = datos.locales_distintos;
+            } catch (e) {
+                window.toast(e.message, 'error');
+                this.minimos.abierto = false;
+            } finally {
+                if (this.minimos.pedido === pedido) this.minimos.cargando = false;
+            }
         },
 
         async guardarMinimos() {
@@ -184,8 +234,12 @@ function abmStock({ puntoFijo = null } = {}) {
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin',
                         body: JSON.stringify({
-                            stock_minimo_cd: Number(m.stock_minimo_cd) || 0,
-                            stock_minimo_local: Number(m.stock_minimo_local) || 0,
+                            // Vacío = no tocar (la API ignora los null).
+                            stock_minimo_cd: numeroOVacio(m.stock_minimo_cd),
+                            stock_minimo_online: numeroOVacio(m.stock_minimo_online),
+                            stock_minimo_local: numeroOVacio(m.stock_minimo_local),
+                            aplica_a_todos_los_locales: m.tipo !== 'local' || m.todos_los_locales,
+                            punto_de_venta_id: m.punto_de_venta_id,
                         }),
                     }
                 );

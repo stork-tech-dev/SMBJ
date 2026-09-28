@@ -357,11 +357,11 @@ class Variante(Base):
 # y la clase se define en otro módulo. Va en este archivo —y no en el de
 # stock— para que exista con solo importar `Variante`, sin depender de qué
 # módulo se cargó primero.
-from sqlalchemy import case, literal as _literal, select as _select  # noqa: E402
+from sqlalchemy import literal as _literal, select as _select  # noqa: E402
 from sqlalchemy.orm import column_property  # noqa: E402
 
 from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta  # noqa: E402
-from app.models.stock import Stock  # noqa: E402
+from app.models.stock import Stock, minimo_aplicable_sql  # noqa: E402
 
 # Excluye las Ubicaciones Especiales (ej. "Productos Fallados"): ahí el
 # producto existe físicamente pero no cuenta como stock vendible, así que
@@ -397,14 +397,10 @@ Variante.bajo_minimo = column_property(
     .join(PuntoDeVenta, PuntoDeVenta.id == Stock.punto_de_venta_id)
     .where(
         Stock.variante_id == Variante.id,
-        # Una Ubicación Especial no tiene mínimo que reponer: no es stock
-        # vendible.
-        PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL,
-        Stock.cantidad
-        <= case(
-            (PuntoDeVenta.tipo == TipoPuntoVenta.CD, Stock.stock_minimo_cd),
-            else_=Stock.stock_minimo_local,
-        ),
+        # Misma regla que el resto del sistema: una Ubicación Especial tiene
+        # mínimo 0 y no enciende la luz.
+        minimo_aplicable_sql() > 0,
+        Stock.cantidad <= minimo_aplicable_sql(),
     )
     .correlate_except(Stock, PuntoDeVenta)
     .exists(),

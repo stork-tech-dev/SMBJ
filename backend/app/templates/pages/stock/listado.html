@@ -7,6 +7,7 @@
 {% from "components/botones.html" import accion, acciones %}
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/paginacion.html" import paginacion %}
+{% from "components/switch_si_no.html" import switch_si_no %}
 
 {% block contenido %}
 
@@ -238,35 +239,59 @@
             </div>
 
             <form @submit.prevent="guardarMinimos()" class="px-6 sm:px-10 pb-8 pt-4">
-                {# Dos mínimos y no uno: el CD abastece a todos los locales,
-                   así que su colchón es de otro orden que el de una góndola.
-                   Cuál de los dos rige lo decide el TIPO de la ubicación, no
-                   quien carga el dato. #}
-                <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    <div class="flex flex-col gap-1">
+                {# Tres mínimos, uno por fila: cuál rige lo decide el TIPO de
+                   la ubicación (CD, online o local), no quien carga el dato.
+                   Las Ubicaciones Especiales no llevan mínimo. #}
+                <div class="flex flex-col gap-5">
+                    <div class="grid gap-1 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-4">
                         <label for="mi-cd" class="text-sm font-semibold text-texto-header">
                             Mínimo en el CD
                         </label>
                         <input id="mi-cd" type="number" min="0" step="1"
-                               x-model="minimos.stock_minimo_cd" class="campo-linea">
+                               x-model="minimos.stock_minimo_cd" placeholder="—"
+                               :disabled="minimos.cargando" class="campo-linea sm:max-w-[8rem]">
                     </div>
 
-                    <div class="flex flex-col gap-1">
+                    <div class="grid gap-1 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-4">
+                        <label for="mi-online" class="text-sm font-semibold text-texto-header">
+                            Mínimo Online
+                        </label>
+                        <input id="mi-online" type="number" min="0" step="1"
+                               x-model="minimos.stock_minimo_online" placeholder="—"
+                               :disabled="minimos.cargando" class="campo-linea sm:max-w-[8rem]">
+                    </div>
+
+                    <div class="grid gap-1 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-4">
                         <label for="mi-local" class="text-sm font-semibold text-texto-header">
                             Mínimo en un local
                         </label>
-                        <input id="mi-local" type="number" min="0" step="1"
-                               x-model="minimos.stock_minimo_local" class="campo-linea">
+                        <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                            <input id="mi-local" type="number" min="0" step="1"
+                                   x-model="minimos.stock_minimo_local" placeholder="—"
+                               :disabled="minimos.cargando" class="campo-linea sm:max-w-[8rem]">
+                            {# Solo desde la fila de un local: "No" acota el
+                               mínimo a ese local. #}
+                            <template x-if="minimos.tipo === 'local'">
+                                {{ switch_si_no('minimos.todos_los_locales',
+                                                'Aplica a todos los locales', 'mi-todos') }}
+                            </template>
+                        </div>
                     </div>
 
-                    <p class="sm:col-span-2 -mt-2 text-xs text-texto-disabled">
-                        Estos mínimos se guardan para <span class="font-medium text-texto">todas
-                        las ubicaciones de este código</span>: el de CD en el depósito, el
-                        de local en cada local — no solo en esta fila.
-                        En esta ubicación (<span x-text="minimos.tipo"></span>) rige
+                    <p x-show="minimos.locales_distintos && minimos.tipo !== 'local'" x-cloak
+                       class="-mt-3 text-xs text-texto-muted">
+                        Cada local tiene su mínimo; completá el de local para igualarlos.
+                    </p>
+
+                    <p class="-mt-1 text-xs text-texto-disabled">
+                        El de CD se guarda en el depósito y el Online en la tienda online.
+                        El de local, <span class="font-medium text-texto"
+                              x-text="minimos.tipo === 'local' && !minimos.todos_los_locales
+                                      ? 'solo en ' + minimos.ubicacion
+                                      : 'en todos los locales'"></span>.
+                        En esta ubicación (<span x-text="minimos.ubicacion"></span>) rige
                         <span class="font-medium text-texto" x-text="minimos.aplicable()"></span>.
-                        En cero no genera alerta: es lo que corresponde a lo que
-                        nadie configuró todavía.
+                        Las Ubicaciones Especiales no llevan mínimo. En cero no genera alerta.
                     </p>
                 </div>
 
@@ -274,7 +299,7 @@
                     <button type="button" @click="minimos.abierto = false"
                             class="h-boton px-5 rounded-input border border-borde text-base
                                    hover:border-primary hover:text-primary">Cancelar</button>
-                    <button type="submit" :disabled="minimos.guardando"
+                    <button type="submit" :disabled="minimos.guardando || minimos.cargando"
                             class="h-boton px-8 rounded-input bg-primary text-white text-base
                                    font-medium hover:bg-primary-hover disabled:opacity-60"
                             x-text="minimos.guardando ? 'Guardando…' : 'Guardar'"></button>

@@ -28,6 +28,7 @@ from app.schemas.stock import (
     ConsultaStockFila,
     ConsultaStockResponse,
     IngresoCrear,
+    MinimosVariante,
     MotivoBajaCrear,
     MotivoBajaEditar,
     MotivoBajaResponse,
@@ -542,6 +543,27 @@ def crear_baja(
     return movimiento
 
 
+@router.get(
+    "/minimos/{variante_id}",
+    response_model=MinimosVariante,
+    summary="Mínimos de reposición vigentes de una variante",
+)
+def ver_minimos(
+    variante_id: int,
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.STOCK, "editar")),
+):
+    """
+    Lo que precarga el modal "Mínimos": el mínimo que rige en el CD, en la
+    online y en el local `punto_de_venta_id` (o el común de los locales).
+    """
+    try:
+        return servicio.minimos_de_variante(db, variante_id, punto_de_venta_id)
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+
+
 @router.put(
     "/minimos/{variante_id}",
     response_model=MensajeResponse,
@@ -557,9 +579,10 @@ def definir_minimos(
     """
     Lo único que se edita a mano en la tabla de stock.
 
-    Se aplica a TODA la variante, no a una ubicación puntual: el mínimo de
-    CD a la(s) fila(s) de depósito y el de local a todas las filas de local
-    que ya existen para ese código (ver `servicio.definir_minimos`). Sin
+    Se aplica a TODA la variante: el mínimo de CD a la(s) fila(s) de
+    depósito, el online a las de la tienda online y el de local a todas las
+    filas de local — o solo al local `punto_de_venta_id` si
+    `aplica_a_todos_los_locales` es false (ver `servicio.definir_minimos`). Sin
     `DeviceScope`: hoy el permiso de editar stock solo lo tienen Cuenta
     Maestra y Dueño, que nunca están restringidos por dispositivo.
     """
@@ -569,7 +592,11 @@ def definir_minimos(
             autor,
             variante_id,
             stock_minimo_cd=datos.stock_minimo_cd,
+            stock_minimo_online=datos.stock_minimo_online,
             stock_minimo_local=datos.stock_minimo_local,
+            solo_punto_de_venta_id=(
+                None if datos.aplica_a_todos_los_locales else datos.punto_de_venta_id
+            ),
             ip_origen=ip_de_request(request),
         )
     except NoEncontrado as exc:

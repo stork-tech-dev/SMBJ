@@ -394,6 +394,11 @@ def _crear_variante(
     )
     db.add(variante)
     db.flush()
+
+    # Nace con fila en cada sucursal (CD y online incluidos) y mínimo 1.
+    from app.services.stock import inicializar_stock
+
+    inicializar_stock(db, variante.id)
     return variante
 
 

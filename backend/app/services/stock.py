@@ -17,7 +17,7 @@ invertir el sentido de una operación.
 
 from decimal import Decimal
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -25,7 +25,14 @@ from app.core.device_scope import DeviceScope
 from app.core.utils import ahora_db
 from app.models.producto import Producto, Variante
 from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
-from app.models.stock import MovimientoStock, Stock, TipoMovimiento
+from app.models.stock import (
+    COLUMNA_MINIMO,
+    MINIMO_POR_DEFECTO,
+    MovimientoStock,
+    Stock,
+    TipoMovimiento,
+    minimo_aplicable_sql,
+)
 from app.models.usuario import Usuario
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -73,15 +80,50 @@ def obtener_variante(db: Session, variante_id: int) -> Variante:
     return variante
 
 
+def inicializar_stock(db: Session, variante_id: int) -> list[Stock]:
+    """
+    Crea la fila de stock de una variante NUEVA en cada punto de venta
+    activo —locales, CD y tienda online—, en cero y con mínimo 1, para que
+    desde el alta avise cuando falta en cualquier sucursal.
+
+    Las Ubicaciones Especiales (p. ej. Productos Fallados) quedan afuera: no
+    son stock vendible y no se reponen. Los tres mínimos nacen en
+    `MINIMO_POR_DEFECTO` (default de la columna); cuál rige lo decide el tipo
+    de la ubicación (`COLUMNA_MINIMO`).
+    """
+    puntos = db.execute(
+        select(PuntoDeVenta.id).where(
+            PuntoDeVenta.activo.is_(True),
+            PuntoDeVenta.tipo.in_(list(COLUMNA_MINIMO)),
+        )
+    ).scalars().all()
+    filas = [
+        Stock(
+            variante_id=variante_id,
+            punto_de_venta_id=punto_id,
+            cantidad=0,
+            stock_minimo_cd=MINIMO_POR_DEFECTO,
+            stock_minimo_local=MINIMO_POR_DEFECTO,
+            stock_minimo_online=MINIMO_POR_DEFECTO,
+            updated_at=ahora_db(),
+        )
+        for punto_id in puntos
+    ]
+    db.add_all(filas)
+    db.flush()
+    return filas
+
+
 def fila_de_stock(db: Session, variante_id: int, punto_de_venta_id: int) -> Stock:
     """
     La fila de stock de esa variante en esa ubicación, creándola en cero si
     todavía no existe.
 
-    Se crea al primer movimiento y no al dar de alta el producto: un catálogo
-    de 5.000 variantes por 6 ubicaciones serían 30.000 filas en cero que no
-    dicen nada. "Sin fila" y "cantidad 0" significan lo mismo, y el que
-    pregunta recibe 0 en los dos casos.
+    Las variantes nuevas ya nacen con fila en cada punto de venta vendible
+    (`inicializar_stock`); esto cubre el resto: Ubicaciones Especiales y
+    puntos de venta creados o reactivados después. La fila nueva nace con los
+    mínimos en `MINIMO_POR_DEFECTO`. "Sin fila" y "cantidad 0" significan lo
+    mismo, y el que pregunta recibe 0 en los dos casos.
     """
     fila = db.execute(
         select(Stock).where(
@@ -95,6 +137,9 @@ def fila_de_stock(db: Session, variante_id: int, punto_de_venta_id: int) -> Stoc
             variante_id=variante_id,
             punto_de_venta_id=punto_de_venta_id,
             cantidad=0,
+            stock_minimo_cd=MINIMO_POR_DEFECTO,
+            stock_minimo_local=MINIMO_POR_DEFECTO,
+            stock_minimo_online=MINIMO_POR_DEFECTO,
             updated_at=ahora_db(),
         )
         db.add(fila)
@@ -279,26 +324,46 @@ def aplicar_movimiento(
 # ============================================================================
 
 
-def minimo_aplicable(punto: PuntoDeVenta, fila: Stock) -> int:
+def minimos_de_variante(
+    db: Session, variante_id: int, punto_de_venta_id: int | None = None
+) -> dict:
     """
-    Cuál de los dos mínimos rige en esta ubicación.
+    Los mínimos de una variante tal como rigen en cada ubicación —lo mismo
+    que muestra la columna "Mínimo" del listado—, para precargar el modal.
 
-    El CD abastece a todos los locales, así que su colchón es de otro orden
-    que el de una góndola. Cuál aplica lo decide el TIPO del punto de venta y
-    no quien carga el dato: si fuera una elección manual, dos locales con el
-    mismo artículo podrían estar mirando columnas distintas.
+    No se leen de UNA fila: cada fila guarda las tres columnas pero solo la
+    de su tipo rige (`COLUMNA_MINIMO`), y las otras quedan con valores viejos
+    que no significan nada. Por eso el CD sale de la fila del CD, el online
+    de la online y el de local de la fila de `punto_de_venta_id` si es un
+    local, o si no, del valor común de los locales (None con
+    `locales_distintos` si no coinciden). None también si no hay fila.
     """
-    if punto.tipo == TipoPuntoVenta.CD:
-        return fila.stock_minimo_cd
-    return fila.stock_minimo_local
+    obtener_variante(db, variante_id)
+    filas = db.execute(
+        select(Stock)
+        .where(Stock.variante_id == variante_id)
+        .options(joinedload(Stock.punto_de_venta))
+    ).unique().scalars().all()
 
+    def del_tipo(tipo):
+        return {f.stock_minimo for f in filas if f.punto_de_venta.tipo == tipo}
 
-def _minimo_sql():
-    """La misma regla que `minimo_aplicable`, para usar dentro de una query."""
-    return case(
-        (PuntoDeVenta.tipo == TipoPuntoVenta.CD, Stock.stock_minimo_cd),
-        else_=Stock.stock_minimo_local,
+    def unico(valores):
+        return next(iter(valores)) if len(valores) == 1 else None
+
+    locales = del_tipo(TipoPuntoVenta.LOCAL)
+    elegida = next(
+        (f for f in filas
+         if f.punto_de_venta_id == punto_de_venta_id
+         and f.punto_de_venta.tipo == TipoPuntoVenta.LOCAL),
+        None,
     )
+    return {
+        "stock_minimo_cd": unico(del_tipo(TipoPuntoVenta.CD)),
+        "stock_minimo_online": unico(del_tipo(TipoPuntoVenta.ONLINE)),
+        "stock_minimo_local": elegida.stock_minimo if elegida else unico(locales),
+        "locales_distintos": len(locales) > 1,
+    }
 
 
 def definir_minimos(
@@ -307,26 +372,44 @@ def definir_minimos(
     variante_id: int,
     *,
     stock_minimo_cd: int | None = None,
+    stock_minimo_online: int | None = None,
     stock_minimo_local: int | None = None,
+    solo_punto_de_venta_id: int | None = None,
     ip_origen: str | None = None,
 ) -> list[Stock]:
     """
-    Cambia los mínimos de TODAS las filas de stock de una variante, no de
-    una ubicación puntual: el mínimo de CD se aplica a la(s) fila(s) de
-    depósito y el de local a todas las filas de local que ya existen para
-    ese código. Es lo único que se edita a mano en esta tabla: la CANTIDAD
-    nunca se toca así —para eso están los movimientos—, pero el mínimo es
-    una decisión de reposición, no un hecho del depósito.
+    Cambia los mínimos de las filas de stock de una variante: el de CD en
+    las filas de depósito, el online en las de la tienda online y el de
+    local en las de los locales. Las Ubicaciones Especiales no llevan mínimo.
+    Es lo único que se edita a mano en esta tabla: la CANTIDAD nunca se toca
+    así —para eso están los movimientos—, pero el mínimo es una decisión de
+    reposición, no un hecho del depósito.
+
+    `solo_punto_de_venta_id` acota el mínimo de LOCAL a ese único local (tiene
+    que ser de tipo local); los de CD y online siguen aplicando a todas sus
+    filas. Sin él, el de local va a todos los locales.
 
     Solo toca filas que ya existen — no crea stock en ubicaciones que nunca
     tuvieron esta variante; para eso ya está `fila_de_stock` en el flujo de
     movimientos.
     """
-    for valor in (stock_minimo_cd, stock_minimo_local):
+    valores = {
+        TipoPuntoVenta.CD: stock_minimo_cd,
+        TipoPuntoVenta.ONLINE: stock_minimo_online,
+        TipoPuntoVenta.LOCAL: stock_minimo_local,
+    }
+    for valor in valores.values():
         if valor is not None and valor < 0:
             raise ReglaDeNegocio("El stock mínimo no puede ser negativo")
 
     obtener_variante(db, variante_id)
+
+    if solo_punto_de_venta_id is not None:
+        punto = obtener_punto(db, solo_punto_de_venta_id)
+        if punto.tipo != TipoPuntoVenta.LOCAL:
+            raise ReglaDeNegocio(
+                "El mínimo de un solo local se define desde la fila de un local"
+            )
 
     filas = db.execute(
         select(Stock)
@@ -336,18 +419,22 @@ def definir_minimos(
 
     tocadas = []
     for fila in filas:
-        es_cd = fila.punto_de_venta.tipo == TipoPuntoVenta.CD
-        valor_nuevo = stock_minimo_cd if es_cd else stock_minimo_local
-        if valor_nuevo is None or valor_nuevo == (
-            fila.stock_minimo_cd if es_cd else fila.stock_minimo_local
+        tipo = fila.punto_de_venta.tipo
+        columna = COLUMNA_MINIMO.get(tipo)
+        valor_nuevo = valores.get(tipo)
+        if columna is None or valor_nuevo is None:
+            continue
+        if (
+            tipo == TipoPuntoVenta.LOCAL
+            and solo_punto_de_venta_id is not None
+            and fila.punto_de_venta_id != solo_punto_de_venta_id
         ):
+            continue
+        if getattr(fila, columna) == valor_nuevo:
             continue
 
         antes = snapshot(fila)
-        if es_cd:
-            fila.stock_minimo_cd = valor_nuevo
-        else:
-            fila.stock_minimo_local = valor_nuevo
+        setattr(fila, columna, valor_nuevo)
         fila.updated_at = ahora_db()
         db.flush()
 
@@ -464,11 +551,11 @@ def listar_stock(
             )
         )
     if solo_bajo_minimo:
-        # `_minimo_sql() > 0` deja afuera los que nunca tuvieron un mínimo
+        # `minimo_aplicable_sql() > 0` deja afuera los que nunca tuvieron un mínimo
         # configurado (columna no nullable, default 0): sin esto, cualquier
         # producto en cero aparecería como "bajo mínimo" aunque nadie haya
         # definido ninguno. Mismo criterio que `alertas()`, más abajo.
-        consulta = consulta.where(Stock.cantidad <= _minimo_sql(), _minimo_sql() > 0)
+        consulta = consulta.where(Stock.cantidad <= minimo_aplicable_sql(), minimo_aplicable_sql() > 0)
     if not incluir_sin_stock:
         consulta = consulta.where(Stock.cantidad > 0)
 
@@ -559,8 +646,8 @@ def alertas(db: Session, scope: DeviceScope, limite: int = 200) -> list[Stock]:
     """
     consulta = (
         _consulta_base(scope)
-        .where(Stock.cantidad <= _minimo_sql(), _minimo_sql() > 0)
-        .order_by((Stock.cantidad - _minimo_sql()), func.lower(Producto.descripcion))
+        .where(Stock.cantidad <= minimo_aplicable_sql(), minimo_aplicable_sql() > 0)
+        .order_by((Stock.cantidad - minimo_aplicable_sql()), func.lower(Producto.descripcion))
         .limit(limite)
     )
     return list(db.execute(consulta).unique().scalars().all())

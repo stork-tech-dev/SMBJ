@@ -1,0 +1,35 @@
+{# ===========================================================================
+   Macro: switch Sí / No sobre un booleano de Alpine (para formularios).
+
+   Mismo control visual que `switch_activos` / `switch_estado`, pero el
+   modelo es un booleano de verdad: esos dos filtran listados y usan strings
+   para entrar en los query params; este vive en un formulario.
+
+   Parámetros:
+     modelo     expresión Alpine booleana (ej. `minimos.todos_los_locales`).
+     etiqueta   texto de la pregunta, a la izquierda del switch.
+     id         id del botón (y `{id}-label` del texto).
+
+   Uso:
+     {% from "components/switch_si_no.html" import switch_si_no %}
+     {{ switch_si_no('minimos.todos_los_locales', 'Aplica a todos los locales', 'mi-todos') }}
+   =========================================================================== #}
+
+{% macro switch_si_no(modelo, etiqueta, id) %}
+<div class="flex items-center gap-3">
+    <span id="{{ id }}-label" class="text-sm font-semibold text-texto-muted">{{ etiqueta }}</span>
+    <button type="button" role="switch" id="{{ id }}"
+            aria-labelledby="{{ id }}-label"
+            :aria-checked="{{ modelo }} ? 'true' : 'false'"
+            @click="{{ modelo }} = !{{ modelo }}"
+            class="inline-flex items-center min-h-toque focus:outline-none
+                   focus-visible:ring-2 focus-visible:ring-primary rounded-input">
+        <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"
+              :class="{{ modelo }} ? 'bg-primary' : 'bg-borde'">
+            <span class="inline-block w-4 h-4 rounded-full bg-white shadow transition-transform"
+                  :class="{{ modelo }} ? 'translate-x-6' : 'translate-x-1'"></span>
+        </span>
+    </button>
+    <span class="text-sm font-semibold text-texto w-6" x-text="{{ modelo }} ? 'Sí' : 'No'"></span>
+</div>
+{% endmacro %}
