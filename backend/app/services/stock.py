@@ -498,6 +498,7 @@ def listar_stock(
     solo_bajo_minimo: bool = False,
     incluir_sin_stock: bool = True,
     todos_los_locales: bool = False,
+    punto_propio_id: int | None = None,
     usuario_id: int | None = None,
     punto_de_venta_dispositivo: int | None = None,
     pagina: int = 1,
@@ -511,7 +512,10 @@ def listar_stock(
     tiene stock para el cliente que tiene enfrente ("acá no hay, ¿dónde
     sí?"). Es de solo lectura — no toca `DeviceScope.exigir()`, que sigue
     bloqueando cualquier baja, remito o movimiento sobre un local ajeno
-    exactamente igual que siempre.
+    exactamente igual que siempre. Por la misma pregunta, de las OTRAS
+    ubicaciones solo trae las que tienen stock (> 0): la propia
+    (`punto_propio_id`, o la del scope) aparece aunque esté en cero, para
+    saber que acá no hay.
 
     `usuario_id` + `punto_de_venta_dispositivo` (los dos juntos, o ninguno)
     calculan `StockResponse.reservado_carrito`: cuánto de cada variante ya
@@ -558,6 +562,13 @@ def listar_stock(
         consulta = consulta.where(Stock.cantidad <= minimo_aplicable_sql(), minimo_aplicable_sql() > 0)
     if not incluir_sin_stock:
         consulta = consulta.where(Stock.cantidad > 0)
+    if todos_los_locales:
+        propio = punto_propio_id if punto_propio_id is not None else scope.punto_de_venta_id
+        consulta = consulta.where(
+            or_(Stock.punto_de_venta_id == propio, Stock.cantidad > 0)
+            if propio is not None
+            else Stock.cantidad > 0
+        )
 
     total = db.execute(
         select(func.count()).select_from(consulta.order_by(None).subquery())

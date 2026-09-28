@@ -1072,6 +1072,33 @@ def test_todos_los_locales_es_la_excepcion_de_solo_lectura(
     assert {f.punto_de_venta_id for f in filas} == {cd.id, local.id, otro_local.id}
 
 
+def test_todos_los_locales_trae_de_los_otros_solo_los_que_tienen_stock(
+    db, autor, variante, cd, local, otro_local
+):
+    """
+    "¿Dónde sí hay?": los otros locales en cero no suman. El propio aparece
+    igual aunque esté en cero, para saber que acá no hay.
+    """
+    servicio.aplicar_movimiento(
+        db, autor, tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id, cantidad=4, punto_venta_destino_id=otro_local.id,
+    )
+    for punto in (cd, local):
+        servicio.fila_de_stock(db, variante.id, punto.id)
+    db.flush()
+
+    filas, total = servicio.listar_stock(
+        db, DeviceScope(restringido=True, punto_de_venta_id=local.id),
+        todos_los_locales=True,
+    )
+    assert {f.punto_de_venta_id for f in filas} == {local.id, otro_local.id}
+    assert total == 2
+
+    # Sin local propio (rol sin restricción, equipo sin local): solo con stock.
+    filas, _ = servicio.listar_stock(db, LIBRE, todos_los_locales=True)
+    assert {f.punto_de_venta_id for f in filas} == {otro_local.id}
+
+
 def test_api_todos_los_locales_le_muestra_al_vendedor_otros_locales(
     client, db, crear_usuario, dar_permiso, roles, autor, variante, cd, local, otro_local,
 ):

@@ -69,7 +69,9 @@ def listar(
     todos_los_locales: bool = Query(
         default=False,
         description="Solo lectura: ignora el aislamiento por dispositivo "
-        "para que una vendedora pueda ver cuánto hay en otros locales.",
+        "para que una vendedora pueda ver cuánto hay en otros locales. De las "
+        "otras ubicaciones trae solo las que tienen stock (> 0); la del "
+        "dispositivo aparece aunque esté en cero.",
     ),
     restar_carrito: bool = Query(
         default=False,
@@ -100,6 +102,7 @@ def listar(
         solo_bajo_minimo=solo_bajo_minimo,
         incluir_sin_stock=incluir_sin_stock,
         todos_los_locales=todos_los_locales,
+        punto_propio_id=dispositivo.punto_de_venta_id if dispositivo else None,
         usuario_id=autor.id if restar_carrito else None,
         punto_de_venta_dispositivo=(
             dispositivo.punto_de_venta_id if restar_carrito and dispositivo else None
