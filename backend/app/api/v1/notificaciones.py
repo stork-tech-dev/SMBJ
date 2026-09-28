@@ -4,15 +4,27 @@ Solo el propio usuario puede ver y marcar sus notificaciones.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.permisos import Modulo, requiere_permiso
 from app.models.turno import Notificacion
-from app.schemas.notificaciones import NotificacionResponse
+from app.schemas.notificaciones import ContadorNotificaciones, NotificacionResponse
 
 router = APIRouter(prefix="/notificaciones", tags=["notificaciones"])
+
+
+def _respuesta(n: Notificacion) -> NotificacionResponse:
+    return NotificacionResponse(
+        id=n.id,
+        tipo=n.tipo.value,
+        titulo=n.titulo,
+        cuerpo=n.cuerpo,
+        leida=n.leida,
+        metadata_=n.metadata_,
+        created_at=n.created_at,
+    )
 
 
 @router.get("", response_model=list[NotificacionResponse])
@@ -29,19 +41,21 @@ def listar_notificaciones(
     )
     if solo_no_leidas:
         stmt = stmt.where(Notificacion.leida.is_(False))
-    filas = db.execute(stmt).scalars().all()
-    return [
-        NotificacionResponse(
-            id=n.id,
-            tipo=n.tipo.value,
-            titulo=n.titulo,
-            cuerpo=n.cuerpo,
-            leida=n.leida,
-            metadata_=n.metadata_,
-            created_at=n.created_at,
+    return [_respuesta(n) for n in db.execute(stmt).scalars().all()]
+
+
+@router.get("/contador", response_model=ContadorNotificaciones)
+def contador(
+    usuario=Depends(requiere_permiso(Modulo.CAJA, "ver")),
+    db: Session = Depends(get_db),
+):
+    """Cuántas notificaciones sin leer tiene el usuario: el número de la campanita."""
+    no_leidas = db.execute(
+        select(func.count(Notificacion.id)).where(
+            Notificacion.usuario_id == usuario.id, Notificacion.leida.is_(False)
         )
-        for n in filas
-    ]
+    ).scalar_one()
+    return ContadorNotificaciones(no_leidas=no_leidas)
 
 
 @router.patch("/{notificacion_id}/leer", response_model=NotificacionResponse)
@@ -62,15 +76,7 @@ def marcar_leida(
     notif.leida = True
     db.commit()
     db.refresh(notif)
-    return NotificacionResponse(
-        id=notif.id,
-        tipo=notif.tipo.value,
-        titulo=notif.titulo,
-        cuerpo=notif.cuerpo,
-        leida=notif.leida,
-        metadata_=notif.metadata_,
-        created_at=notif.created_at,
-    )
+    return _respuesta(notif)
 
 
 @router.patch("/leer-todas", status_code=status.HTTP_204_NO_CONTENT)

@@ -1078,11 +1078,26 @@ def test_el_header_oculta_el_buscador_y_muestra_la_campanita(client, crear_usuar
     assert "buscador-global" not in html, "el buscador se sigue renderizando"
     assert 'placeholder="Buscar…"' not in html
 
-    # La campanita está, y está inerte a propósito: todavía no hay módulo
-    # de notificaciones detrás.
-    assert "Notificaciones" in html, "falta la campanita"
-    campana = html.split("Notificaciones")[0].rsplit("<button", 1)[1]
-    assert "disabled" in campana, "la campanita tiene que estar deshabilitada"
+    # La campanita está y, para la Cuenta Maestra, activa (recibe las
+    # diferencias de arqueo).
+    assert 'x-data="notificaciones()"' in html, "falta la campanita activa"
+
+
+def test_la_campanita_solo_se_activa_para_duenos_y_maestra(client, crear_usuario):
+    """Quien no recibe notificaciones la ve deshabilitada, como antes."""
+    from app.core.permisos import ROL_DUENO
+
+    crear_usuario("dueno1", ROL_DUENO)
+    crear_usuario("vende", ROL_VENDEDOR)
+
+    client.post("/api/v1/auth/login", json={"username": "dueno1", "password": "Test1234!"})
+    assert 'x-data="notificaciones()"' in client.get("/").text
+
+    client.cookies.clear()
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+    html = client.get("/").text
+    assert 'x-data="notificaciones()"' not in html
+    assert 'aria-label="Notificaciones (no disponible)"' in html
 
 
 def test_sidebar_se_filtra_por_permisos(client, crear_usuario, roles, dar_permiso):
@@ -1218,7 +1233,9 @@ def test_roles_tiene_una_sola_papelera_por_fila(client, crear_usuario):
     client.post("/api/v1/auth/login", json={"username": "cm", "password": "Test1234!"})
 
     html = client.get("/roles").text
-    fila = html.split("<template")[1].split("</template>")[0]
+    # La fila del listado (la que usa `r.`), no otro <template> de la página
+    # como el panel de la campanita del header.
+    fila = next(t for t in html.split("<template")[1:] if "r.activo" in t).split("</template>")[0]
 
     assert fila.count("Desactivar") == 1
     assert "Eliminar" not in fila, "volvió la segunda papelera"

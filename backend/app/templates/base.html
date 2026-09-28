@@ -41,6 +41,7 @@
     {# app.js va antes que Alpine y con defer: define temaApp() para el
        x-data del <html> y corre con el DOM ya disponible. #}
     <script src="{{ estatico('/js/app.js') }}" defer></script>
+    <script src="{{ estatico('/js/notificaciones.js') }}" defer></script>
     <script src="https://unpkg.com/alpinejs@3.x/dist/cdn.min.js" defer></script>
 
     {# FingerprintJS: identifica el dispositivo cuando no hay cookie.
@@ -202,16 +203,65 @@
             {# Campanita de notificaciones ("Grupo 88" del Figma). Va sin borde
                —a diferencia del toggle— porque en el diseño es solo el ícono.
 
-               TODAVÍA NO HACE NADA: es el lugar reservado para el módulo de
-               notificaciones. Se deja `disabled` a propósito, para que quede
-               claro que no responde en vez de parecer un botón roto; al
-               implementarlo hay que sacarlo y colgarle el panel acá. #}
+               Activa para Dueño y Cuenta Maestra, que son quienes reciben
+               las diferencias de arqueo (`recibe_notificaciones`). Para el
+               resto sigue `disabled`: no tienen notificaciones que ver. #}
+            {% if recibe_notificaciones %}
+            <div class="relative" x-data="notificaciones()" x-init="iniciar()"
+                 @click.outside="abierto = false" @keydown.escape.window="abierto = false">
+                <button type="button" @click="alternar()" :aria-expanded="abierto"
+                        :aria-label="noLeidas ? `Notificaciones: ${noLeidas} sin leer` : 'Notificaciones'"
+                        class="relative h-control w-control grid place-items-center rounded-input
+                               text-texto-muted hover:text-primary">
+                    {{ icono('campana', clases='w-[22px] h-[22px]') }}
+                    <span x-show="noLeidas" x-cloak x-text="noLeidas > 9 ? '9+' : noLeidas"
+                          class="absolute top-0.5 right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 grid
+                                 place-items-center rounded-full bg-danger text-white
+                                 text-[0.65rem] font-semibold"></span>
+                </button>
+
+                <div x-show="abierto" x-cloak
+                     class="absolute right-0 mt-2 z-50 w-[min(22rem,calc(100vw-2rem))]
+                            bg-surface border border-borde rounded-[10px]
+                            shadow-[0_0_15px_0_rgba(0,0,0,0.25)]">
+                    <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-borde">
+                        <p class="text-base font-semibold text-texto">Notificaciones</p>
+                        <button type="button" @click="leerTodas()" x-show="noLeidas" x-cloak
+                                class="text-xs font-semibold text-primary min-h-toque">
+                            Marcar todas como leídas
+                        </button>
+                    </div>
+                    <ul class="max-h-[60vh] overflow-y-auto divide-y divide-borde">
+                        <template x-for="n in lista" :key="n.id">
+                            <li>
+                                <button type="button" @click="leer(n)"
+                                        class="w-full text-left px-4 py-3 hover:bg-surface-alt">
+                                    <p class="flex items-start gap-2 text-sm font-semibold text-texto">
+                                        <span x-show="!n.leida"
+                                              class="mt-1.5 w-2 h-2 rounded-full bg-primary shrink-0"></span>
+                                        <span x-text="n.titulo"></span>
+                                    </p>
+                                    <p class="mt-0.5 text-xs text-texto-disabled" x-text="fecha(n.created_at)"></p>
+                                    <p class="mt-1 text-xs text-texto-muted whitespace-pre-line"
+                                       x-text="n.cuerpo"></p>
+                                </button>
+                            </li>
+                        </template>
+                        <li x-show="!lista.length && !cargando"
+                            class="px-4 py-8 text-center text-sm text-texto-muted">Sin notificaciones</li>
+                        <li x-show="cargando && !lista.length"
+                            class="px-4 py-8 text-center text-sm text-texto-muted">Cargando…</li>
+                    </ul>
+                </div>
+            </div>
+            {% else %}
             <button type="button" disabled
-                    aria-label="Notificaciones (no disponible todavía)"
+                    aria-label="Notificaciones (no disponible)"
                     class="h-control w-control grid place-items-center rounded-input
                            text-texto-muted opacity-60 cursor-not-allowed">
                 {{ icono('campana', clases='w-[22px] h-[22px]') }}
             </button>
+            {% endif %}
 
             {# Badge del usuario logueado, con menú de sesión. #}
             <div class="relative" x-data="{ menu: false }" @click.outside="menu = false">

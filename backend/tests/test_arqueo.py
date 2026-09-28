@@ -125,8 +125,9 @@ def _turno(db, autor, local, efectivo_apertura=0):
 def test_arqueo_incluye_medios_sin_movimiento_en_el_turno(
     db, autor, local, dispositivo, crear_variante, con_stock,
 ):
-    """Si el turno solo tuvo ventas con Tarjeta de Crédito, Efectivo y
-    Débito igual tienen que listarse en $0 — antes del fix desaparecían."""
+    """Si el turno solo tuvo ventas con Tarjeta de Crédito, Efectivo igual
+    tiene que listarse en $0 — antes del fix desaparecía. La tarjeta va en el
+    renglón de tarjetas (Crédito y Débito juntos, migración 0039)."""
     turno = _turno(db, autor, local)
 
     tarjeta = _medio(db, "Tarjeta de Crédito")
@@ -144,8 +145,7 @@ def test_arqueo_incluye_medios_sin_movimiento_en_el_turno(
     montos = {i["medio_nombre"]: i["monto_esperado"] for i in resultado["items"]}
 
     assert montos["Efectivo"] == Decimal("0")
-    assert montos["Débito"] == Decimal("0")
-    assert montos["Tarjeta de Crédito"] == Decimal("1000")
+    assert montos[servicio_arqueo.GRUPO_TARJETAS] == Decimal("1000")
 
 
 def test_arqueo_sin_ninguna_venta_lista_igual_todos_los_medios_activos(
@@ -158,7 +158,9 @@ def test_arqueo_sin_ninguna_venta_lista_igual_todos_los_medios_activos(
     resultado = servicio_arqueo.calcular_esperado(turno.id, db)
     nombres = {i["medio_nombre"] for i in resultado["items"]}
 
-    assert {"Efectivo", "Débito", "Tarjeta de Crédito", "Seña"} <= nombres
+    assert {"Efectivo", servicio_arqueo.GRUPO_TARJETAS, "Seña"} <= nombres
+    # Crédito y Débito no aparecen sueltos: se arquean juntos.
+    assert not {"Débito", "Tarjeta de Crédito"} & nombres
     assert all(i["monto_esperado"] == Decimal("0") for i in resultado["items"])
     assert resultado["total_esperado"] == Decimal("0")
 
@@ -302,3 +304,111 @@ def test_api_efectivo_cierre_anterior(
     datos = client.get("/api/v1/turnos/efectivo-cierre-anterior").json()
     assert Decimal(str(datos["efectivo"])) == Decimal("15000")
     assert datos["fecha_cierre"] is not None
+
+
+
+def test_credito_y_debito_se_arquean_en_un_solo_renglon(
+    db, autor, local, dispositivo, crear_variante, con_stock,
+):
+    """
+    En el local Crédito y Débito salen de la misma terminal: el cierre pide
+    un solo importe, contra la suma de lo esperado de los dos.
+    """
+    from sqlalchemy import select
+
+    from app.models.turno import ArqueoItem
+
+    turno = _turno(db, autor, local)
+    variante = crear_variante("Anillo", "1000")
+    con_stock(variante, 5)
+    for medio, monto in (("Tarjeta de Crédito", "1000"), ("Débito", "1000")):
+        venta = servicio_ventas.iniciar_venta(db, autor, dispositivo, LIBRE)
+        servicio_ventas.agregar_item(db, autor, venta, variante_id=variante.id)
+        servicio_ventas.registrar_pagos(
+            db, autor, venta, [{"medio_de_pago_id": _medio(db, medio).id, "monto": Decimal(monto)}]
+        )
+        servicio_ventas.confirmar_venta(db, autor, venta, LIBRE)
+
+    esperado = servicio_arqueo.calcular_esperado(turno.id, db)
+    tarjetas = [i for i in esperado["items"] if i["medio_nombre"] == servicio_arqueo.GRUPO_TARJETAS]
+    assert len(tarjetas) == 1
+    assert tarjetas[0]["monto_esperado"] == Decimal("2000")
+    assert tarjetas[0]["medio_de_pago_id"] is None
+
+    items = [{**i, "monto_declarado": i["monto_esperado"]} for i in esperado["items"]]
+    arqueo = servicio_arqueo.registrar_arqueo(
+        turno_id=turno.id, items_declarados=items,
+        total_declarado=esperado["total_esperado"], usuario_id=autor.id, db=db,
+    )
+    assert arqueo.diferencia == Decimal("0")
+    guardado = db.execute(
+        select(ArqueoItem).where(
+            ArqueoItem.arqueo_id == arqueo.id,
+            ArqueoItem.grupo_terminal == servicio_arqueo.GRUPO_TARJETAS,
+        )
+    ).scalar_one()
+    assert guardado.medio_de_pago_id is None
+    assert guardado.monto_declarado == Decimal("2000")
+
+
+
+# ── Notificación de diferencia ──────────────────────────────────────────────
+
+
+def test_la_diferencia_notifica_a_duenos_y_maestra_con_el_nombre_del_medio(
+    db, autor, local, crear_usuario,
+):
+    from sqlalchemy import select
+
+    from app.core.permisos import ROL_DUENO, ROL_VENDEDOR
+    from app.models.turno import Notificacion
+
+    dueno = crear_usuario("dueno1", ROL_DUENO)
+    vende = crear_usuario("vende", ROL_VENDEDOR)
+    turno = _turno(db, autor, local, efectivo_apertura=1000)
+    _cerrar_declarando_efectivo(db, autor, turno, "800")
+
+    notifs = db.execute(select(Notificacion)).scalars().all()
+    destinatarios = {n.usuario_id for n in notifs}
+    assert destinatarios == {autor.id, dueno.id}  # autor = Cuenta Maestra
+    assert vende.id not in destinatarios
+    cuerpo = notifs[0].cuerpo
+    assert "Efectivo: esperado" in cuerpo
+    assert "Medio #" not in cuerpo
+
+
+def test_api_contador_de_notificaciones(client, db, autor, local):
+    _cerrar_declarando_efectivo(db, autor, _turno(db, autor, local, efectivo_apertura=1000), "800")
+    db.commit()
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    assert client.get("/api/v1/notificaciones/contador").json() == {"no_leidas": 1}
+    lista = client.get("/api/v1/notificaciones").json()
+    assert client.patch(f"/api/v1/notificaciones/{lista[0]['id']}/leer").status_code == 200
+    assert client.get("/api/v1/notificaciones/contador").json() == {"no_leidas": 0}
+
+
+def test_sena_es_informativa_en_el_cierre(db, autor, local):
+    """
+    La Seña se muestra con su total pero no se cuenta: no suma al total
+    esperado y, aunque el cliente mande otra cosa, se guarda como
+    informativa con lo declarado igual a lo esperado.
+    """
+    turno = _turno(db, autor, local)
+    esperado = servicio_arqueo.calcular_esperado(turno.id, db)
+    sena = next(i for i in esperado["items"] if i["medio_nombre"] == "Seña")
+    assert sena["es_informativo"] is True
+
+    items = [{**i, "monto_declarado": i["monto_esperado"]} for i in esperado["items"]]
+    for i in items:
+        if i["medio_nombre"] == "Seña":
+            i["es_informativo"] = False
+            i["monto_declarado"] = Decimal("999")  # un cliente que no respeta la regla
+    arqueo = servicio_arqueo.registrar_arqueo(
+        turno_id=turno.id, items_declarados=items,
+        total_declarado=esperado["total_esperado"], usuario_id=autor.id, db=db,
+    )
+    item_sena = next(i for i in arqueo.items if i.medio_de_pago_id == sena["medio_de_pago_id"])
+    assert item_sena.es_informativo is True
+    assert item_sena.monto_declarado == item_sena.monto_esperado
+    assert arqueo.diferencia == Decimal("0")

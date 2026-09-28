@@ -27,6 +27,7 @@ from app.models.categoria import NIVEL_MAXIMO
 from app.services import configuracion as servicio_configuracion
 from app.services import roles as servicio_roles
 from app.services import usuarios as servicio_usuarios
+from app.services.arqueo import ROLES_NOTIFICADOS
 from app.services.auth import debe_cambiar_password
 from config import settings
 
@@ -478,6 +479,11 @@ def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
         # por la API—: esa vive en el service, que es por donde pasan todos
         # los clientes.
         "es_maestra": _es_maestra(actual),
+        # La campanita del header se activa para quienes reciben las
+        # notificaciones de diferencia de arqueo (Dueño y Cuenta Maestra).
+        "recibe_notificaciones": (
+            actual.rol is not None and actual.rol.nombre in ROLES_NOTIFICADOS
+        ),
         # Define qué logotipo se muestra ('S' Soleil / 'M' Mallorca).
         "letra_empresa": servicio_configuracion.letra_empresa(db),
         # Cuánto se tolera sin actividad. Lo necesita el JavaScript para

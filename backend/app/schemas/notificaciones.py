@@ -16,3 +16,9 @@ class NotificacionResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ContadorNotificaciones(BaseModel):
+    """Notificaciones sin leer del usuario, para el badge de la campanita."""
+
+    no_leidas: int

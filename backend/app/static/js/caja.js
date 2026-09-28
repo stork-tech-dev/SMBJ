@@ -163,10 +163,11 @@ function cajaArqueo(turnoId) {
                 });
                 if (!resp.ok) throw new Error('No se pudo cargar el arqueo esperado');
                 const data = await resp.json();
-                // Inicializar items con monto_declarado = 0
+                // Los que se cuentan arrancan en 0; los informativos (Seña)
+                // no se cuentan: su "declarado" es el total que se muestra.
                 this.items = data.items.map(i => ({
                     ...i,
-                    monto_declarado: 0,
+                    monto_declarado: i.es_informativo ? i.monto_esperado : 0,
                 }));
             } catch (e) {
                 window.toast(e.message, 'error');

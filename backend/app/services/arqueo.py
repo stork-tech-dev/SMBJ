@@ -14,9 +14,11 @@ Reglas:
   - Los medios agrupados (agrupa_en_terminal=TRUE) se suman por grupo.
   - Los medios informativos (es_informativo=TRUE) se muestran pero no
     suman al total (ej: gift cards virtuales).
-  - Las señas usadas en ventas SÍ suman (entró plata física).
+  - Las señas usadas en ventas son INFORMATIVAS: se muestran con su total
+    pero no se cuentan ni suman (la plata entró cuando se dejó la seña, no en
+    este turno). Lo resuelve `_es_informativo`, por la marca `es_sena`.
   - Las gift cards físicas no aparecen (son ventas normales de producto).
-  - La diferencia != 0 genera notificaciones para todos los usuarios Dueño.
+  - La diferencia != 0 genera notificaciones para Dueños y Cuenta Maestra.
   - Todo se escribe en la misma transacción que el cierre del turno.
 """
 
@@ -26,6 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auditoria import registrar_auditoria, snapshot
+from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO
 from app.core.utils import ahora_db
 from app.models.medio_pago import MedioDePago
 from app.models.rol import Rol
@@ -102,6 +105,12 @@ def _novedades_del_turno(turno_id: int, db: Session) -> Decimal:
     return neto
 
 
+# Grupo de terminal en que se arquean juntos Tarjeta de Crédito y Débito
+# (`medios_pago_arqueo_config`, cargado por la migración 0039): en el cierre
+# es un solo renglón con la suma de lo esperado y un solo importe contado.
+GRUPO_TARJETAS = "Tarjetas de Crédito / Débito"
+
+
 def medio_efectivo(db: Session) -> MedioDePago | None:
     """
     El medio de pago "Efectivo". Se identifica por nombre: es el que recibe
@@ -126,6 +135,14 @@ def efectivo_esperado(turno_id: int, db: Session) -> Decimal:
         if item["medio_de_pago_id"] == efectivo.id:
             return item["monto_esperado"]
     return Decimal("0")
+
+
+def _es_informativo(medio: MedioDePago | None, cfg: MedioPagoArqueoConfig | None) -> bool:
+    """
+    Si el renglón del medio se muestra sin contarse: por configuración, o
+    porque es el medio de las señas (su plata no entra en este turno).
+    """
+    return bool((cfg is not None and cfg.es_informativo) or (medio is not None and medio.es_sena))
 
 
 def calcular_esperado(turno_id: int, db: Session) -> dict:
@@ -193,7 +210,7 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
             })
             continue
 
-        es_informativo = cfg_tuple[0].es_informativo if cfg_tuple else False
+        es_informativo = _es_informativo(medio, cfg_tuple[0] if cfg_tuple else None)
         key = f"medio:{medio.id}"
         grupos[key] = {
             "medio_de_pago_id": medio.id,
@@ -216,7 +233,7 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
                     "medio_nombre": medio.nombre if medio else f"Medio #{medio_id}",
                     "grupo_terminal": None,
                     "monto_esperado": Decimal("0"),
-                    "es_informativo": False,
+                    "es_informativo": _es_informativo(medio, None),
                 }
             grupos[key]["monto_esperado"] += monto
             continue
@@ -239,7 +256,7 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
                 "medio_nombre": medio.nombre,
                 "grupo_terminal": None,
                 "monto_esperado": Decimal("0"),
-                "es_informativo": cfg.es_informativo,
+                "es_informativo": _es_informativo(medio, cfg),
             })
             grupos[key]["monto_esperado"] += monto
 
@@ -259,21 +276,33 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
     return {"turno_id": turno_id, "items": items, "total_esperado": total_esperado}
 
 
-def _notificar_duenos(
+def _nombre_item(item: ArqueoItem, db: Session) -> str:
+    """Cómo se llama un renglón del arqueo: su grupo de terminal o su medio."""
+    if item.grupo_terminal:
+        return item.grupo_terminal
+    medio = db.get(MedioDePago, item.medio_de_pago_id) if item.medio_de_pago_id else None
+    return medio.nombre if medio else "Sin medio"
+
+
+# Quiénes reciben la notificación de diferencia en el arqueo (y ven la
+# campanita del header).
+ROLES_NOTIFICADOS = (ROL_DUENO, ROL_CUENTA_MAESTRA)
+
+
+def _notificar_diferencia(
     turno: Turno,
     arqueo: Arqueo,
     items: list[ArqueoItem],
     db: Session,
 ) -> None:
     """
-    Genera una notificación para cada usuario con rol Dueño.
-    Se llama solo si diferencia != 0.
+    Genera una notificación para cada usuario activo con rol Dueño o Cuenta
+    Maestra (`ROLES_NOTIFICADOS`). Se llama solo si diferencia != 0.
     """
-    # Buscar usuarios activos con rol que incluya 'due' en el nombre (Dueño)
     duenos = db.execute(
         select(Usuario)
         .join(Rol, Rol.id == Usuario.rol_id)
-        .where(func.lower(Rol.nombre).contains("due"))
+        .where(Rol.nombre.in_(ROLES_NOTIFICADOS))
         .where(Usuario.activo.is_(True))
     ).scalars().all()
 
@@ -292,7 +321,7 @@ def _notificar_duenos(
     for item in items:
         if not item.es_informativo:
             detalle_lines.append(
-                f"  {item.grupo_terminal or 'Medio #' + str(item.medio_de_pago_id)}: "
+                f"  {_nombre_item(item, db)}: "
                 f"esperado ${item.monto_esperado:,.2f} — "
                 f"declarado ${item.monto_declarado:,.2f} — "
                 f"diferencia ${item.diferencia:+,.2f}"
@@ -384,7 +413,13 @@ def registrar_arqueo(
         grupo = decl.get("grupo_terminal")
         esp = esperado_map.get((medio_id, grupo), {})
         monto_esperado = esp.get("monto_esperado", Decimal("0"))
-        monto_declarado = Decimal(str(decl.get("monto_declarado", 0)))
+        # Lo informativo lo decide el sistema, no el cliente: no se cuenta,
+        # así que lo "declarado" es el total que muestra (diferencia 0).
+        es_informativo = esp.get("es_informativo", decl.get("es_informativo", False))
+        monto_declarado = (
+            monto_esperado if es_informativo
+            else Decimal(str(decl.get("monto_declarado", 0)))
+        )
 
         # diferencia es GENERATED ALWAYS AS en la DB; no se incluye en el INSERT
         item = ArqueoItem(
@@ -393,7 +428,7 @@ def registrar_arqueo(
             grupo_terminal=grupo,
             monto_esperado=monto_esperado,
             monto_declarado=monto_declarado,
-            es_informativo=decl.get("es_informativo", False),
+            es_informativo=es_informativo,
         )
         db.add(item)
         arqueo_items.append(item)
@@ -414,7 +449,7 @@ def registrar_arqueo(
 
     # Notificar si hay diferencia
     if arqueo.diferencia != Decimal("0"):
-        _notificar_duenos(turno, arqueo, arqueo_items, db)
+        _notificar_diferencia(turno, arqueo, arqueo_items, db)
         arqueo.notificacion_enviada = True
         db.flush()
 

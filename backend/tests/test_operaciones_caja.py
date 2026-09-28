@@ -249,7 +249,8 @@ def test_joyero_cobra_segun_el_medio_y_suma_al_arqueo_sin_ser_venta(
     assert en_efectivo.monto_cobrado == Decimal("500")
     assert con_debito.monto_cobrado == Decimal("600")
     assert _esperado(db, turno, "Efectivo") == Decimal("1500")
-    assert _esperado(db, turno, "Débito") == Decimal("600")
+    # Débito se arquea junto con Crédito (migración 0039).
+    assert _esperado(db, turno, servicio_arqueo.GRUPO_TARJETAS) == Decimal("600")
     assert db.execute(select(func.count(Venta.id))).scalar_one() == 0
 
 
