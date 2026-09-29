@@ -3,8 +3,9 @@ Reglas de descuento de la venta.
 
 Tres reglas gobiernan todo este archivo y ninguna es negociable:
 
-1. **La vendedora elige de una lista, no escribe.** Los porcentajes van de 5
-   en 5 hasta 50. Un campo libre convierte cada venta en una negociación y
+1. **La vendedora elige de una lista, no escribe.** Los porcentajes van de
+   `paso` en `paso` hasta el tope de la venta (5 y 50 por defecto; los
+   ajusta la Cuenta Maestra en "Ajustes"). Un campo libre convierte cada venta en una negociación y
    hace que el reporte de descuentos no signifique nada.
 
 2. **El tope se controla SUMANDO, el precio se calcula ENCADENANDO.** Son
@@ -37,14 +38,8 @@ from app.core.utils import (
 )
 from app.models.usuario import Usuario
 from app.models.venta import MotivoDescuento, MotivoRestriccion
+from app.services import configuracion as servicio_configuracion
 from app.services.roles import NoEncontrado, ReglaDeNegocio
-
-# Lo único que la vendedora puede elegir. De 5 en 5 y hasta 50: la lista es
-# la interfaz, no una validación defensiva sobre un campo libre.
-PORCENTAJES_VALIDOS: tuple[int, ...] = (5, 10, 15, 20, 25, 30, 35, 40, 45, 50)
-
-# Tope por producto, sumando TODAS las capas de descuento que le caen encima.
-TOPE_DESCUENTO = Decimal("50")
 
 _CIEN = Decimal("100")
 
@@ -61,7 +56,7 @@ def pct(valor: Decimal | int) -> str:
     return format(Decimal(str(valor)).normalize(), "f")
 
 
-def validar_porcentaje(porcentaje: Decimal | int) -> Decimal:
+def validar_porcentaje(db: Session, porcentaje: Decimal | int) -> Decimal:
     """
     Acepta el porcentaje solo si está en la lista. Devuelve el Decimal ya
     normalizado, para que quien llame no tenga que convertirlo de nuevo.
@@ -70,9 +65,12 @@ def validar_porcentaje(porcentaje: Decimal | int) -> Decimal:
     lista que la vendedora ve. Que el 55% además se pase del tope es
     secundario — el punto es que no se puede escribir un número.
     """
+    # La lista es la de "Ajustes" (paso y tope): la interfaz, no una
+    # validación defensiva sobre un campo libre.
+    validos = servicio_configuracion.porcentajes_descuento(db)
     valor = Decimal(str(porcentaje))
-    if valor not in (Decimal(p) for p in PORCENTAJES_VALIDOS):
-        opciones = ", ".join(f"{p}%" for p in PORCENTAJES_VALIDOS)
+    if valor not in (Decimal(p) for p in validos):
+        opciones = ", ".join(f"{p}%" for p in validos)
         raise ReglaDeNegocio(
             f"El descuento tiene que ser uno de la lista ({opciones}); "
             f"{pct(valor)}% no está entre esos valores"
@@ -80,9 +78,10 @@ def validar_porcentaje(porcentaje: Decimal | int) -> Decimal:
     return valor
 
 
-def validar_tope(descuento_producto: Decimal, descuento_venta: Decimal) -> None:
+def validar_tope(db: Session, descuento_producto: Decimal, descuento_venta: Decimal) -> None:
     """
-    Control del tope: la SUMA DIRECTA de los porcentajes no puede pasar de 50.
+    Control del tope: la SUMA DIRECTA de los porcentajes no puede pasar del
+    tope de la venta (`tope_descuento_venta`, 50 por defecto).
 
     Suma y no encadenado, aunque el precio se calcule encadenando. Es
     deliberado y es lo que hace que el tope sea un tope: con encadenado,
@@ -90,10 +89,11 @@ def validar_tope(descuento_producto: Decimal, descuento_venta: Decimal) -> None:
     la cuenta que se controla, cuando en la práctica el cliente se llevó el
     producto a menos de la mitad.
     """
+    tope = servicio_configuracion.tope_descuento_venta(db)
     total = Decimal(descuento_producto) + Decimal(descuento_venta)
-    if total > TOPE_DESCUENTO:
+    if total > tope:
         raise ReglaDeNegocio(
-            f"El descuento total no puede superar el {pct(TOPE_DESCUENTO)}% por producto: "
+            f"El descuento total no puede superar el {pct(tope)}% por producto: "
             f"{pct(descuento_producto)}% del producto más {pct(descuento_venta)}% "
             f"de la venta suman {pct(total)}%"
         )
@@ -165,7 +165,7 @@ def obtener_motivo(db: Session, motivo_id: int) -> MotivoDescuento:
 
 
 def resolver_porcentaje(
-    motivo: MotivoDescuento, porcentaje: Decimal | int | None
+    db: Session, motivo: MotivoDescuento, porcentaje: Decimal | int | None
 ) -> tuple[Decimal, bool]:
     """
     Qué porcentaje se aplica y si la vendedora se apartó del sugerido.
@@ -193,9 +193,9 @@ def resolver_porcentaje(
             )
         # El sugerido igual pasa por la lista: un motivo cargado con 12% sería
         # un porcentaje libre entrando por la puerta de atrás.
-        return validar_porcentaje(motivo.porcentaje_sugerido), False
+        return validar_porcentaje(db, motivo.porcentaje_sugerido), False
 
-    elegido = validar_porcentaje(porcentaje)
+    elegido = validar_porcentaje(db, porcentaje)
     modificado = (
         motivo.porcentaje_sugerido is not None
         and elegido != Decimal(motivo.porcentaje_sugerido)
@@ -306,7 +306,7 @@ def crear_motivo(
     # El sugerido pasa por la MISMA lista que la vendedora: un motivo
     # cargado con 12% sería un porcentaje libre entrando por la puerta de
     # atrás, preseleccionado y sin que nadie lo hubiera elegido.
-    sugerido = None if porcentaje_sugerido is None else validar_porcentaje(porcentaje_sugerido)
+    sugerido = None if porcentaje_sugerido is None else validar_porcentaje(db, porcentaje_sugerido)
     if es_descuento_empleada:
         _validar_unico_de_empleada(db)
 
@@ -382,7 +382,7 @@ def editar_motivo(
 
     if editar_sugerido:
         motivo.porcentaje_sugerido = (
-            None if porcentaje_sugerido is None else validar_porcentaje(porcentaje_sugerido)
+            None if porcentaje_sugerido is None else validar_porcentaje(db, porcentaje_sugerido)
         )
 
     if habilita_cuotas_sin_interes is not None:

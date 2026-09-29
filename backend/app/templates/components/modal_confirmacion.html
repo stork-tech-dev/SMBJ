@@ -46,7 +46,9 @@
     <div class="w-full max-w-md bg-surface rounded-[20px] shadow-xl p-6 sm:p-8">
         <h2 id="titulo-{{ estado }}" class="text-lg font-semibold"
             x-text="{{ estado }}.titulo"></h2>
-        <p class="mt-3 text-base text-texto-muted" x-text="{{ estado }}.mensaje"></p>
+        {# `whitespace-pre-line`: un mensaje de varias líneas (el resumen de
+           cambios de Ajustes) se ve en renglones y no en un solo párrafo. #}
+        <p class="mt-3 text-base text-texto-muted whitespace-pre-line" x-text="{{ estado }}.mensaje"></p>
 
         {% if advertencia %}
             {# `role="alert"` para que un lector de pantalla la anuncie al

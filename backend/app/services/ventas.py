@@ -553,10 +553,10 @@ def aplicar_descuento_item(
         )
 
     motivo = servicio_descuentos.obtener_motivo(db, motivo_id)
-    elegido, modificado = servicio_descuentos.resolver_porcentaje(motivo, porcentaje)
+    elegido, modificado = servicio_descuentos.resolver_porcentaje(db, motivo, porcentaje)
 
     descuento_producto = Decimal(item.variante.producto.descuento_producto)
-    servicio_descuentos.validar_tope(descuento_producto, elegido)
+    servicio_descuentos.validar_tope(db, descuento_producto, elegido)
 
     item.motivo_descuento_id = motivo.id
     item.descuento_item = elegido
@@ -1060,7 +1060,7 @@ def confirmar_venta(
     # ---- Puntos ----------------------------------------------------------
     puntos = 0
     if venta.cliente_id is not None:
-        puntos = servicio_clientes.puntos_por_venta(venta.total)
+        puntos = servicio_clientes.puntos_por_venta(db, venta.total)
         if puntos > 0:
             servicio_clientes.registrar_movimiento_puntos(
                 db,

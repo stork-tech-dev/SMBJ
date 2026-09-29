@@ -1,0 +1,119 @@
+{# Ajustes: parámetros globales del negocio, exclusivos de la Cuenta Maestra.
+
+   Cada valor cambia reglas de todo el sistema (precios, descuentos, puntos,
+   plazos), así que guardar pide DOS confirmaciones: primero se revisa qué
+   cambia (anterior → nuevo) y después se confirma que se aplica. Cancelar en
+   cualquiera de las dos no guarda nada.
+
+   La letra de la empresa y el método de descuento no están a propósito: no
+   se editan desde acá. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+
+{% set _input = 'w-full h-control px-3 text-base bg-surface border border-borde rounded-input
+                 text-texto focus:outline-none focus:border-primary' %}
+
+{# Un campo numérico de ajustes: etiqueta, input, unidad y ayuda. #}
+{% macro ajuste(campo, etiqueta, unidad, ayuda, paso='1', minimo='0') %}
+<div class="flex flex-col gap-1">
+    <label for="aj-{{ campo }}" class="text-base font-medium text-texto">{{ etiqueta }}</label>
+    <div class="flex items-center gap-2">
+        <input id="aj-{{ campo }}" type="number" inputmode="decimal" step="{{ paso }}" min="{{ minimo }}"
+               x-model.number="valores.{{ campo }}" class="{{ _input }}"
+               :class="cambio('{{ campo }}') ? 'border-primary' : ''">
+        <span class="shrink-0 text-base text-texto-muted">{{ unidad }}</span>
+    </div>
+    <span class="text-sm text-texto-muted">{{ ayuda }}</span>
+    <span x-show="cambio('{{ campo }}')" x-cloak class="text-sm text-primary"
+          x-text="'Antes: ' + formato('{{ campo }}', originales.{{ campo }})"></span>
+</div>
+{% endmacro %}
+
+{% block contenido %}
+{% call encabezado('Ajustes') %}{% endcall %}
+
+<div x-data="ajustesSistema()" x-init="cargar()" class="mt-4 max-w-5xl">
+    <p class="text-base text-texto-muted">
+        Parámetros que rigen para todo el sistema. Los cambios aplican a lo que se
+        opere desde que se guardan: ventas, señas y puntos ya registrados no cambian.
+    </p>
+
+    <p x-show="cargando" class="mt-10 text-texto-disabled">Cargando…</p>
+
+    <p x-show="!cargando && !cargado" x-cloak class="mt-10 text-danger">
+        No se pudieron cargar los ajustes. Recargá la página.
+    </p>
+
+    <form x-show="cargado" x-cloak @submit.prevent="revisar()" class="mt-6 space-y-6">
+        <section class="p-6 rounded-input bg-surface tarjeta">
+            <h2 class="text-lg font-semibold text-texto">Precios</h2>
+            <div class="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {{ ajuste('redondeo', 'Redondeo de precios', '$',
+                          'Múltiplo al que se redondean los precios de venta.', paso='0.01') }}
+            </div>
+        </section>
+
+        <section class="p-6 rounded-input bg-surface tarjeta">
+            <h2 class="text-lg font-semibold text-texto">Descuentos</h2>
+            <div class="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {{ ajuste('descuento_maximo', 'Máximo por producto', '%',
+                          'Tope del descuento propio que se carga en cada producto.', paso='0.01') }}
+                {{ ajuste('tope_descuento_venta', 'Tope total en la venta', '%',
+                          'La suma del descuento del producto y el de la venta no puede pasarlo.', paso='0.01', minimo='1') }}
+                {{ ajuste('paso_descuento', 'Paso de los porcentajes', '%',
+                          'La vendedora elige de una lista que va de este valor en este valor.', minimo='1') }}
+            </div>
+            <p class="mt-4 text-sm text-texto-muted">
+                Porcentajes que verá la vendedora:
+                <span class="font-medium text-texto" x-text="listaPorcentajes"></span>
+            </p>
+        </section>
+
+        <section class="grid gap-6 lg:grid-cols-3">
+            <div class="p-6 rounded-input bg-surface tarjeta">
+                <h2 class="text-lg font-semibold text-texto">Señas</h2>
+                <div class="mt-4">
+                    {{ ajuste('dias_vigencia_sena', 'Vigencia', 'días',
+                              'Días desde que se deja la seña hasta que vence.', minimo='1') }}
+                </div>
+            </div>
+            <div class="p-6 rounded-input bg-surface tarjeta">
+                <h2 class="text-lg font-semibold text-texto">Clientes</h2>
+                <div class="mt-4">
+                    {{ ajuste('pesos_por_punto', 'Pesos por punto', '$',
+                              'Cuántos pesos de compra suman un punto.', paso='0.01', minimo='0.01') }}
+                </div>
+            </div>
+            <div class="p-6 rounded-input bg-surface tarjeta">
+                <h2 class="text-lg font-semibold text-texto">Cambios</h2>
+                <div class="mt-4">
+                    {{ ajuste('dias_plazo_cambio', 'Plazo habitual', 'días',
+                              'Pasado este plazo, el cambio avisa (no se bloquea).', minimo='1') }}
+                </div>
+            </div>
+        </section>
+
+        <div class="flex flex-wrap justify-end gap-3">
+            <button type="button" @click="descartar()" x-show="hayCambios" x-cloak
+                    class="h-boton px-5 rounded-input border border-borde hover:border-primary hover:text-primary">
+                Descartar cambios
+            </button>
+            <button type="submit" :disabled="!hayCambios || guardando"
+                    class="h-boton px-6 rounded-input bg-primary text-white font-medium
+                           hover:bg-primary-hover disabled:opacity-60"
+                    x-text="guardando ? 'Guardando…' : 'Guardar'"></button>
+        </div>
+    </form>
+
+    {# Primera confirmación: qué cambia. Segunda: aplicarlo. #}
+    {{ modal_confirmacion('revision', etiqueta_confirmar="'Continuar'", tono='primario') }}
+    {{ modal_confirmacion('confirmacionFinal', etiqueta_confirmar="'Sí, aplicar cambios'",
+                          advertencia='confirmacionFinal.advertencia', tono='peligro') }}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/ajustes.js') }}"></script>
+{% endblock %}

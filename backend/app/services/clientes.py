@@ -26,28 +26,22 @@ from app.core.utils import (
 )
 from app.models.cliente import Cliente, PuntoCliente, TipoPunto
 from app.models.usuario import Usuario
+from app.services import configuracion as servicio_configuracion
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
-# Cuántos pesos de venta valen un punto.
-#
-# SUPUESTO A CONFIRMAR: el prompt del módulo pide sumar puntos pero no fija
-# la equivalencia. Queda acá, en una constante con nombre, y no repartida en
-# la fórmula: el día que el negocio la defina —o la quiera configurable— se
-# cambia en un solo lugar y no hay que salir a buscar dónde se multiplicaba.
-PESOS_POR_PUNTO = Decimal("1000")
-
-
-def puntos_por_venta(total: Decimal) -> int:
+def puntos_por_venta(db: Session, total: Decimal) -> int:
     """
-    Cuántos puntos deja una venta de ese total.
+    Cuántos puntos deja una venta de ese total, según los pesos por punto
+    de "Ajustes" (`configuracion_sistema.pesos_por_punto`, 1000 por defecto).
 
     Trunca hacia abajo: media compra no da medio punto. Una venta de $0
     —todo cubierto por promoción— no da ninguno, que es lo correcto: los
     puntos premian lo que se gastó.
     """
-    if PESOS_POR_PUNTO <= 0:
+    pesos = servicio_configuracion.pesos_por_punto(db)
+    if pesos <= 0:
         return 0
-    return int(Decimal(total) // PESOS_POR_PUNTO)
+    return int(Decimal(total) // pesos)
 
 
 # ============================================================================

@@ -1866,7 +1866,7 @@ def test_ningun_item_del_sidebar_lleva_a_un_404(client, crear_usuario):
     Regresión: "Productos" y "Auditoría" apuntaban a rutas inexistentes y
     nadie lo notaba hasta hacer clic.
 
-    Los módulos sin construir (Ventas, Reportes, Ajustes) tienen una
+    Los módulos sin construir (`MODULOS_PENDIENTES`) tienen una
     pantalla en blanco para que su ítem resuelva, así que la regla vale
     para todos sin excepciones.
     """
@@ -1894,7 +1894,11 @@ def test_los_modulos_pendientes_muestran_su_pantalla(client, crear_usuario):
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    for ruta, titulo in {"/ajustes": "Ajustes"}.items():
+    from app.api.pages import MODULOS_PENDIENTES
+
+    # Hoy no queda ninguno (Ajustes se implementó); el test sigue cubriendo
+    # el mecanismo para el próximo que se agregue a la lista.
+    for ruta, titulo in MODULOS_PENDIENTES.items():
         resp = client.get(ruta)
         assert resp.status_code == 200, ruta
         assert f">{titulo}</h1>" in resp.text, ruta

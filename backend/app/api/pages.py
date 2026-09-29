@@ -87,7 +87,9 @@ MENU_SIDEBAR = [
 ]
 
 MENU_SIDEBAR_PIE = [
-    {"nombre": "Ajustes", "url": "/ajustes", "icono": "sliders", "modulo": None},
+    # Parámetros globales del negocio: solo la Cuenta Maestra.
+    {"nombre": "Ajustes", "url": "/ajustes", "icono": "sliders", "modulo": None,
+     "solo_maestra": True},
 ]
 
 # Secciones que se muestran como tarjetas dentro de la página de
@@ -710,9 +712,7 @@ async def configuracion(
 # usuario quiere verlos— y estas rutas existen solo para que resuelvan en
 # vez de dar 404. Cuando cada módulo se implemente, su entrada sale de acá
 # y pasa a tener su propia ruta.
-MODULOS_PENDIENTES = {
-    "/ajustes": "Ajustes",
-}
+MODULOS_PENDIENTES: dict[str, str] = {}
 
 
 def _registrar_pendientes() -> None:
@@ -744,6 +744,23 @@ def _registrar_pendientes() -> None:
 
 
 _registrar_pendientes()
+
+
+@router.get("/ajustes", response_class=HTMLResponse)
+async def ajustes(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Parámetros globales del negocio. Exclusiva de la Cuenta Maestra: a
+    cualquier otro rol lo manda al inicio (la API igual le responde 403).
+    """
+    if not _es_maestra(usuario):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "pages/ajustes/index.html",
+        contexto_base(request, db, usuario, titulo="Ajustes", ruta_activa="/ajustes"),
+    )
 
 
 @router.get("/productos", response_class=HTMLResponse)

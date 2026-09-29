@@ -45,6 +45,7 @@ from app.schemas.ventas import (
     VentaResumen,
 )
 from app.schemas.promociones import PromocionResumen
+from app.services import configuracion as servicio_configuracion
 from app.services import descuentos as servicio_descuentos
 from app.services import medios_pago as servicio_medios
 from app.services import promociones as servicio_promociones
@@ -179,8 +180,8 @@ def opciones_descuento(
             MotivoDescuentoResponse.model_validate(m)
             for m in servicio_descuentos.listar_motivos(db, activo=True)
         ],
-        porcentajes=list(servicio_descuentos.PORCENTAJES_VALIDOS),
-        tope=servicio_descuentos.TOPE_DESCUENTO,
+        porcentajes=servicio_configuracion.porcentajes_descuento(db),
+        tope=servicio_configuracion.tope_descuento_venta(db),
     )
 
 

@@ -30,6 +30,7 @@ from app.models.stock import MovimientoStock, TipoMovimiento
 from app.models.venta import EstadoVenta
 from app.services import categorias as servicio_categorias
 from app.services import clientes as servicio_clientes
+from app.services import configuracion as servicio_configuracion
 from app.services import descuentos as servicio_descuentos
 from app.services import medios_pago as servicio_medios
 from app.services import productos as servicio_productos
@@ -197,17 +198,17 @@ def _cobrar_todo(db, autor, venta, medio):
 # ============================================================================
 
 
-def test_porcentaje_fuera_de_la_lista_se_rechaza():
+def test_porcentaje_fuera_de_la_lista_se_rechaza(db):
     """De 5 en 5 y hasta 50: la lista es la interfaz, no un campo libre."""
     for valido in (5, 25, 50):
-        assert servicio_descuentos.validar_porcentaje(valido) == Decimal(valido)
+        assert servicio_descuentos.validar_porcentaje(db, valido) == Decimal(valido)
 
     for invalido in (7, 12.5, 55, 0, -10):
         with pytest.raises(ReglaDeNegocio):
-            servicio_descuentos.validar_porcentaje(invalido)
+            servicio_descuentos.validar_porcentaje(db, invalido)
 
 
-def test_el_tope_se_controla_sumando_no_encadenando():
+def test_el_tope_se_controla_sumando_no_encadenando(db):
     """
     30% + 30% da 60% sumado y 51% encadenado.
 
@@ -216,14 +217,14 @@ def test_el_tope_se_controla_sumando_no_encadenando():
     la mitad.
     """
     with pytest.raises(ReglaDeNegocio, match="60%"):
-        servicio_descuentos.validar_tope(Decimal("30"), Decimal("30"))
+        servicio_descuentos.validar_tope(db, Decimal("30"), Decimal("30"))
 
     # Encadenado, ese mismo par descuenta 51%: más que el tope.
     efectivo = servicio_descuentos.calcular_descuento_total(Decimal("30"), Decimal("30"))
     assert efectivo == Decimal("51.00")
 
     # Justo en el tope sí pasa.
-    servicio_descuentos.validar_tope(Decimal("20"), Decimal("30"))
+    servicio_descuentos.validar_tope(db, Decimal("20"), Decimal("30"))
 
 
 def test_el_precio_se_calcula_encadenando():
@@ -642,7 +643,7 @@ def test_confirmar_suma_puntos_al_cliente(
 
     servicio.confirmar_venta(db, autor, venta, LIBRE)
 
-    esperados = servicio_clientes.puntos_por_venta(venta.total)
+    esperados = servicio_clientes.puntos_por_venta(db, venta.total)
     assert venta.puntos_acumulados == esperados
     assert servicio_clientes.saldo_puntos(db, cliente.id) == esperados
 
@@ -1087,7 +1088,7 @@ def test_los_porcentajes_validos_los_sirve_la_api(
     client, db, crear_usuario, dar_permiso, roles
 ):
     """
-    La lista sale del backend, de la MISMA constante que valida. Si la
+    La lista sale del backend, de la MISMA configuración que valida. Si la
     pantalla la tuviera escrita, terminaría ofreciendo un valor que la API
     rechaza y el error aparecería recién al guardar.
     """
@@ -1098,8 +1099,8 @@ def test_los_porcentajes_validos_los_sirve_la_api(
     client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
     datos = client.get("/api/v1/ventas/opciones-descuento").json()
 
-    assert datos["porcentajes"] == list(servicio_descuentos.PORCENTAJES_VALIDOS)
-    assert Decimal(datos["tope"]) == servicio_descuentos.TOPE_DESCUENTO
+    assert datos["porcentajes"] == servicio_configuracion.porcentajes_descuento(db)
+    assert Decimal(datos["tope"]) == servicio_configuracion.tope_descuento_venta(db)
 
 
 def test_el_aviso_de_stock_viaja_en_el_cuerpo_y_no_como_error(

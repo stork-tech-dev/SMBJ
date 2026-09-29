@@ -36,11 +36,11 @@ from app.models.stock import TipoMovimiento
 from app.models.usuario import Usuario
 from app.models.venta import EstadoVenta, Venta, VentaItem
 from app.services import clientes as servicio_clientes
+from app.services import configuracion as servicio_configuracion
 from app.services import stock as servicio_stock
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 from app.services.ventas import codigo_cambio_en_uso, generar_codigo_cambio
 
-_PLAZO_DIAS = 30
 _ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin 0/O ni 1/I/L
 
 
@@ -438,6 +438,8 @@ def iniciar_cambio(
     avisos: list[str] = []
     venta_origen = None
     retiro_origen = None
+    # Plazo habitual de cambio, de "Ajustes". Pasado, avisa: no bloquea.
+    plazo = servicio_configuracion.dias_plazo_cambio(db)
 
     if tipo in (TipoCambio.COMUN, TipoCambio.PROMOCION, TipoCambio.GIFT_CARD_FISICA):
         if not codigo_cambio:
@@ -452,9 +454,9 @@ def iniciar_cambio(
                 "Ese código es de un retiro de mercadería: se cambia como cambio común"
             )
         dias = (ahora_db().date() - retiro_origen.timestamp.date()).days
-        if dias > _PLAZO_DIAS:
+        if dias > plazo:
             avisos.append(
-                f"Pasaron {dias} días desde el retiro (el plazo habitual es {_PLAZO_DIAS} días). "
+                f"Pasaron {dias} días desde el retiro (el plazo habitual es {plazo} días). "
                 "Podés continuar igual o cancelar."
             )
     elif venta_origen is not None:
@@ -462,9 +464,9 @@ def iniciar_cambio(
 
         # Aviso de plazo
         dias = (ahora_db().date() - venta_origen.created_at.date()).days
-        if dias > _PLAZO_DIAS:
+        if dias > plazo:
             avisos.append(
-                f"Pasaron {dias} días desde la venta (el plazo habitual es {_PLAZO_DIAS} días). "
+                f"Pasaron {dias} días desde la venta (el plazo habitual es {plazo} días). "
                 "Podés continuar igual o cancelar."
             )
 
@@ -810,7 +812,7 @@ def confirmar_cambio(
     venta_origen = cambio.venta_origen
     if venta_origen and venta_origen.cliente_id:
         # Estimación proporcional de puntos a restar (por el valor devuelto)
-        puntos_a_restar = servicio_clientes.puntos_por_venta(calculo["total_devuelto"])
+        puntos_a_restar = servicio_clientes.puntos_por_venta(db, calculo["total_devuelto"])
         if puntos_a_restar > 0:
             servicio_clientes.registrar_movimiento_puntos(
                 db,
@@ -822,7 +824,7 @@ def confirmar_cambio(
                 descripcion=f"Cambio #{cambio.id}: ítems devueltos",
                 ip_origen=ip_origen,
             )
-        puntos_nuevos = servicio_clientes.puntos_por_venta(calculo["total_nuevo"])
+        puntos_nuevos = servicio_clientes.puntos_por_venta(db, calculo["total_nuevo"])
         if puntos_nuevos > 0:
             servicio_clientes.registrar_movimiento_puntos(
                 db,

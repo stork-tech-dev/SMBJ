@@ -49,6 +49,25 @@ class ConfiguracionSistema(Base):
         Integer, nullable=False, server_default="60"
     )
 
+    # --- Ajustes (migración 0041): los edita la Cuenta Maestra ---
+
+    # Tope de la SUMA del descuento del producto y el de la venta. No es
+    # `descuento_maximo`: ese limita el descuento propio de cada producto.
+    tope_descuento_venta: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, server_default="50"
+    )
+
+    # Porcentajes que ofrece la venta: paso, 2·paso, … hasta el tope.
+    paso_descuento: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
+
+    # Cuántos pesos de venta valen un punto de cliente.
+    pesos_por_punto: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, server_default="1000"
+    )
+
+    # Plazo habitual para un cambio: pasado, el sistema avisa (no bloquea).
+    dias_plazo_cambio: Mapped[int] = mapped_column(Integer, nullable=False, server_default="30")
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
@@ -72,6 +91,16 @@ class ConfiguracionSistema(Base):
             name="ck_config_descuento_maximo",
         ),
         CheckConstraint("dias_vigencia_sena > 0", name="ck_config_dias_vigencia_sena"),
+        CheckConstraint(
+            "tope_descuento_venta > 0 AND tope_descuento_venta <= 100",
+            name="ck_config_tope_descuento_venta",
+        ),
+        CheckConstraint(
+            "paso_descuento > 0 AND paso_descuento <= tope_descuento_venta",
+            name="ck_config_paso_descuento",
+        ),
+        CheckConstraint("pesos_por_punto > 0", name="ck_config_pesos_por_punto"),
+        CheckConstraint("dias_plazo_cambio > 0", name="ck_config_dias_plazo_cambio"),
     )
 
     def __repr__(self) -> str:  # pragma: no cover - solo debug
