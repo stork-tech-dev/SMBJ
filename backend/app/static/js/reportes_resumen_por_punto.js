@@ -12,8 +12,10 @@ function resumenPorPunto() {
         columnasMedios: [],
         cargando: false,
 
+        // "Desde" arranca en hoy: lo que se consulta a diario es lo del día.
+        // "Hasta" vacío = sin límite.
         filtros: {
-            fecha_desde: '',
+            fecha_desde: window.hoyISO(),
             fecha_hasta: '',
         },
 
@@ -41,7 +43,7 @@ function resumenPorPunto() {
         },
 
         limpiar() {
-            this.filtros = { fecha_desde: '', fecha_hasta: '' };
+            this.filtros = { fecha_desde: window.hoyISO(), fecha_hasta: '' };
             this.cargar();
         },
 

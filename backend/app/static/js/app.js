@@ -78,6 +78,18 @@ window.pesos = function (valor) {
 };
 
 /**
+ * Hoy en hora local como "YYYY-MM-DD" (lo que espera un <input type="date">).
+ * A mano y no con toISOString(): esa da la fecha UTC, que después de las
+ * 21 h en Argentina ya es mañana. La usan los filtros de fecha de reportes.
+ */
+window.hoyISO = function () {
+    const d = new Date();
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const dia = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mes}-${dia}`;
+};
+
+/**
  * Una fecha sin hora de la API ("2026-11-28") como "28/11/2026".
  *
  * Se arma a mano y no con `new Date(iso)`: esa lectura la toma como
