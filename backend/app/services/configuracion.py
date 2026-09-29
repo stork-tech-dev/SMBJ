@@ -18,7 +18,7 @@ from app.services.roles import NoEncontrado, ReglaDeNegocio
 LETRA_POR_DEFECTO = "S"
 
 # Mismo criterio que la letra: el default de la columna, por si el seed no corrió.
-DIAS_VIGENCIA_SENA_POR_DEFECTO = 30
+DIAS_VIGENCIA_SENA_POR_DEFECTO = 60
 
 
 def obtener_configuracion(db: Session) -> ConfiguracionSistema | None:
@@ -37,7 +37,7 @@ def letra_empresa(db: Session) -> str:
 
 
 def dias_vigencia_sena(db: Session) -> int:
-    """Días que dura una seña desde su alta (reporte de Señas)."""
+    """Días que dura una seña desde su alta (se fija en `vence_el` al registrarla)."""
     config = obtener_configuracion(db)
     return config.dias_vigencia_sena if config else DIAS_VIGENCIA_SENA_POR_DEFECTO
 

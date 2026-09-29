@@ -14,6 +14,7 @@ Lo cuarto es el aislamiento por dispositivo: una vendedora no ve ni toca
 ventas de otro local.
 """
 
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -36,6 +37,7 @@ from app.services import promociones as servicio_promociones
 from app.services import proveedores as servicio_proveedores
 from app.services import senas as servicio_senas
 from app.services import stock as servicio_stock
+from app.services import turnos as servicio_turnos
 from app.services import ventas as servicio
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -149,6 +151,27 @@ def efectivo(db):
 def medio_sena(db):
     """El medio marcado `es_sena`, que también viene del seed."""
     return servicio_medios.medio_de_sena(db)
+
+
+@pytest.fixture
+def dejar_sena(db, autor, local, efectivo):
+    """
+    Registra una seña en efectivo. Abre el turno del local la primera vez:
+    sin turno no hay caja donde recibir la plata.
+    """
+
+    def _dejar(cliente, monto: str):
+        if servicio_turnos.obtener_turno_activo(local.id, db) is None:
+            servicio_turnos.abrir_turno(
+                punto_de_venta_id=local.id, usuario_id=autor.id,
+                efectivo_apertura=0, notas=None, db=db,
+            )
+        return servicio_senas.registrar_sena(
+            db, autor, cliente_id=cliente.id, monto=Decimal(monto),
+            punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
+        )
+
+    return _dejar
 
 
 @pytest.fixture
@@ -710,17 +733,13 @@ def test_una_venta_confirmada_no_se_modifica(
 
 
 def test_sena_cubre_parte_y_el_resto_va_a_otro_medio(
-    db, autor, venta, crear_variante, con_stock, efectivo, cliente, medio_sena
+    db, autor, venta, crear_variante, con_stock, efectivo, cliente, dejar_sena
 ):
     """
-    Si la seña no alcanza, se usa lo que hay y el resto lo cubre otro medio.
-
-    No es un error: es el caso normal, y hacer que la vendedora calcule la
-    diferencia a mano sería pedirle la cuenta que el sistema tiene que hacer.
+    Si la seña no alcanza, el sistema la aplica entera y los medios cubren
+    el resto. La vendedora no reparte montos: solo dice "usar la seña".
     """
-    sena = servicio_senas.registrar_sena(
-        db, autor, cliente_id=cliente.id, monto=Decimal("4000")
-    )
+    sena = dejar_sena(cliente, "4000")
 
     variante = crear_variante("Anillo", "10000")
     con_stock(variante, 5)
@@ -728,9 +747,11 @@ def test_sena_cubre_parte_y_el_resto_va_a_otro_medio(
     servicio.asociar_cliente(db, autor, venta, cliente.id)
 
     servicio.registrar_pagos(db, autor, venta, [
-        {"medio_de_pago_id": medio_sena.id, "monto": Decimal("4000"), "sena_id": sena.id},
         {"medio_de_pago_id": efectivo.id, "monto": Decimal("6000")},
-    ])
+    ], usar_sena=True)
+    pago_sena = next(p for p in venta.pagos if p.sena_id == sena.id)
+    assert pago_sena.monto == Decimal("4000")
+
     servicio.confirmar_venta(db, autor, venta, LIBRE)
 
     assert Decimal(sena.saldo) == Decimal("0")
@@ -739,37 +760,79 @@ def test_sena_cubre_parte_y_el_resto_va_a_otro_medio(
     assert servicio_senas.senas_disponibles(db, cliente.id) == []
 
 
-def test_no_se_paga_con_la_sena_de_otro_cliente(
-    db, autor, venta, crear_variante, cliente, medio_sena
+def test_la_sena_se_usa_entera_y_la_diferencia_se_pierde(
+    db, autor, venta, crear_variante, con_stock, cliente, dejar_sena
 ):
-    otro = servicio_clientes.crear_cliente(db, autor, nombre="Otro Cliente", dni="11222333")
-    sena_ajena = servicio_senas.registrar_sena(
-        db, autor, cliente_id=otro.id, monto=Decimal("5000")
-    )
+    """Seña de $10.000 y compra de $8.000: cubre todo y los $2.000 se pierden."""
+    sena = dejar_sena(cliente, "10000")
 
+    variante = crear_variante("Anillo", "8000")
+    con_stock(variante, 5)
+    servicio.agregar_item(db, autor, venta, variante_id=variante.id)
+    servicio.asociar_cliente(db, autor, venta, cliente.id)
+
+    # Sin otros medios: la seña cubre la venta entera.
+    servicio.registrar_pagos(db, autor, venta, [], usar_sena=True)
+    [pago] = venta.pagos
+    assert (pago.monto, pago.sena_consumido) == (Decimal("8000"), Decimal("10000"))
+
+    servicio.confirmar_venta(db, autor, venta, LIBRE)
+    assert Decimal(sena.saldo) == Decimal("0")
+    assert Decimal(venta.total) == Decimal("8000")
+
+
+def test_sin_usar_la_sena_no_se_toca(
+    db, autor, venta, crear_variante, con_stock, efectivo, cliente, dejar_sena
+):
+    sena = dejar_sena(cliente, "4000")
+    variante = crear_variante("Anillo", "10000")
+    con_stock(variante, 5)
+    servicio.agregar_item(db, autor, venta, variante_id=variante.id)
+    servicio.asociar_cliente(db, autor, venta, cliente.id)
+
+    _cobrar_todo(db, autor, venta, efectivo)
+    servicio.confirmar_venta(db, autor, venta, LIBRE)
+
+    assert Decimal(sena.saldo) == Decimal("4000")
+    assert sena.activo is True
+
+
+def test_la_sena_no_se_elige_como_medio_de_pago(
+    db, autor, venta, crear_variante, cliente, medio_sena, dejar_sena
+):
+    """Solo entra con `usar_sena`: así nadie puede usar "un poco" de una seña."""
+    dejar_sena(cliente, "5000")
     variante = crear_variante("Anillo", "5000")
     servicio.agregar_item(db, autor, venta, variante_id=variante.id)
     servicio.asociar_cliente(db, autor, venta, cliente.id)
 
-    with pytest.raises(ReglaDeNegocio, match="otro cliente"):
+    with pytest.raises(ReglaDeNegocio, match="usar seña"):
         servicio.registrar_pagos(db, autor, venta, [
-            {"medio_de_pago_id": medio_sena.id, "monto": Decimal("5000"),
-             "sena_id": sena_ajena.id},
+            {"medio_de_pago_id": medio_sena.id, "monto": Decimal("5000")},
         ])
 
 
-def test_sena_exige_cliente_en_la_venta(db, autor, venta, crear_variante, cliente, medio_sena):
-    sena = servicio_senas.registrar_sena(
-        db, autor, cliente_id=cliente.id, monto=Decimal("5000")
-    )
+def test_usar_sena_exige_cliente_en_la_venta(db, autor, venta, crear_variante):
     variante = crear_variante("Anillo", "5000")
     servicio.agregar_item(db, autor, venta, variante_id=variante.id)
 
     with pytest.raises(ReglaDeNegocio, match="asociar el cliente"):
-        servicio.registrar_pagos(db, autor, venta, [
-            {"medio_de_pago_id": medio_sena.id, "monto": Decimal("5000"),
-             "sena_id": sena.id},
-        ])
+        servicio.registrar_pagos(db, autor, venta, [], usar_sena=True)
+
+
+def test_la_sena_vencida_no_se_ofrece_ni_se_usa(
+    db, autor, venta, crear_variante, cliente, dejar_sena
+):
+    sena = dejar_sena(cliente, "5000")
+    sena.vence_el = servicio_senas.hoy() - timedelta(days=1)
+    db.flush()
+
+    assert servicio_senas.senas_disponibles(db, cliente.id) == []
+    variante = crear_variante("Anillo", "5000")
+    servicio.agregar_item(db, autor, venta, variante_id=variante.id)
+    servicio.asociar_cliente(db, autor, venta, cliente.id)
+    with pytest.raises(ReglaDeNegocio, match="seña vigente"):
+        servicio.registrar_pagos(db, autor, venta, [], usar_sena=True)
 
 
 # ============================================================================
@@ -778,7 +841,7 @@ def test_sena_exige_cliente_en_la_venta(db, autor, venta, crear_variante, client
 
 
 def test_anular_revierte_stock_puntos_y_sena(
-    db, autor, venta, crear_variante, con_stock, efectivo, cliente, local, medio_sena
+    db, autor, venta, crear_variante, con_stock, efectivo, cliente, local, dejar_sena
 ):
     """
     Las tres reversiones en la misma transacción.
@@ -786,18 +849,15 @@ def test_anular_revierte_stock_puntos_y_sena(
     Devolver el stock sin sacar los puntos dejaría al cliente con puntos de
     una compra que no existió.
     """
-    sena = servicio_senas.registrar_sena(
-        db, autor, cliente_id=cliente.id, monto=Decimal("4000")
-    )
+    sena = dejar_sena(cliente, "4000")
 
     variante = crear_variante("Anillo", "10000")
     con_stock(variante, 5)
     servicio.agregar_item(db, autor, venta, variante_id=variante.id)
     servicio.asociar_cliente(db, autor, venta, cliente.id)
     servicio.registrar_pagos(db, autor, venta, [
-        {"medio_de_pago_id": medio_sena.id, "monto": Decimal("4000"), "sena_id": sena.id},
         {"medio_de_pago_id": efectivo.id, "monto": Decimal("6000")},
-    ])
+    ], usar_sena=True)
     servicio.confirmar_venta(db, autor, venta, LIBRE)
 
     assert servicio_stock.cantidad_en(db, variante.id, local.id) == 4

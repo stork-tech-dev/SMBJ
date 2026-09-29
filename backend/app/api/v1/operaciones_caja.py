@@ -468,8 +468,7 @@ def medios_de_pago(
         MedioCobroResponse(
             id=m.id, nombre=m.nombre, es_efectivo=efectivo is not None and m.id == efectivo.id
         )
-        for m in servicio_medios.listar_medios(db, activo=True)
-        if not m.es_sena
+        for m in servicio_medios.medios_para_cobro_directo(db)
     ]
 
 

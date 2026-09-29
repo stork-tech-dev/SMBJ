@@ -1,0 +1,38 @@
+{# ===========================================================================
+   Macro: tarjeta de acceso rápido del home mobile.
+
+   Sin permiso la tarjeta se muestra apagada en vez de esconderse: así la
+   vendedora sabe que la función existe y no la busca en otro lado (es la
+   Cuenta Maestra la que decide si su perfil la tiene). Por eso la cantidad
+   de tarjetas es siempre la misma, y la grilla (`.accesos-rapidos` en
+   custom.css) puede repartir el alto sin casos especiales.
+
+   Parámetros:
+     href        destino.
+     icono_      nombre del ícono (`components/icons.html`).
+     texto       rótulo.
+     habilitada  False la dibuja apagada, sin enlace.
+
+   Uso:
+     {% from "components/tarjeta_acceso.html" import tarjeta_acceso %}
+     {{ tarjeta_acceso('/senas', 'alcancia', 'Señas', puede_vender) }}
+   =========================================================================== #}
+
+{% from "components/icons.html" import icono %}
+
+{% macro tarjeta_acceso(href, icono_, texto, habilitada=True) %}
+{% if habilitada %}
+<a href="{{ href }}" class="acceso-rapido bg-surface tarjeta hover:border-primary">
+    {{ icono(icono_, clases='acceso-rapido-icono text-primary') }}
+    <span class="text-sm font-semibold text-texto">{{ texto }}</span>
+</a>
+{% else %}
+<div class="acceso-rapido bg-surface tarjeta opacity-50" aria-disabled="true">
+    {{ icono(icono_, clases='acceso-rapido-icono text-texto-muted') }}
+    <span class="text-sm font-semibold text-texto-muted">
+        {{ texto }}
+        <span class="block text-[0.625rem] font-normal text-texto-disabled">Sin permiso</span>
+    </span>
+</div>
+{% endif %}
+{% endmacro %}

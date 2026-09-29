@@ -225,11 +225,19 @@ def test_cobros_de_joyero_con_total_por_medio(db, autor, local, turno):
 # ── Señas ───────────────────────────────────────────────────────────────────
 
 
-def test_senas_activa_usada_y_vencida(db, autor, config):
-    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Leandra", dni="39059158")
-    activa = servicio_senas.registrar_sena(db, autor, cliente_id=cliente.id, monto=Decimal("1000"))
-    usada = servicio_senas.registrar_sena(db, autor, cliente_id=cliente.id, monto=Decimal("500"))
-    servicio_senas.consumir(db, autor, usada, Decimal("500"))
+def test_senas_activa_usada_y_vencida(db, autor, config, local, turno):
+    efectivo = _medio(db, "Efectivo")
+
+    def dejar(nombre, dni, monto):
+        cliente = servicio_clientes.crear_cliente(db, autor, nombre=nombre, dni=dni)
+        return servicio_senas.registrar_sena(
+            db, autor, cliente_id=cliente.id, monto=Decimal(monto),
+            punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
+        )
+
+    activa = dejar("Leandra", "39059158", "1000")
+    usada = dejar("Paula", "30111222", "500")
+    servicio_senas.consumir(db, autor, usada)
     db.flush()
 
     datos = servicio.senas(db, _hoy())
@@ -238,13 +246,32 @@ def test_senas_activa_usada_y_vencida(db, autor, config):
     assert datos["filas"][0]["fecha_vencimiento"] == _hoy() + timedelta(days=config.dias_vigencia_sena)
     assert datos["total_saldo"] == Decimal("1000")
 
-    # Con vigencia de 1 día, una seña de hace 3 días con saldo está vencida.
+    # El vencimiento es el que quedó fijado en la seña: cambiar la vigencia
+    # no la toca. Vencida es la que pasó su `vence_el` con saldo.
     servicio_configuracion.cambiar_dias_vigencia_sena(db, autor.id, 1)
-    activa.created_at = activa.created_at - timedelta(days=3)
+    assert servicio.senas(db, _hoy(), "activa")["filas"][0]["id"] == activa.id
+    activa.vence_el = _hoy() - timedelta(days=1)
     db.flush()
-    hace_tres = _hoy() - timedelta(days=3)
-    assert [f["estado"] for f in servicio.senas(db, hace_tres)["filas"]] == ["vencida"]
-    assert servicio.senas(db, hace_tres, "activa")["filas"] == []
+    assert servicio.senas(db, _hoy(), "vencida")["filas"][0]["id"] == activa.id
+    assert servicio.senas(db, _hoy(), "activa")["filas"] == []
+
+
+def test_la_sena_recibida_aparece_en_movimientos_y_suma_al_arqueo(db, autor, local, turno):
+    efectivo = _medio(db, "Efectivo")
+    antes = servicio_arqueo.efectivo_esperado(turno.id, db)
+    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Leandra", dni="39059158")
+    servicio_senas.registrar_sena(
+        db, autor, cliente_id=cliente.id, monto=Decimal("7000"),
+        punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
+    )
+
+    movimientos = servicio.movimientos(db, _hoy(), local.id)["turnos"][0]["movimientos"]
+    sena = next(m for m in movimientos if m["tipo"] == "sena")
+    assert sena["ingreso"] == Decimal("7000")
+    assert "Leandra" in sena["detalle"]
+
+    # La plata entró hoy: el arqueo la espera en el medio con que se pagó.
+    assert servicio_arqueo.efectivo_esperado(turno.id, db) == antes + Decimal("7000")
 
 
 # ── Retiros de mercadería ───────────────────────────────────────────────────
@@ -317,7 +344,7 @@ def test_vigencia_de_senas_se_cambia_por_api_y_queda_auditada(client, db, autor,
     db.commit()
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    assert client.get("/api/v1/configuracion/vigencia-senas").json() == {"dias": 30}
+    assert client.get("/api/v1/configuracion/vigencia-senas").json() == {"dias": 60}
     assert client.put("/api/v1/configuracion/vigencia-senas", json={"dias": 0}).status_code == 422
     assert client.put("/api/v1/configuracion/vigencia-senas", json={"dias": 45}).json() == {"dias": 45}
     assert db.execute(

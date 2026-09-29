@@ -40,7 +40,6 @@ from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.producto import Producto, Variante
 from app.models.promocion import Promocion, TipoPromocion
 from app.models.punto_de_venta import PuntoDeVenta
-from app.models.sena import Sena
 from app.models.stock import TipoMovimiento
 from app.models.turno import Turno
 from app.models.usuario import Usuario
@@ -806,16 +805,24 @@ def registrar_pagos(
     venta: Venta,
     pagos: list[dict],
     ip_origen: str | None = None,
+    *,
+    usar_sena: bool = False,
 ) -> Venta:
     """
     Define con qué se paga. Reemplaza lo que hubiera cargado antes.
 
     Cada pago trae `medio_de_pago_id`, `monto` y, opcionalmente,
-    `plan_cuotas_id` y `sena_id`. Los montos tienen que sumar EXACTAMENTE lo
-    que valen los productos, sin recargos: el recargo lo calcula el sistema
-    sobre cada parte y se suma después. Pedirle a la vendedora que cargue el
-    monto con recargo incluido sería pedirle que haga la cuenta que el
-    sistema tiene que hacer, y cualquier diferencia terminaría en la caja.
+    `plan_cuotas_id`. Los montos tienen que sumar EXACTAMENTE lo que valen
+    los productos, sin recargos: el recargo lo calcula el sistema sobre cada
+    parte y se suma después. Pedirle a la vendedora que cargue el monto con
+    recargo incluido sería pedirle que haga la cuenta que el sistema tiene
+    que hacer, y cualquier diferencia terminaría en la caja.
+
+    La seña no viene en `pagos`: con `usar_sena` el sistema aplica las señas
+    vigentes del cliente de la venta (`senas.repartir_en_venta`) hasta cubrir
+    como máximo el total, y `pagos` cubre lo que falte —nada, si la seña
+    alcanza—. Que lo calcule el backend y no la pantalla es lo que garantiza
+    el uso total: ningún cliente de la API puede usar "un poco" de una seña.
 
     Las señas NO se descuentan acá: se reservan y recién se consumen al
     confirmar, dentro de la misma transacción. Si se descontaran ahora, una
@@ -825,8 +832,6 @@ def registrar_pagos(
 
     if not venta.items:
         raise ReglaDeNegocio("La venta no tiene productos: no hay nada que cobrar")
-    if not pagos:
-        raise ReglaDeNegocio("Hay que elegir al menos un medio de pago")
     if len(pagos) > MAX_MEDIOS_DE_PAGO:
         raise ReglaDeNegocio(
             f"Una venta admite hasta {MAX_MEDIOS_DE_PAGO} medios de pago"
@@ -835,15 +840,23 @@ def registrar_pagos(
     cobrable = redondear(
         sum((Decimal(i.precio_final) for i in venta.items), Decimal("0"))
     )
+
+    nuevos: list[VentaPago] = _pagos_con_sena(db, venta, cobrable) if usar_sena else []
+    cubierto_por_sena = sum((p.monto for p in nuevos), Decimal("0"))
+    a_cubrir = cobrable - cubierto_por_sena
+
+    if not pagos and a_cubrir > 0:
+        raise ReglaDeNegocio("Hay que elegir al menos un medio de pago")
+
     suma = redondear(sum((Decimal(p["monto"]) for p in pagos), Decimal("0")))
-    if suma != cobrable:
+    if suma != a_cubrir:
+        detalle = f" (la seña cubre ${cubierto_por_sena})" if cubierto_por_sena else ""
         raise ReglaDeNegocio(
-            f"Los medios de pago suman ${suma} y la venta es de ${cobrable}: "
+            f"Los medios de pago suman ${suma} y falta cubrir ${a_cubrir}{detalle}: "
             "tienen que coincidir"
         )
 
     habilita_sin_interes = _habilita_cuotas_sin_interes(venta)
-    nuevos: list[VentaPago] = []
 
     for datos in pagos:
         monto = redondear(Decimal(datos["monto"]))
@@ -853,11 +866,14 @@ def registrar_pagos(
         medio = servicio_medios.obtener_medio(db, datos["medio_de_pago_id"])
         if not medio.activo:
             raise ReglaDeNegocio(f"El medio de pago '{medio.nombre}' está inactivo")
+        if medio.es_sena:
+            raise ReglaDeNegocio(
+                "La seña no se elige como medio de pago: se aplica con «usar seña»"
+            )
 
         plan = _resolver_plan(
             db, medio, datos.get("plan_cuotas_id"), monto, habilita_sin_interes
         )
-        sena = _resolver_sena(db, venta, medio, datos.get("sena_id"), monto)
 
         recargo = servicio_medios.calcular_recargo(monto, plan)
         nuevos.append(
@@ -868,7 +884,6 @@ def registrar_pagos(
                 monto=monto,
                 recargo=recargo,
                 monto_total=monto + recargo,
-                sena_id=sena.id if sena else None,
             )
         )
 
@@ -884,6 +899,43 @@ def registrar_pagos(
     venta.updated_at = ahora_db()
     db.flush()
     return venta
+
+
+def _pagos_con_sena(db: Session, venta: Venta, cobrable: Decimal) -> list[VentaPago]:
+    """
+    Un pago por cada seña vigente que se usa, con lo que aplica a la venta y
+    lo que consume de su saldo (puede ser más: la diferencia se pierde).
+
+    Exige cliente en la venta —la seña es de alguien— y que el medio "Seña"
+    esté configurado: es el que el arqueo reconoce como informativo.
+    """
+    if venta.cliente_id is None:
+        raise ReglaDeNegocio(
+            "Para pagar con una seña hay que asociar el cliente a la venta"
+        )
+
+    reparto = servicio_senas.repartir_en_venta(db, venta.cliente_id, cobrable)
+    if not reparto:
+        raise ReglaDeNegocio("El cliente no tiene una seña vigente para usar")
+
+    medio = servicio_medios.medio_de_sena(db)
+    if medio is None:
+        raise ReglaDeNegocio(
+            "No hay un medio de pago de señas activo: configuralo en Medios de pago"
+        )
+
+    return [
+        VentaPago(
+            venta_id=venta.id,
+            medio_de_pago_id=medio.id,
+            monto=aplicado,
+            recargo=Decimal("0"),
+            monto_total=aplicado,
+            sena_id=sena.id,
+            sena_consumido=consumido,
+        )
+        for sena, aplicado, consumido in reparto
+    ]
 
 
 def _habilita_cuotas_sin_interes(venta: Venta) -> bool:
@@ -931,43 +983,6 @@ def _resolver_plan(
             f"con '{medio.nombre}'"
         )
     return plan
-
-
-def _resolver_sena(
-    db: Session, venta: Venta, medio: MedioDePago, sena_id: int | None, monto: Decimal
-) -> Sena | None:
-    """
-    Valida la seña que se quiere usar: que exista, que sea del cliente de la
-    venta y que tenga saldo suficiente para la parte que se le asignó.
-
-    Que la seña sea del MISMO cliente es lo que impide pagar con la seña de
-    otro. Y por eso una seña obliga a que la venta tenga cliente asociado.
-    """
-    if not medio.es_sena:
-        if sena_id is not None:
-            raise ReglaDeNegocio(
-                f"'{medio.nombre}' no es el medio de pago de las señas"
-            )
-        return None
-
-    if sena_id is None:
-        raise ReglaDeNegocio("Hay que indicar de qué seña se descuenta")
-    if venta.cliente_id is None:
-        raise ReglaDeNegocio(
-            "Para pagar con una seña hay que asociar el cliente a la venta"
-        )
-
-    sena = servicio_senas.obtener_sena(db, sena_id)
-    if sena.cliente_id != venta.cliente_id:
-        raise ReglaDeNegocio("Esa seña es de otro cliente")
-    if not sena.activo or Decimal(sena.saldo) <= 0:
-        raise ReglaDeNegocio("Esa seña ya no tiene saldo disponible")
-    if Decimal(sena.saldo) < monto:
-        raise ReglaDeNegocio(
-            f"La seña tiene ${sena.saldo} de saldo y se le asignaron ${monto}: "
-            "el resto hay que cubrirlo con otro medio de pago"
-        )
-    return sena
 
 
 # ============================================================================
@@ -1038,7 +1053,6 @@ def confirmar_venta(
                 db,
                 autor,
                 servicio_senas.obtener_sena(db, pago.sena_id),
-                Decimal(pago.monto),
                 venta_id=venta.id,
                 ip_origen=ip_origen,
             )
@@ -1151,7 +1165,7 @@ def anular_venta(
                 db,
                 autor,
                 servicio_senas.obtener_sena(db, pago.sena_id),
-                Decimal(pago.monto),
+                Decimal(pago.sena_consumido if pago.sena_consumido is not None else pago.monto),
                 ip_origen=ip_origen,
             )
 

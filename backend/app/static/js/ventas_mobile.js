@@ -329,15 +329,17 @@ function carritoVenta(puedeDescontar = false) {
 function finalizarVenta() {
     return {
         ...ventaBase(),
+        ...window.buscadorClientes(),
 
         medios: [],
         senas: [],
         saldoSenas: 0,
-        clientes: [],
-        clienteBusqueda: '',
+        // Si el cliente tiene seña, arranca en Sí: si dejó plata, lo normal
+        // es que la use en esta compra.
+        usarSena: true,
         // Una línea por medio de pago. Arranca con una: el caso normal es
         // pagar con uno solo.
-        lineas: [{ medio_de_pago_id: null, monto: 0, plan_cuotas_id: null, sena_id: null }],
+        lineas: [{ medio_de_pago_id: null, monto: 0, plan_cuotas_id: null }],
         confirmando: false,
         confirmada: null,
 
@@ -348,9 +350,11 @@ function finalizarVenta() {
             await this.cargarMedios();
             await this.cargarSenas();
 
-            // La primera línea arranca cubriendo todo: es lo que pasa cuando
-            // se paga con un solo medio, que es la mayoría de las ventas.
-            this.lineas[0].monto = Number(this.venta.a_cobrar);
+            // La primera línea arranca cubriendo todo lo que la seña no
+            // cubre: es lo que pasa cuando se paga con un solo medio, que es
+            // la mayoría de las ventas.
+            this.repartir(0);
+            this.$watch('usarSena', () => this.repartir(0));
 
             // F10 confirma, como en el resto del sistema.
             window.addEventListener('atajo-confirmar', () => {
@@ -376,6 +380,7 @@ function finalizarVenta() {
             try {
                 this.senas = await pedir(`${API_CLIENTES}/${this.venta.cliente.id}/senas`);
                 this.saldoSenas = this.senas.reduce((t, s) => t + Number(s.saldo), 0);
+                this.usarSena = this.saldoSenas > 0;
             } catch (e) {
                 this.senas = [];
                 this.saldoSenas = 0;
@@ -384,29 +389,13 @@ function finalizarVenta() {
 
         /* --- Cliente --- */
 
-        async buscarCliente() {
-            const texto = this.clienteBusqueda.trim();
-            if (texto.length < 2) {
-                this.clientes = [];
-                return;
-            }
-            try {
-                this.clientes = await pedir(
-                    `${API_CLIENTES}/buscar?q=${encodeURIComponent(texto)}`
-                );
-            } catch (e) {
-                this.clientes = [];
-            }
-        },
-
         async asociarCliente(clienteId) {
             try {
                 this.venta = await pedir(`${API_VENTAS}/${this.venta.id}/cliente`, {
                     method: 'POST',
                     body: JSON.stringify({ cliente_id: clienteId }),
                 });
-                this.clientes = [];
-                this.clienteBusqueda = '';
+                this.limpiarBusquedaCliente();
 
                 // El cliente puede cambiar el total —trae promociones
                 // propias— y con él cambian las señas y los planes que se
@@ -425,8 +414,32 @@ function finalizarVenta() {
             return this.medios.find((m) => m.id === linea.medio_de_pago_id) || null;
         },
 
-        esSena(linea) {
-            return !!this.medioDe(linea)?.es_sena;
+        /* --- Seña ---
+           Preview de lo que calcula el backend al registrar los pagos: la
+           seña cubre hasta el total y se consume entera. */
+
+        /* El total de productos, tal como lo resolvió el backend. */
+        get aCobrar() {
+            return this.venta ? Number(this.venta.a_cobrar) : 0;
+        },
+
+        get senaAplicada() {
+            if (!this.usarSena) return 0;
+            return Math.min(this.saldoSenas, this.aCobrar);
+        },
+
+        get senaPerdida() {
+            return Math.max(Math.round((this.saldoSenas - this.senaAplicada) * 100) / 100, 0);
+        },
+
+        get vencimientoSena() {
+            return this.senas.length ? this.senas[0].vence_el : null;
+        },
+
+        /* Lo que tienen que cubrir los medios de pago: los productos menos
+           la seña. Sin recargos: el recargo se suma después. */
+        get aCubrir() {
+            return Math.round((this.aCobrar - this.senaAplicada) * 100) / 100;
         },
 
         planesDe(linea) {
@@ -457,18 +470,17 @@ function finalizarVenta() {
            de PRODUCTOS, sin recargos: el recargo se suma después y no es algo
            que la vendedora reparta. */
         get faltante() {
+            if (this.aCubrir <= 0) return 0;
             const asignado = this.lineas.reduce((t, l) => t + (Number(l.monto) || 0), 0);
-            return Math.round((Number(this.venta?.a_cobrar || 0) - asignado) * 100) / 100;
+            return Math.round((this.aCubrir - asignado) * 100) / 100;
         },
 
         get puedeConfirmar() {
             if (!this.venta?.items?.length) return false;
+            // La seña cubre todo: no hay medios que elegir.
+            if (this.aCubrir <= 0) return true;
             if (this.faltante !== 0) return false;
-            return this.lineas.every(
-                (l) => l.medio_de_pago_id
-                    && Number(l.monto) > 0
-                    && (!this.esSena(l) || l.sena_id)
-            );
+            return this.lineas.every((l) => l.medio_de_pago_id && Number(l.monto) > 0);
         },
 
         agregarLinea() {
@@ -480,7 +492,6 @@ function finalizarVenta() {
                 medio_de_pago_id: null,
                 monto: Math.max(this.faltante, 0),
                 plan_cuotas_id: null,
-                sena_id: null,
             });
         },
 
@@ -492,17 +503,7 @@ function finalizarVenta() {
         },
 
         alCambiarMedio(indice) {
-            const linea = this.lineas[indice];
-            linea.plan_cuotas_id = null;
-            linea.sena_id = null;
-
-            // Una seña no puede cubrir más de su saldo: se acota sola y el
-            // resto queda para el otro medio.
-            if (this.esSena(linea) && this.senas.length === 1) {
-                linea.sena_id = this.senas[0].id;
-                linea.monto = Math.min(Number(linea.monto), Number(this.senas[0].saldo));
-                this.repartir(indice);
-            }
+            this.lineas[indice].plan_cuotas_id = null;
         },
 
         alCambiarMonto(indice) {
@@ -515,7 +516,7 @@ function finalizarVenta() {
            Es la ayuda de la que habla el flujo: la vendedora carga el
            primero y el sistema calcula el segundo. */
         repartir(indiceFijo) {
-            const total = Number(this.venta?.a_cobrar || 0);
+            const total = Math.max(this.aCubrir, 0);
 
             if (this.lineas.length === 1) {
                 this.lineas[0].monto = total;
@@ -538,17 +539,18 @@ function finalizarVenta() {
             this.confirmando = true;
             try {
                 // Dos pasos y no uno: registrar los pagos valida los planes y
-                // las señas ANTES de tocar el stock. Si algo está mal, la
+                // la seña ANTES de tocar el stock. Si algo está mal, la
                 // venta sigue abierta y corregible.
                 await pedir(`${API_VENTAS}/${this.venta.id}/pagos`, {
                     method: 'POST',
                     body: JSON.stringify({
-                        pagos: this.lineas.map((l) => ({
+                        // Si la seña cubre todo, no va ningún medio.
+                        pagos: this.aCubrir <= 0 ? [] : this.lineas.map((l) => ({
                             medio_de_pago_id: l.medio_de_pago_id,
                             monto: l.monto,
                             plan_cuotas_id: l.plan_cuotas_id || null,
-                            sena_id: l.sena_id || null,
                         })),
+                        usar_sena: this.usarSena && this.saldoSenas > 0,
                     }),
                 });
 

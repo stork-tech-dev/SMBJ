@@ -12,9 +12,14 @@ Recalcularlo sumando pagos en cada lectura convertiría la pantalla de cobro
 —la más caliente del sistema— en un agregado sobre todo el historial. El
 detalle de en qué se usó igual queda: cada uso deja su fila en
 `venta_pagos` apuntando a la seña.
+
+Uso total: una seña se gasta entera en una sola venta. Si la compra es por
+menos, la diferencia se pierde (el saldo queda en 0 igual). Lo que se
+descontó queda en `venta_pagos.sena_consumido`, para que la anulación la
+devuelva completa.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -22,6 +27,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Numeric,
@@ -34,6 +40,9 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.cliente import Cliente
+    from app.models.medio_pago import MedioDePago
+    from app.models.punto_de_venta import PuntoDeVenta
+    from app.models.turno import Turno
     from app.models.usuario import Usuario
 
 
@@ -57,6 +66,28 @@ class Sena(Base):
         BigInteger, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False, index=True
     )
 
+    # Con qué pagó el cliente, en qué turno y en qué local: la plata de la
+    # seña entra a la caja ese día y el arqueo la suma a ese medio. NULL solo
+    # en las señas registradas antes de la migración 0040, que no entraban
+    # a la caja.
+    medio_de_pago_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("medios_de_pago.id", ondelete="RESTRICT"), nullable=True
+    )
+    turno_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("turnos.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    punto_de_venta_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("puntos_de_venta.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
+    # Se persiste aunque sea "alta + vigencia" (Principio 4): la vigencia es
+    # configurable, y cambiarla no tiene que alargar ni acortar las señas que
+    # el cliente ya dejó con otra regla.
+    vence_el: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+
     # Se apaga sola cuando el saldo llega a 0. Una seña gastada no se ofrece
     # más al cobrar, pero sigue explicando las ventas donde se usó.
     activo: Mapped[bool] = mapped_column(
@@ -72,6 +103,9 @@ class Sena(Base):
 
     cliente: Mapped["Cliente"] = relationship()  # noqa: F821
     usuario: Mapped["Usuario"] = relationship()  # noqa: F821
+    medio_de_pago: Mapped["MedioDePago | None"] = relationship()  # noqa: F821
+    turno: Mapped["Turno | None"] = relationship()  # noqa: F821
+    punto_de_venta: Mapped["PuntoDeVenta | None"] = relationship()  # noqa: F821
 
     __table_args__ = (
         CheckConstraint("monto > 0", name="ck_senas_monto_positivo"),

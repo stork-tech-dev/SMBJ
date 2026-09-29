@@ -282,8 +282,8 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
 def movimientos(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> dict:
     """
     Todos los ingresos y egresos de cada turno, en orden cronológico:
-    apertura, pagos de ventas, cobros de joyero, novedades y retiros de
-    efectivo. Los retiros de mercadería no mueven la caja y no aparecen.
+    apertura, pagos de ventas, cobros de joyero, señas recibidas, novedades y
+    retiros de efectivo. Los retiros de mercadería no mueven la caja y no aparecen.
 
     Cada turno trae además `efectivo_esperado` —la misma cuenta que el
     arqueo—, para controlar el recorrido contra lo que había que contar.
@@ -309,6 +309,13 @@ def movimientos(db: Session, fecha: date, punto_de_venta_id: int | None = None) 
             detalle = "Cobro de joyero" + (f" — reclamo {c.numero_reclamo}" if c.numero_reclamo else "")
             lista.append(_movimiento(c.timestamp, "cobro_joyero", detalle,
                                      c.medio_de_pago.nombre, ingreso=c.monto_cobrado))
+
+        for sena in db.execute(
+            select(Sena).options(joinedload(Sena.medio_de_pago), joinedload(Sena.cliente))
+            .where(Sena.turno_id == turno.id, Sena.medio_de_pago_id.is_not(None))
+        ).unique().scalars():
+            lista.append(_movimiento(sena.created_at, "sena", f"Seña — {sena.cliente.nombre}",
+                                     sena.medio_de_pago.nombre, ingreso=sena.monto))
 
         for n in db.execute(
             select(NovedadCaja).options(joinedload(NovedadCaja.concepto))
@@ -444,14 +451,15 @@ def senas(db: Session, fecha: date, estado: str | None = None) -> dict:
     """
     Señas dadas de alta en *fecha*, con su saldo, vencimiento y estado:
     - usada: ya no le queda saldo;
-    - vencida: le queda saldo y pasó la vigencia (`dias_vigencia_sena`);
+    - vencida: le queda saldo y pasó su `vence_el`;
     - activa: el resto.
 
-    El vencimiento se calcula (alta + vigencia), no se guarda (Principio 4).
+    El vencimiento es el que quedó fijado al registrar cada seña: cambiar la
+    vigencia después no altera las ya entregadas.
     """
     dias = servicio_configuracion.dias_vigencia_sena(db)
     hoy = ahora_db().date()
-    vencimiento = func.date(Sena.created_at) + dias
+    vencimiento = Sena.vence_el
     estado_sql = case(
         (Sena.saldo == 0, "usada"),
         (vencimiento < hoy, "vencida"),

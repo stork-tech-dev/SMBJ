@@ -1,0 +1,46 @@
+{# ===========================================================================
+   Macro: buscador de cliente por DNI o nombre (pantallas mobile).
+
+   El estado y la búsqueda los pone `window.buscadorClientes()` (app.js),
+   que el componente Alpine tiene que incluir con `...buscadorClientes()`.
+   Lo usan el cobro de la venta y el alta de señas.
+
+   Parámetros:
+     id         id del input.
+     al_elegir  expresión Alpine que se ejecuta al tocar un resultado; tiene
+                a mano el cliente como `c` (ej. `asociarCliente(c.id)`).
+
+   Uso:
+     {% from "components/buscador_cliente.html" import buscador_cliente %}
+     {{ buscador_cliente('buscar-cliente', 'asociarCliente(c.id)') }}
+   =========================================================================== #}
+
+{% macro buscador_cliente(id, al_elegir) %}
+<div class="relative">
+    <label for="{{ id }}" class="sr-only">Buscar cliente</label>
+    <input id="{{ id }}" type="search" x-model="clienteBusqueda"
+           @input.debounce.300ms="buscarCliente()"
+           placeholder="DNI o nombre" autocomplete="off"
+           class="w-full h-[3.25rem] px-4 text-base bg-surface border-2
+                  border-borde rounded-input
+                  placeholder:text-texto-disabled
+                  focus:outline-none focus:border-primary">
+
+    <ul x-show="clientes.length" x-cloak
+        @click.outside="clientes = []"
+        class="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto
+               bg-surface border border-borde rounded-input shadow-lg">
+        <template x-for="c in clientes" :key="c.id">
+            <li>
+                <button type="button" @click="{{ al_elegir }}"
+                        class="w-full text-left px-4 py-3 min-h-toque
+                               hover:bg-surface-alt">
+                    <span class="block text-base" x-text="c.nombre"></span>
+                    <span class="block text-xs text-texto-muted"
+                          x-text="c.dni || 'Sin DNI'"></span>
+                </button>
+            </li>
+        </template>
+    </ul>
+</div>
+{% endmacro %}

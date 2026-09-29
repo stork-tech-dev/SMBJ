@@ -1442,6 +1442,14 @@ _PANTALLAS_MOBILE = {
         "volver": "/caja/operaciones",
         "activa": "inicio",
     },
+    # Alta de señas: se cobra en el mostrador, con el turno del local abierto.
+    "/senas": {
+        "plantilla": "pages/senas/mobile/nueva.html",
+        "titulo": "Señas",
+        "volver": "/ventas",
+        "activa": "inicio",
+        "extra": {"dias_vigencia_sena": servicio_configuracion.dias_vigencia_sena},
+    },
 }
 
 
@@ -1472,7 +1480,12 @@ def _registrar_pantallas_mobile() -> None:
                     request, db, usuario, _p["titulo"],
                     volver_url=_p["volver"],
                     activa_mobile=_p["activa"],
-                    **_p.get("extra", {}),
+                    # Un `extra` puede ser una función de la sesión: los
+                    # valores que salen de la base se leen en cada pedido.
+                    **{
+                        clave: valor(db) if callable(valor) else valor
+                        for clave, valor in _p.get("extra", {}).items()
+                    },
                 ),
             )
 

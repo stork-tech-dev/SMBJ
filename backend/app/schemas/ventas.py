@@ -210,15 +210,19 @@ class PagoItem(BaseModel):
     medio_de_pago_id: int
     monto: Decimal = Field(gt=0)
     plan_cuotas_id: int | None = None
-    sena_id: int | None = Field(
-        default=None, description="Obligatorio si el medio es el de las señas"
-    )
 
 
 class PagosRegistrar(BaseModel):
-    """Reemplaza los medios de pago de la venta. Hasta dos."""
+    """
+    Reemplaza los medios de pago de la venta. Hasta dos, sin contar la seña.
 
-    pagos: list[PagoItem] = Field(min_length=1, max_length=2)
+    Con `usar_sena`, el sistema aplica las señas vigentes del cliente (se
+    consumen enteras, cubriendo como máximo el total) y `pagos` cubre el
+    resto. Si la seña alcanza, `pagos` va vacío.
+    """
+
+    pagos: list[PagoItem] = Field(default_factory=list, max_length=2)
+    usar_sena: bool = False
 
 
 class VentaAnular(BaseModel):
@@ -254,6 +258,9 @@ class VentaPagoResponse(BaseModel):
     recargo: Decimal
     monto_total: Decimal
     sena_id: int | None
+    # Lo que se descontó de la seña; si es más que `monto`, la diferencia
+    # se perdió por el uso total.
+    sena_consumido: Decimal | None = None
 
 
 class VentaResumen(BaseModel):

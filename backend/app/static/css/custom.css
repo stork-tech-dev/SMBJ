@@ -306,30 +306,57 @@ select.campo-linea {
     border-bottom-color: var(--color-danger);
 }
 
-/* Accesos rápidos del home mobile: dos columnas de tarjetas cuadradas.
-   Si la cantidad es impar, la última cubre las dos columnas con la mitad de
-   alto de una tarjeta. La regla depende de la cantidad y no de cuál es la
-   tarjeta, porque las que se muestran dependen del perfil.
+/* Accesos rápidos del home mobile: seis tarjetas del mismo ancho en dos
+   columnas (macro `components/tarjeta_acceso.html`).
 
-   El alto se calcula con el ancho del contenedor (`cqw`): una columna mide
-   (100cqw - gap) / 2 y la mitad de eso es (100cqw - gap) / 4. La
-   especificidad (0,3,0) le gana a `aspect-square` de Tailwind aunque el CDN
-   inyecte sus estilos después de este archivo. */
+   El alto de cada fila sale del alto de la pantalla para que las tres filas
+   entren sin scroll: `--reservado-home` es lo que ocupa el resto del home
+   (encabezado, turno, "Nueva venta", "Cerrar sesión" y la barra inferior).
+   El `clamp` las deja crecer hasta 9rem en celulares altos y no las baja
+   de 3.5rem (56px), por encima del mínimo de toque de 44px. `dvh` y no `vh`:
+   en el celular la barra del navegador aparece y desaparece. */
 .accesos-rapidos {
-    --gap-accesos: 1rem;
-    container-type: inline-size;
+    --gap-accesos: 0.75rem;
+    --reservado-home: 26.5rem;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: clamp(3.5rem, calc((100dvh - var(--reservado-home) - 2 * var(--gap-accesos)) / 3), 9rem);
     gap: var(--gap-accesos);
 }
 
-.accesos-rapidos > :last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-    aspect-ratio: auto;
-    height: calc((100cqw - var(--gap-accesos)) / 4);
-    /* A media altura el ícono va al costado del texto: apilados no entran. */
-    flex-direction: row;
-    padding-block: 0.5rem;
+.acceso-rapido {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 10px;
+    text-align: center;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.acceso-rapido-icono {
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+}
+
+/* Pantallas bajas (≈ 640px de alto): la fila queda chica para apilar ícono
+   y texto, así que van uno al lado del otro y el ícono se achica. */
+@media (max-height: 44rem) {
+    .acceso-rapido {
+        flex-direction: row;
+        justify-content: flex-start;
+        text-align: left;
+        padding-inline: 0.75rem;
+    }
+
+    .acceso-rapido-icono {
+        width: 1.5rem;
+        height: 1.5rem;
+    }
 }
 
 /* Casillero de "Accesos permitidos": el diseño lo dibuja como un círculo

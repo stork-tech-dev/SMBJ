@@ -77,6 +77,54 @@ window.pesos = function (valor) {
     });
 };
 
+/**
+ * Una fecha sin hora de la API ("2026-11-28") como "28/11/2026".
+ *
+ * Se arma a mano y no con `new Date(iso)`: esa lectura la toma como
+ * medianoche UTC, y en Argentina (UTC-03) la mostraría como el día anterior.
+ */
+window.fechaDia = function (iso) {
+    if (!iso) return '—';
+    const [anio, mes, dia] = String(iso).slice(0, 10).split('-');
+    return `${dia}/${mes}/${anio}`;
+};
+
+/**
+ * Buscador de clientes por DNI o nombre de las pantallas mobile (macro
+ * `components/buscador_cliente.html`). Lo usan el cobro de la venta y el
+ * alta de señas: la misma búsqueda con el mismo mínimo de caracteres.
+ */
+window.buscadorClientes = function () {
+    return {
+        clientes: [],
+        clienteBusqueda: '',
+        buscandoCliente: false,
+
+        async buscarCliente() {
+            const texto = this.clienteBusqueda.trim();
+            if (texto.length < 2) {
+                this.clientes = [];
+                return;
+            }
+            this.buscandoCliente = true;
+            try {
+                this.clientes = await window.pedir(
+                    `/api/v1/clientes/buscar?q=${encodeURIComponent(texto)}`
+                );
+            } catch (e) {
+                this.clientes = [];
+            } finally {
+                this.buscandoCliente = false;
+            }
+        },
+
+        limpiarBusquedaCliente() {
+            this.clientes = [];
+            this.clienteBusqueda = '';
+        },
+    };
+};
+
 window.toast = function (mensaje, tipo = 'info', duracion = 4000) {
     window.dispatchEvent(
         new CustomEvent('toast', { detail: { mensaje, tipo, duracion } })

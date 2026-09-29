@@ -216,7 +216,7 @@ def cambiar_estado(
 @router.get(
     "/{cliente_id}/senas",
     response_model=list[SenaDeCliente],
-    summary="Señas con saldo del cliente",
+    summary="Señas vigentes del cliente",
 )
 def senas_del_cliente(
     cliente_id: int,
@@ -224,10 +224,10 @@ def senas_del_cliente(
     _=Depends(requiere_permiso(Modulo.CLIENTES, "ver")),
 ):
     """
-    Lo que el punto de venta ofrece como medio de pago.
+    Lo que el punto de venta ofrece al cobrar.
 
-    Solo las que tienen saldo: una seña gastada en la lista sería una opción
-    que no cubre nada.
+    Solo las vigentes (con saldo y sin vencer): una seña gastada o vencida
+    en la lista sería una opción que no cubre nada.
     """
     try:
         servicio.obtener_cliente(db, cliente_id)

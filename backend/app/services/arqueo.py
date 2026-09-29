@@ -9,6 +9,7 @@ Reglas:
   - Los retiros de efectivo se descuentan del esperado de efectivo.
   - Las novedades de caja suman (entrada) o restan (salida) al efectivo.
   - Los cobros de joyero suman al medio con que pagó el cliente (no son venta).
+  - Las señas que se DEJAN en el turno suman al medio con que pagó el cliente.
   - Los retiros de mercadería de empleadas NO afectan el arqueo.
   - Las ventas anuladas no cuentan: solo se suman las confirmadas.
   - Los medios agrupados (agrupa_en_terminal=TRUE) se suman por grupo.
@@ -86,6 +87,23 @@ def _cobros_joyero_del_turno(turno_id: int, db: Session) -> dict[int, Decimal]:
         select(CobroJoyero.medio_de_pago_id, func.sum(CobroJoyero.monto_cobrado))
         .where(CobroJoyero.turno_id == turno_id)
         .group_by(CobroJoyero.medio_de_pago_id)
+    ).all()
+    return {medio_id: monto or Decimal("0") for medio_id, monto in filas}
+
+
+def _senas_del_turno(turno_id: int, db: Session) -> dict[int, Decimal]:
+    """
+    Señas recibidas en el turno por medio de pago: {medio_de_pago_id: monto}.
+
+    Es la plata que el cliente dejó hoy. Se cuenta por `monto` y no por
+    `saldo`: lo que entró a la caja es lo entregado, se haya usado o no.
+    """
+    from app.models.sena import Sena
+
+    filas = db.execute(
+        select(Sena.medio_de_pago_id, func.sum(Sena.monto))
+        .where(Sena.turno_id == turno_id, Sena.medio_de_pago_id.is_not(None))
+        .group_by(Sena.medio_de_pago_id)
     ).all()
     return {medio_id: monto or Decimal("0") for medio_id, monto in filas}
 
@@ -168,10 +186,12 @@ def calcular_esperado(turno_id: int, db: Session) -> dict:
         cfg.medio_de_pago_id: (cfg, medio) for cfg, medio in configs
     }
 
-    # Pagos del turno por medio: ventas confirmadas + cobros de joyero.
+    # Pagos del turno por medio: ventas confirmadas + cobros de joyero +
+    # señas recibidas.
     pagos = _pagos_del_turno(turno, db)
-    for medio_id, monto in _cobros_joyero_del_turno(turno_id, db).items():
-        pagos[medio_id] = pagos.get(medio_id, Decimal("0")) + monto
+    for entradas in (_cobros_joyero_del_turno(turno_id, db), _senas_del_turno(turno_id, db)):
+        for medio_id, monto in entradas.items():
+            pagos[medio_id] = pagos.get(medio_id, Decimal("0")) + monto
 
     # El medio "efectivo" recibe además la apertura, los retiros y las
     # novedades de caja (que siempre son en efectivo).

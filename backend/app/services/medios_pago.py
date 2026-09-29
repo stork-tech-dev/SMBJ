@@ -93,6 +93,15 @@ def medio_de_sena(db: Session) -> MedioDePago | None:
     ).scalars().first()
 
 
+def medios_para_cobro_directo(db: Session) -> list[MedioDePago]:
+    """
+    Los medios con los que se cobra plata que no es una venta —un arreglo
+    del joyero, una seña que se deja—: los activos menos la seña, que es
+    saldo del cliente y no plata que entra.
+    """
+    return [m for m in listar_medios(db, activo=True) if not m.es_sena]
+
+
 # ============================================================================
 # ABM DE MEDIOS
 # ============================================================================

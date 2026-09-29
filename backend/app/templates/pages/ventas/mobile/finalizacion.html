@@ -1,7 +1,7 @@
 {# Finalización de compra (Figma `302:1014` y `293:574`).
 
-   Tres bloques en el orden en que ocurren: cliente (opcional), medios de
-   pago, confirmación.
+   Bloques en el orden en que ocurren: cliente (opcional), seña (si el
+   cliente tiene una vigente), medios de pago, confirmación.
 
    Dos reglas que la pantalla hace visibles:
 
@@ -15,6 +15,8 @@
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/buscador_cliente.html" import buscador_cliente %}
+{% from "components/switch_si_no.html" import switch_si_no %}
 
 {% block contenido_mobile %}
 <div x-data="finalizarVenta()" x-init="cargar()">
@@ -75,33 +77,7 @@
 
                 <template x-if="!venta.cliente">
                     <div class="mt-2">
-                        <div class="relative">
-                            <label for="buscar-cliente" class="sr-only">Buscar cliente</label>
-                            <input id="buscar-cliente" type="search" x-model="clienteBusqueda"
-                                   @input.debounce.300ms="buscarCliente()"
-                                   placeholder="DNI o nombre" autocomplete="off"
-                                   class="w-full h-[3.25rem] px-4 text-base bg-surface border-2
-                                          border-borde rounded-input
-                                          placeholder:text-texto-disabled
-                                          focus:outline-none focus:border-primary">
-
-                            <ul x-show="clientes.length" x-cloak
-                                @click.outside="clientes = []"
-                                class="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto
-                                       bg-surface border border-borde rounded-input shadow-lg">
-                                <template x-for="c in clientes" :key="c.id">
-                                    <li>
-                                        <button type="button" @click="asociarCliente(c.id)"
-                                                class="w-full text-left px-4 py-3 min-h-toque
-                                                       hover:bg-surface-alt">
-                                            <span class="block text-base" x-text="c.nombre"></span>
-                                            <span class="block text-xs text-texto-muted"
-                                                  x-text="c.dni || 'Sin DNI'"></span>
-                                        </button>
-                                    </li>
-                                </template>
-                            </ul>
-                        </div>
+                        {{ buscador_cliente('buscar-cliente', 'asociarCliente(c.id)') }}
 
                         <p class="mt-2 text-xs text-texto-disabled">
                             La venta se puede cerrar sin cliente. Se carga solo si suma puntos,
@@ -115,9 +91,7 @@
                                 rounded-input bg-surface-alt">
                         <div class="min-w-0">
                             <p class="text-base font-medium truncate" x-text="venta.cliente.nombre"></p>
-                            <p class="text-xs text-texto-muted"
-                               x-text="(venta.cliente.dni || 'Sin DNI')
-                                       + (saldoSenas > 0 ? ' · Señas: ' + pesos(saldoSenas) : '')"></p>
+                            <p class="text-xs text-texto-muted" x-text="venta.cliente.dni || 'Sin DNI'"></p>
                         </div>
                         <button type="button" @click="asociarCliente(null)"
                                 aria-label="Quitar el cliente"
@@ -129,8 +103,30 @@
                 </template>
             </section>
 
-            {# ---------- Medios de pago ---------- #}
-            <section class="mt-6" aria-labelledby="pagos-titulo">
+            {# ---------- Seña ----------
+               Solo si el cliente tiene una vigente. Arranca en Sí: si dejó
+               plata, lo normal es que la use. Se usa ENTERA —si la compra es
+               por menos, la diferencia se pierde— y eso se avisa antes de
+               cobrar, no después. #}
+            <section x-show="saldoSenas > 0" x-cloak class="mt-6 p-4 rounded-input border-2 border-primary/40"
+                     aria-labelledby="sena-titulo">
+                <h2 id="sena-titulo" class="text-base font-semibold text-texto">
+                    Tiene una seña de <span class="tabular-nums" x-text="pesos(saldoSenas)"></span>
+                </h2>
+                <p class="text-xs text-texto-muted" x-text="'Vence el ' + fechaDia(vencimientoSena)"></p>
+                <div class="mt-2">
+                    {{ switch_si_no('usarSena', 'Usar la seña en esta compra', 'usar-sena') }}
+                </div>
+                <p x-show="usarSena && senaPerdida > 0" x-cloak
+                   class="mt-2 px-3 py-2 rounded-input bg-danger/15 text-danger text-sm">
+                    La seña se usa entera: se pierden
+                    <span class="tabular-nums" x-text="pesos(senaPerdida)"></span>.
+                </p>
+            </section>
+
+            {# ---------- Medios de pago ----------
+               Si la seña cubre todo, no hay nada más que cobrar. #}
+            <section x-show="aCubrir > 0" class="mt-6" aria-labelledby="pagos-titulo">
                 <h2 id="pagos-titulo" class="text-base font-semibold text-texto">Medios de pago</h2>
                 <p class="text-xs text-texto-disabled mt-1">
                     Hasta dos. El monto va sin recargo: el interés se calcula aparte y solo
@@ -160,23 +156,6 @@
                                     <option :value="null">Elegí un medio</option>
                                     <template x-for="m in medios" :key="m.id">
                                         <option :value="m.id" x-text="m.nombre"></option>
-                                    </template>
-                                </select>
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    {{ icono('chevron') }}
-                                </span>
-                            </div>
-
-                            {# Seña: hay que decir de CUÁL se descuenta, porque
-                               un cliente puede tener varias. #}
-                            <div class="relative mt-3" x-show="esSena(linea)" x-cloak>
-                                <label :for="'sena-' + indice" class="sr-only">Seña</label>
-                                <select :id="'sena-' + indice" x-model.number="linea.sena_id"
-                                        class="campo-linea w-full appearance-none pr-10">
-                                    <option :value="null">Elegí la seña</option>
-                                    <template x-for="s in senas" :key="s.id">
-                                        <option :value="s.id"
-                                                x-text="pesos(s.saldo) + ' — ' + (s.descripcion || 'sin descripción')"></option>
                                     </template>
                                 </select>
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -232,13 +211,17 @@
                     <dt class="text-texto-muted">Productos</dt>
                     <dd class="tabular-nums" x-text="pesos(venta.a_cobrar)"></dd>
                 </div>
+                <div class="flex justify-between text-sm" x-show="senaAplicada > 0" x-cloak>
+                    <dt class="text-texto-muted">Seña</dt>
+                    <dd class="tabular-nums" x-text="'−' + pesos(senaAplicada)"></dd>
+                </div>
                 <div class="flex justify-between text-sm" x-show="recargoTotal > 0">
                     <dt class="text-texto-muted">Recargo por cuotas</dt>
                     <dd class="tabular-nums" x-text="pesos(recargoTotal)"></dd>
                 </div>
                 <div class="flex justify-between text-lg font-black text-welcome pt-1">
-                    <dt>Total</dt>
-                    <dd class="tabular-nums" x-text="pesos(Number(venta.a_cobrar) + recargoTotal)"></dd>
+                    <dt x-text="senaAplicada > 0 ? 'A cobrar' : 'Total'"></dt>
+                    <dd class="tabular-nums" x-text="pesos(aCubrir + recargoTotal)"></dd>
                 </div>
             </dl>
 

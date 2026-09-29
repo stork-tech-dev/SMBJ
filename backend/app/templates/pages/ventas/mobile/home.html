@@ -16,6 +16,7 @@
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/tarjeta_acceso.html" import tarjeta_acceso %}
 
 {% block encabezado_mobile %}
     {# En el home no hay retorno: es la raíz del flujo. En su lugar va el
@@ -197,77 +198,18 @@
     </a>
 
     {# ---------- Accesos rápidos ----------
-       Siempre dos columnas de tarjetas cuadradas. Si la cantidad es impar, la
-       última ocupa las dos columnas con la mitad de alto (`.accesos-rapidos`
-       en custom.css), así la grilla nunca queda con un hueco. #}
+       Seis tarjetas iguales en dos columnas. El alto de cada fila sale del
+       alto de la pantalla (`.accesos-rapidos` en custom.css): las seis
+       entran sin scrollear, que es lo que se usa todo el día. #}
     <div class="accesos-rapidos mt-5">
-        <a href="/ventas/consulta-stock"
-           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
-            {{ icono('box', clases='w-8 h-8 text-primary') }}
-            <span class="text-sm font-semibold text-texto">Consultar stock</span>
-        </a>
-
-        <a href="/remitos"
-           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
-            {{ icono('remito', clases='w-8 h-8 text-primary') }}
-            <span class="text-sm font-semibold text-texto">Remitos: Envío y Recepción</span>
-        </a>
-
-        {# Sin el permiso correspondiente, la tarjeta se muestra apagada en
-           vez de esconderse: así la vendedora sabe que la función existe y
-           no la busca en otro lado (es la Cuenta Maestra la que decide si
-           su perfil la tiene). #}
-        {% if puede_anular %}
-        <a href="/ventas/anular"
-           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
-            {{ icono('papelera', clases='w-8 h-8 text-primary') }}
-            <span class="text-sm font-semibold text-texto">Anulaciones</span>
-        </a>
-        {% else %}
-        <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                    rounded-[10px] bg-surface tarjeta text-center opacity-50">
-            {{ icono('papelera', clases='w-8 h-8 text-texto-muted') }}
-            <span class="text-sm font-semibold text-texto-muted">Anulaciones</span>
-            <span class="text-[0.625rem] text-texto-disabled">Sin permiso</span>
-        </div>
-        {% endif %}
-
+        {{ tarjeta_acceso('/ventas/consulta-stock', 'box', 'Consultar stock') }}
+        {{ tarjeta_acceso('/remitos', 'remito', 'Remitos: Envío y Recepción') }}
+        {{ tarjeta_acceso('/ventas/anular', 'papelera', 'Anulaciones', puede_anular) }}
         {# Operaciones de caja (sesión 09): retiros de efectivo, novedades,
            retiros de mercadería y cobros de joyero. #}
-        {% if puede_operar_caja %}
-        <a href="/caja/operaciones"
-           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
-            {{ icono('billete', clases='w-8 h-8 text-primary') }}
-            <span class="text-sm font-semibold text-texto">Operaciones de caja</span>
-        </a>
-        {% else %}
-        <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                    rounded-[10px] bg-surface tarjeta text-center opacity-50">
-            {{ icono('billete', clases='w-8 h-8 text-texto-muted') }}
-            <span class="text-sm font-semibold text-texto-muted">Operaciones de caja</span>
-            <span class="text-[0.625rem] text-texto-disabled">Sin permiso</span>
-        </div>
-        {% endif %}
-
-        {% if puede_vender %}
-        <a href="/cambios/nuevo"
-           class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                  rounded-[10px] bg-surface tarjeta text-center hover:border-primary">
-            {{ icono('portapapeles', clases='w-8 h-8 text-primary') }}
-            <span class="text-sm font-semibold text-texto">Cambios</span>
-        </a>
-        {% else %}
-        <div class="aspect-square flex flex-col items-center justify-center gap-3 p-4
-                    rounded-[10px] bg-surface tarjeta text-center opacity-50">
-            {{ icono('portapapeles', clases='w-8 h-8 text-texto-muted') }}
-            <span class="text-sm font-semibold text-texto-muted">Cambios</span>
-            <span class="text-[0.625rem] text-texto-disabled">Sin permiso</span>
-        </div>
-        {% endif %}
+        {{ tarjeta_acceso('/caja/operaciones', 'billete', 'Operaciones de caja', puede_operar_caja) }}
+        {{ tarjeta_acceso('/cambios/nuevo', 'portapapeles', 'Cambios', puede_vender) }}
+        {{ tarjeta_acceso('/senas', 'alcancia', 'Señas', puede_vender) }}
     </div>
 
     <button type="button" @click="cerrarSesion()"

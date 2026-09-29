@@ -1,6 +1,11 @@
 """
 Endpoints de señas.
 
+Registrar una seña es cobrar: se hace desde el celular de un local, con
+turno abierto, y la plata entra a esa caja con el medio elegido. Por eso el
+alta pide el permiso de vender y no el de administrar clientes —la hace la
+vendedora en el mostrador—, y el cliente se puede crear en el mismo paso.
+
 No hay endpoint para editar el saldo, y es deliberado: el saldo solo baja
 usándolo en una venta (`ventas.confirmar`) y solo sube al anularla. Un saldo
 editable a mano sería plata que aparece y desaparece sin que ninguna venta
@@ -14,11 +19,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.device_deps import get_active_device
+from app.core.device_scope import DeviceScope, get_device_scope
 from app.core.permisos import Modulo, requiere_permiso
 from app.core.utils import ip_de_request
 from app.models.venta import Venta, VentaPago
 from app.schemas.comunes import RespuestaPaginada
-from app.schemas.senas import SenaCrear, SenaDetalle, SenaResponse, UsoDeSena
+from app.schemas.senas import (
+    MedioParaSena,
+    SenaCrear,
+    SenaDetalle,
+    SenaResponse,
+    UsoDeSena,
+)
+from app.services import medios_pago as servicio_medios
 from app.services import senas as servicio
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -56,6 +70,22 @@ def listar(
     return RespuestaPaginada[SenaResponse](
         total=total, pagina=pagina, tamano=tamano, resultados=filas  # type: ignore[arg-type]
     )
+
+
+@router.get(
+    "/medios-de-pago",
+    response_model=list[MedioParaSena],
+    summary="Medios con los que se puede dejar una seña",
+)
+def medios_de_pago(
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
+):
+    """
+    Los activos menos la seña misma. Declarado antes de `/{sena_id}` para
+    que no se lea como un id.
+    """
+    return servicio_medios.medios_para_cobro_directo(db)
 
 
 @router.get("/{sena_id}", response_model=SenaDetalle, summary="Detalle con sus usos")
@@ -101,15 +131,27 @@ def registrar(
     datos: SenaCrear,
     request: Request,
     db: Session = Depends(get_db),
-    autor=Depends(requiere_permiso(Modulo.CLIENTES, "crear")),
+    dispositivo=Depends(get_active_device),
+    scope: DeviceScope = Depends(get_device_scope),
+    autor=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
 ):
-    """El saldo arranca igual al monto: recién entregada, no se usó nada."""
+    """
+    El saldo arranca igual al monto: recién entregada, no se usó nada. Vence
+    a los días de vigencia configurados, y el cliente no puede tener otra
+    vigente.
+    """
+    scope.exigir(dispositivo.punto_de_venta_id)
     try:
         sena = servicio.registrar_sena(
             db,
             autor,
-            cliente_id=datos.cliente_id,
+            punto_de_venta_id=dispositivo.punto_de_venta_id,
+            medio_de_pago_id=datos.medio_de_pago_id,
             monto=datos.monto,
+            cliente_id=datos.cliente_id,
+            cliente_nuevo=(
+                datos.cliente_nuevo.model_dump() if datos.cliente_nuevo else None
+            ),
             descripcion=datos.descripcion,
             ip_origen=ip_de_request(request),
         )

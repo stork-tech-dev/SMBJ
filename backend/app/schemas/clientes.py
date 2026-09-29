@@ -5,7 +5,7 @@ El saldo de puntos viaja como entero crudo, no como texto armado: el
 formato es del frontend (Principio 1).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -92,7 +92,7 @@ class PromocionDeCliente(BaseModel):
 
 
 class SenaDeCliente(BaseModel):
-    """Las señas con saldo del cliente, para ofrecerlas al cobrar."""
+    """Las señas vigentes del cliente, para ofrecerlas al cobrar."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,6 +101,7 @@ class SenaDeCliente(BaseModel):
     saldo: Decimal
     descripcion: str | None
     created_at: datetime
+    vence_el: date
 
 
 class ClienteFicha(ClienteResponse):

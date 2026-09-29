@@ -1,0 +1,177 @@
+{# Señas — mobile.
+
+   Una seña es plata que el cliente deja a cuenta de una compra futura: un
+   saldo a favor asociado a su DNI, sin producto ni precio congelado. Vence
+   a los días configurados (60) y se usa entera al cobrar.
+
+   Tres pasos en el orden en que ocurren en el mostrador: quién es el
+   cliente (o darlo de alta ahí mismo), cuánto deja y con qué paga. La
+   plata entra a la caja del turno abierto: sin turno, el backend lo
+   rechaza con un mensaje que se muestra tal cual. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% from "components/icons.html" import icono %}
+{% from "components/buscador_cliente.html" import buscador_cliente %}
+
+{% block contenido_mobile %}
+{% if sin_asignacion or not puede_vender %}
+<p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+    {% if sin_asignacion %}{{ mensaje_sin_asignacion }}{% else %}Tu perfil no tiene permiso para registrar señas.{% endif %}
+</p>
+{% else %}
+<div x-data="senaNueva()" x-init="cargar()" class="mt-2">
+
+    {# ---------- Registrada ---------- #}
+    <div x-show="hecha" x-cloak class="mt-8 text-center">
+        <div class="mx-auto grid place-items-center w-16 h-16 rounded-full bg-success/15 text-success">
+            {{ icono('check', clases='w-8 h-8') }}
+        </div>
+        <h2 class="mt-4 text-lg font-black text-welcome">Seña registrada</h2>
+        <dl class="mt-6 space-y-1 text-base text-left">
+            <div class="flex justify-between gap-3">
+                <dt class="text-texto-muted">Cliente</dt>
+                <dd class="font-medium truncate" x-text="hecha?.cliente.nombre"></dd>
+            </div>
+            <div class="flex justify-between gap-3">
+                <dt class="text-texto-muted">Monto</dt>
+                <dd class="font-medium tabular-nums" x-text="pesos(hecha?.monto)"></dd>
+            </div>
+            <div class="flex justify-between gap-3">
+                <dt class="text-texto-muted">Vence el</dt>
+                <dd class="font-medium" x-text="fechaDia(hecha?.vence_el)"></dd>
+            </div>
+        </dl>
+        <div class="mt-8 grid gap-3">
+            <button type="button" @click="reiniciar()"
+                    class="h-[3.25rem] rounded-input bg-primary text-white text-base font-medium
+                           hover:bg-primary-hover">
+                Registrar otra seña
+            </button>
+            <a href="/ventas"
+               class="h-boton grid place-items-center rounded-input border border-borde text-base
+                      hover:border-primary hover:text-primary">
+                Volver al inicio
+            </a>
+        </div>
+    </div>
+
+    <form x-show="!hecha" @submit.prevent="registrar()" class="space-y-6">
+        <p class="text-sm text-texto-muted">
+            Plata que el cliente deja a cuenta de una compra futura. Vence a los
+            {{ dias_vigencia_sena }} días y se usa entera: si compra por menos, pierde la diferencia.
+        </p>
+
+        {# ---------- Cliente ---------- #}
+        <section aria-labelledby="sena-cliente-titulo">
+            <h2 id="sena-cliente-titulo" class="text-base font-semibold text-texto">Cliente</h2>
+
+            {# Elegido #}
+            <template x-if="cliente">
+                <div class="mt-2 flex items-center justify-between gap-3 px-4 py-3 rounded-input bg-surface-alt">
+                    <div class="min-w-0">
+                        <p class="text-base font-medium truncate" x-text="cliente.nombre"></p>
+                        <p class="text-xs text-texto-muted" x-text="cliente.dni || 'Sin DNI'"></p>
+                    </div>
+                    <button type="button" @click="quitarCliente()" aria-label="Cambiar el cliente"
+                            class="grid place-items-center min-h-toque min-w-toque text-texto-muted hover:text-danger">
+                        {{ icono('cerrar', clases='w-5 h-5') }}
+                    </button>
+                </div>
+            </template>
+
+            {# Buscar uno existente #}
+            <div x-show="!cliente && !creandoCliente" class="mt-2">
+                {{ buscador_cliente('sena-buscar-cliente', 'elegirCliente(c)') }}
+                <button type="button" @click="nuevoCliente()"
+                        class="mt-3 w-full h-boton rounded-input border border-borde text-sm
+                               text-texto-muted hover:border-primary hover:text-primary">
+                    + Cliente nuevo
+                </button>
+            </div>
+
+            {# Alta en el momento #}
+            <div x-show="creandoCliente" x-cloak class="mt-2 p-4 rounded-input border-2 border-borde space-y-4">
+                <div>
+                    <label for="sena-nombre" class="text-sm font-semibold text-texto-header">
+                        Nombre y apellido <span class="text-danger">*</span>
+                    </label>
+                    <input id="sena-nombre" x-model="nuevo.nombre" maxlength="150"
+                           autocomplete="off" class="campo-linea mt-1">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="sena-dni" class="text-sm font-semibold text-texto-header">DNI</label>
+                        <input id="sena-dni" x-model="nuevo.dni" maxlength="15" inputmode="numeric"
+                               autocomplete="off" class="campo-linea mt-1">
+                    </div>
+                    <div>
+                        <label for="sena-telefono" class="text-sm font-semibold text-texto-header">Teléfono</label>
+                        <input id="sena-telefono" x-model="nuevo.telefono" maxlength="30" inputmode="tel"
+                               autocomplete="off" class="campo-linea mt-1">
+                    </div>
+                </div>
+                <button type="button" @click="creandoCliente = false"
+                        class="text-sm text-primary min-h-toque">
+                    Buscar un cliente existente
+                </button>
+            </div>
+
+            {# Ya tiene una vigente: una a la vez. #}
+            <p x-show="senaVigente" x-cloak
+               class="mt-3 px-4 py-3 rounded-input bg-danger/15 text-danger text-sm"
+               x-text="senaVigente ? 'Ya tiene una seña de ' + pesos(senaVigente.saldo)
+                        + ' que vence el ' + fechaDia(senaVigente.vence_el)
+                        + '. Tiene que usarla antes de dejar otra.' : ''"></p>
+        </section>
+
+        {# ---------- Monto y medio ---------- #}
+        <section class="space-y-4" aria-labelledby="sena-pago-titulo">
+            <h2 id="sena-pago-titulo" class="text-base font-semibold text-texto">Pago</h2>
+            <div>
+                <label for="sena-monto" class="text-sm font-semibold text-texto-header">
+                    Monto <span class="text-danger">*</span>
+                </label>
+                <input id="sena-monto" x-model="monto" type="number" min="0" step="0.01"
+                       inputmode="decimal" placeholder="$0" class="campo-linea mt-1">
+            </div>
+            <div class="relative">
+                <label for="sena-medio" class="text-sm font-semibold text-texto-header">
+                    Medio de pago <span class="text-danger">*</span>
+                </label>
+                <select id="sena-medio" x-model.number="medioId"
+                        class="campo-linea mt-1 appearance-none pr-10">
+                    <option :value="null">Elegí un medio</option>
+                    <template x-for="m in medios" :key="m.id">
+                        <option :value="m.id" x-text="m.nombre"></option>
+                    </template>
+                </select>
+                <span class="absolute right-3 bottom-3 pointer-events-none">{{ icono('chevron') }}</span>
+            </div>
+            <div>
+                <label for="sena-descripcion" class="text-sm font-semibold text-texto-header">
+                    Descripción (opcional)
+                </label>
+                <input id="sena-descripcion" x-model="descripcion" maxlength="500"
+                       placeholder="Ej.: anillo de plata talle 14" class="campo-linea mt-1">
+            </div>
+        </section>
+
+        <div class="grid gap-3">
+            <button type="submit" :disabled="!puedeRegistrar || enviando"
+                    class="h-[3.25rem] rounded-input bg-primary text-white text-base font-medium
+                           hover:bg-primary-hover disabled:opacity-60"
+                    x-text="enviando ? 'Registrando…' : 'Registrar seña'"></button>
+            <a href="/ventas"
+               class="h-boton grid place-items-center rounded-input border border-borde text-base
+                      hover:border-primary hover:text-primary">
+                Cancelar
+            </a>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/senas_mobile.js') }}"></script>
+{% endblock %}

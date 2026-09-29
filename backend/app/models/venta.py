@@ -427,6 +427,11 @@ class VentaPago(Base):
     sena_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("senas.id", ondelete="RESTRICT"), nullable=True, index=True
     )
+    # Cuánto se descontó del saldo de la seña. Con el uso total puede ser más
+    # que `monto`: la seña se gasta entera aunque la venta sea por menos. La
+    # anulación devuelve esto, no `monto`. NULL en pagos sin seña y en los
+    # anteriores a la migración 0040 (ahí consumido = monto).
+    sena_consumido: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
     venta: Mapped["Venta"] = relationship(back_populates="pagos")
     medio_de_pago: Mapped["MedioDePago"] = relationship()  # noqa: F821
@@ -440,6 +445,10 @@ class VentaPago(Base):
         # cosa, el arqueo de caja compararía contra un número inventado.
         CheckConstraint(
             "monto_total = monto + recargo", name="ck_venta_pagos_total_es_suma"
+        ),
+        CheckConstraint(
+            "sena_consumido IS NULL OR (sena_id IS NOT NULL AND sena_consumido >= monto)",
+            name="ck_venta_pagos_sena_consumido",
         ),
     )
 

@@ -86,7 +86,7 @@ class ReporteArqueos(_ConLocales):
 
 class MovimientoCaja(BaseModel):
     timestamp: datetime
-    # apertura | venta | cobro_joyero | novedad | retiro_efectivo
+    # apertura | venta | cobro_joyero | sena | novedad | retiro_efectivo
     tipo: str
     detalle: str
     medio_de_pago: str | None

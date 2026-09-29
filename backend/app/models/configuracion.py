@@ -43,10 +43,10 @@ class ConfiguracionSistema(Base):
     # Letra de la empresa que factura: 'S' (Soleil) o 'M' (Mallorca).
     letra_empresa: Mapped[str] = mapped_column(String(1), nullable=False)
 
-    # Días que dura una seña desde su alta. El vencimiento se calcula al
-    # consultar (reporte de Señas), no se guarda en cada seña.
+    # Días que dura una seña desde su alta. Se aplica al registrarla: cada
+    # seña guarda su `vence_el`, así cambiar esto no toca las ya entregadas.
     dias_vigencia_sena: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="30"
+        Integer, nullable=False, server_default="60"
     )
 
     updated_at: Mapped[datetime] = mapped_column(

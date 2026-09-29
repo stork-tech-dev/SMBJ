@@ -547,9 +547,9 @@ def medios_de_pago(
 
     disponibles = []
     for medio in servicio_medios.listar_medios(db, activo=True):
-        # La seña solo se ofrece si la venta tiene cliente y ese cliente
-        # tiene saldo: mostrarla vacía sería ofrecer un camino sin salida.
-        if medio.es_sena and venta.cliente_id is None:
+        # La seña no es un medio a elegir: se aplica con `usar_sena` al
+        # registrar los pagos, y el sistema decide cuánto cubre.
+        if medio.es_sena:
             continue
 
         planes = servicio_medios.planes_disponibles(db, medio.id, a_cobrar, habilita)
@@ -813,10 +813,11 @@ def registrar_pagos(
     autor=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
 ):
     """
-    Reemplaza lo que hubiera cargado antes. Hasta dos medios.
+    Reemplaza lo que hubiera cargado antes. Hasta dos medios, más la seña.
 
     Los montos suman lo que valen los productos, SIN recargos: el recargo lo
-    calcula el sistema sobre cada parte financiada y lo suma después.
+    calcula el sistema sobre cada parte financiada y lo suma después. Con
+    `usar_sena`, los montos cubren solo lo que la seña no cubre.
     """
     venta = _venta(db, venta_id, scope)
     try:
@@ -826,6 +827,7 @@ def registrar_pagos(
             venta,
             [p.model_dump() for p in datos.pagos],
             ip_origen=ip_de_request(request),
+            usar_sena=datos.usar_sena,
         )
     except NoEncontrado as exc:
         raise _404(exc) from exc
