@@ -484,6 +484,11 @@ def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
         "recibe_notificaciones": (
             actual.rol is not None and actual.rol.nombre in ROLES_NOTIFICADOS
         ),
+        # El ícono "Caja" de la barra inferior mobile (movimientos de caja
+        # del local). La barra está en TODAS las pantallas mobile —ventas,
+        # cambios, remitos—, que arman su contexto por caminos distintos:
+        # por eso va acá y no en cada uno.
+        "puede_ver_caja": resolver_permiso(db, actual.id, Modulo.CAJA, "ver"),
         # Define qué logotipo se muestra ('S' Soleil / 'M' Mallorca).
         "letra_empresa": servicio_configuracion.letra_empresa(db),
         # Cuánto se tolera sin actividad. Lo necesita el JavaScript para
@@ -1441,6 +1446,14 @@ _PANTALLAS_MOBILE = {
         "titulo": "Cobro de joyero",
         "volver": "/caja/operaciones",
         "activa": "inicio",
+    },
+    # Reporte "Movimientos de caja por turno" del local, con permiso de caja.
+    # Se entra desde la barra inferior.
+    "/caja/movimientos": {
+        "plantilla": "pages/caja/mobile/movimientos.html",
+        "titulo": "Movimientos de caja",
+        "volver": "/ventas",
+        "activa": "movimientos",
     },
     # Alta de señas: se cobra en el mostrador, con el turno del local abierto.
     "/senas": {

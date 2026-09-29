@@ -242,7 +242,12 @@ def arqueos(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> d
 
 
 def _movimiento(timestamp: datetime, tipo: str, detalle: str, medio: str | None,
-                ingreso: Decimal = CERO, egreso: Decimal = CERO) -> dict:
+                ingreso: Decimal = CERO, egreso: Decimal = CERO,
+                informativo: Decimal = CERO) -> dict:
+    """
+    `informativo` es un importe que se muestra pero no suma a la caja: el
+    pago con seña de una venta, cuya plata entró cuando se dejó la seña.
+    """
     return {
         "timestamp": timestamp,
         "tipo": tipo,
@@ -250,6 +255,7 @@ def _movimiento(timestamp: datetime, tipo: str, detalle: str, medio: str | None,
         "medio_de_pago": medio,
         "ingreso": ingreso,
         "egreso": egreso,
+        "informativo": informativo,
     }
 
 
@@ -267,16 +273,30 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
     if turno.fecha_cierre is not None:
         condicion = and_(condicion, Venta.created_at <= turno.fecha_cierre)
     filas = db.execute(
-        select(Venta.created_at, Venta.numero, MedioDePago.nombre, VentaPago.monto_total)
+        select(Venta.created_at, Venta.numero, MedioDePago.nombre, VentaPago.monto_total,
+               VentaPago.sena_id, Cliente.nombre)
         .join(VentaPago, VentaPago.venta_id == Venta.id)
         .join(MedioDePago, MedioDePago.id == VentaPago.medio_de_pago_id)
+        .outerjoin(Sena, Sena.id == VentaPago.sena_id)
+        .outerjoin(Cliente, Cliente.id == Sena.cliente_id)
         .where(condicion)
         .order_by(Venta.created_at, VentaPago.id)
     ).all()
-    return [
-        _movimiento(creada, "venta", f"Venta {numero}", medio, ingreso=monto)
-        for creada, numero, medio, monto in filas
-    ]
+
+    movimientos = []
+    for creada, numero, medio, monto, sena_id, cliente in filas:
+        if sena_id is None:
+            movimientos.append(_movimiento(creada, "venta", f"Venta {numero}", medio, ingreso=monto))
+        else:
+            # La parte pagada con seña no entra a la caja: la plata ya entró
+            # cuando se dejó la seña (ese mismo día o antes). Se muestra para
+            # que la venta se lea completa, pero no suma. Mismo criterio que
+            # el arqueo, que trata al medio de las señas como informativo.
+            movimientos.append(_movimiento(
+                creada, "venta", f"Venta {numero} (seña de {cliente})", medio,
+                informativo=monto,
+            ))
+    return movimientos
 
 
 def movimientos(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> dict:

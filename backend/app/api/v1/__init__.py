@@ -63,6 +63,7 @@ api_router.include_router(operaciones_caja.retiros_router)
 api_router.include_router(operaciones_caja.novedades_router)
 api_router.include_router(operaciones_caja.mercaderia_router)
 api_router.include_router(operaciones_caja.joyero_router)
+api_router.include_router(operaciones_caja.movimientos_router)
 api_router.include_router(reportes_caja.router)
 
 __all__ = ["api_router"]

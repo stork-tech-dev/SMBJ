@@ -92,6 +92,9 @@ class MovimientoCaja(BaseModel):
     medio_de_pago: str | None
     ingreso: Decimal
     egreso: Decimal
+    # Se muestra pero no suma: la parte de una venta pagada con seña (la
+    # plata entró a la caja cuando se dejó la seña).
+    informativo: Decimal = Decimal("0")
 
 
 class MovimientosTurno(_Turno):
@@ -102,6 +105,12 @@ class MovimientosTurno(_Turno):
 
 
 class ReporteMovimientos(_ConLocales):
+    turnos: list[MovimientosTurno]
+
+
+class MovimientosCajaLocal(BaseModel):
+    """El mismo reporte desde el celular: un solo local, sin selector."""
+
     turnos: list[MovimientosTurno]
 
 

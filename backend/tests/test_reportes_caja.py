@@ -386,3 +386,61 @@ def test_arqueos_viejos_con_credito_y_debito_sueltos_van_a_la_columna_del_grupo(
     assert item["monto_esperado"] == Decimal("1500")
     assert item["monto_declarado"] == Decimal("1400")
     assert item["diferencia"] == Decimal("-100")
+
+
+def _venta_con_sena(db, autor, local, variante, cliente):
+    """Venta de $10.000 que usa la seña del cliente y cubre el resto en efectivo."""
+    from app.core.device_scope import DeviceScope
+    from app.models.dispositivo import Dispositivo
+    from app.services import ventas as servicio_ventas
+
+    equipo = Dispositivo(punto_de_venta_id=local.id, activo=True, descripcion="Celu")
+    db.add(equipo)
+    db.flush()
+    venta = servicio_ventas.iniciar_venta(db, autor, equipo, DeviceScope(restringido=False))
+    servicio_ventas.agregar_item(db, autor, venta, variante_id=variante.id)
+    servicio_ventas.asociar_cliente(db, autor, venta, cliente.id)
+    servicio_ventas.registrar_pagos(db, autor, venta, [
+        {"medio_de_pago_id": _medio(db, "Efectivo").id, "monto": Decimal("7500")},
+    ], usar_sena=True)
+    servicio_ventas.confirmar_venta(db, autor, venta, DeviceScope(restringido=False))
+    return venta
+
+
+def test_el_pago_con_sena_de_una_venta_no_suma_a_la_caja(db, autor, local, turno, variante):
+    """
+    La plata de la seña entra cuando se deja. Usarla en una venta —el mismo
+    día o después— no es plata nueva: se muestra, pero no suma.
+    """
+    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    servicio_senas.registrar_sena(
+        db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
+        punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,
+    )
+    venta = _venta_con_sena(db, autor, local, variante, cliente)
+
+    grupo = servicio.movimientos(db, _hoy(), local.id)["turnos"][0]
+    con_sena = next(m for m in grupo["movimientos"] if "seña de" in m["detalle"])
+    assert con_sena["detalle"] == f"Venta {venta.numero} (seña de Sergio G)"
+    assert (con_sena["ingreso"], con_sena["informativo"]) == (Decimal("0"), Decimal("2500"))
+
+    # Apertura 1000 + seña dejada 2500 + efectivo de la venta 7500: la seña
+    # una sola vez, igual que el efectivo esperado del arqueo.
+    assert grupo["total_ingresos"] == Decimal("11000")
+    assert grupo["efectivo_esperado"] == Decimal("11000")
+
+
+def test_sena_de_otro_dia_solo_suma_lo_cobrado_aparte(db, autor, local, turno, variante):
+    """Venta de 10.000 con 2.500 de una seña anterior: a la caja entran 7.500."""
+    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    sena = servicio_senas.registrar_sena(
+        db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
+        punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,
+    )
+    # Como si se hubiera dejado en un turno de otro día.
+    sena.turno_id = None
+    db.flush()
+    _venta_con_sena(db, autor, local, variante, cliente)
+
+    grupo = servicio.movimientos(db, _hoy(), local.id)["turnos"][0]
+    assert grupo["total_ingresos"] == Decimal("1000") + Decimal("7500")

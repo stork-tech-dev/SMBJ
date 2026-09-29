@@ -22,8 +22,12 @@
                 <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="hora(m.timestamp)"></td>
                 <td class="{{ c.td }}" x-text="m.detalle"></td>
                 <td class="{{ c.td }} text-sm" x-text="m.medio_de_pago || '—'"></td>
-                <td class="{{ c.td_monto }} text-success"
-                    x-text="esCero(m.ingreso) ? '' : pesos(m.ingreso)"></td>
+                {# Pago con seña: se ve el importe, pero en gris y sin sumar —la
+                   plata entró a la caja cuando se dejó la seña—. #}
+                <td class="{{ c.td_monto }}"
+                    :class="esCero(m.informativo) ? 'text-success' : 'text-texto-disabled'"
+                    :title="esCero(m.informativo) ? '' : 'No suma: la seña ingresó a la caja cuando se dejó'"
+                    x-text="esCero(m.informativo) ? (esCero(m.ingreso) ? '' : pesos(m.ingreso)) : pesos(m.informativo)"></td>
                 <td class="{{ c.td_monto }} pr-8 text-danger"
                     x-text="esCero(m.egreso) ? '' : pesos(m.egreso)"></td>
             </tr>

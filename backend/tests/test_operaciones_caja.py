@@ -446,3 +446,49 @@ def test_pantallas_de_escritorio_de_la_sesion_09(client, db, autor, ruta, texto)
     resp = client.get(ruta)
     assert resp.status_code == 200
     assert texto in resp.text
+
+
+# ── Movimientos de caja desde el celular ────────────────────────────────────
+
+
+def test_movimientos_del_celular_solo_muestran_su_local(db, vendedora_en_local, local, turno,
+                                                         crear_punto_de_venta, autor):
+    """Mismo reporte que en Reportes de Caja, pero siempre del local del equipo."""
+    from datetime import timedelta
+
+    from app.core.utils import ahora_db
+
+    otro = crear_punto_de_venta("MPJ", "Paseo del Jockey", TipoPuntoVenta.LOCAL)
+    servicio_turnos.abrir_turno(
+        punto_de_venta_id=otro.id, usuario_id=autor.id, efectivo_apertura=500, notas=None, db=db,
+    )
+    db.commit()
+    client = vendedora_en_local
+
+    datos = client.get("/api/v1/movimientos-caja").json()
+    assert [t["punto_de_venta_id"] for t in datos["turnos"]] == [local.id]
+    assert datos["turnos"][0]["movimientos"][0]["tipo"] == "apertura"
+    assert Decimal(datos["turnos"][0]["efectivo_esperado"]) == Decimal("1000")
+
+    ayer = (ahora_db().date() - timedelta(days=1)).isoformat()
+    assert client.get(f"/api/v1/movimientos-caja?fecha={ayer}").json()["turnos"] == []
+
+
+def test_movimientos_del_celular_piden_permiso_de_caja(client, db, crear_usuario, local):
+    from app.models.dispositivo import Dispositivo
+
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(punto_de_venta_id=local.id, activo=True, descripcion="Caja MPO")
+    db.add(equipo)
+    db.commit()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    assert client.get("/api/v1/movimientos-caja").status_code == 403
+    assert 'href="/caja/movimientos"' not in client.get("/caja/movimientos").text
+
+
+def test_pantalla_de_movimientos_y_acceso_en_la_barra(db, vendedora_en_local):
+    html = vendedora_en_local.get("/caja/movimientos").text
+    assert "/api/v1/movimientos-caja" in html
+    assert 'href="/caja/movimientos"' in html

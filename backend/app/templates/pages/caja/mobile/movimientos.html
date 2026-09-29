@@ -1,0 +1,88 @@
+{# Movimientos de caja por turno — mobile.
+
+   El reporte de Reportes de Caja, para la vendedora: el mismo cálculo
+   (incluido el efectivo esperado del arqueo), pero del local del celular y
+   con el permiso de caja. Reusa el componente `reporteCaja` de escritorio
+   con otro endpoint.
+
+   En lugar de la tabla de cinco columnas, cada movimiento es una fila de
+   dos líneas: en 320px una tabla obligaría a scrollear de costado. #}
+{% extends "pages/ventas/mobile/_base.html" %}
+
+{% block contenido_mobile %}
+{% if sin_asignacion or not puede_ver_caja %}
+    {% include "pages/caja/mobile/_sin_acceso.html" %}
+{% else %}
+<div x-data="reporteCaja('movimientos', { conLocal: false, base: '/api/v1/movimientos-caja' })"
+     x-init="iniciar()" class="mt-2">
+
+    <div>
+        <label for="mov-fecha" class="text-sm font-semibold text-texto-header">Día</label>
+        <input id="mov-fecha" type="date" x-model="filtros.fecha" @change="cargar()"
+               class="campo-linea mt-1">
+    </div>
+
+    <p x-show="cargando" class="mt-10 text-center text-sm text-texto-disabled">Cargando…</p>
+
+    <p x-show="!cargando && datos && !datos.turnos.length" x-cloak
+       class="mt-10 text-center text-sm text-texto-disabled">Sin turnos ese día.</p>
+
+    <template x-if="datos">
+        <div class="mt-5 space-y-5">
+            <template x-for="t in datos.turnos" :key="t.turno_id">
+                <section class="rounded-input border-2 border-borde overflow-hidden">
+                    <h2 class="px-4 py-3 text-sm font-semibold text-welcome bg-surface-alt"
+                        x-text="rangoTurno(t)"></h2>
+
+                    <ul class="divide-y divide-borde">
+                        <template x-for="(m, i) in t.movimientos" :key="i">
+                            <li class="flex items-start justify-between gap-3 px-4 py-3">
+                                <div class="min-w-0">
+                                    <p class="text-base text-texto break-words" x-text="m.detalle"></p>
+                                    <p class="text-xs text-texto-muted"
+                                       x-text="hora(m.timestamp) + (m.medio_de_pago ? ' · ' + m.medio_de_pago : '')"></p>
+                                </div>
+                                {# Pago con seña: en gris y sin signo, no suma
+                                   (la plata entró cuando se dejó la seña). #}
+                                <div class="shrink-0 text-right">
+                                    <template x-if="!esCero(m.informativo)">
+                                        <p class="text-base font-medium tabular-nums text-texto-disabled">
+                                            <span x-text="pesos(m.informativo)"></span>
+                                            <span class="block text-[0.625rem] font-normal">no suma</span>
+                                        </p>
+                                    </template>
+                                    <template x-if="esCero(m.informativo)">
+                                        <p class="text-base font-medium tabular-nums"
+                                           :class="esCero(m.egreso) ? 'text-success' : 'text-danger'"
+                                           x-text="esCero(m.egreso) ? '+' + pesos(m.ingreso) : '−' + pesos(m.egreso)"></p>
+                                    </template>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+
+                    <dl class="px-4 py-3 space-y-1 border-t border-borde text-sm">
+                        <div class="flex justify-between gap-3">
+                            <dt class="text-texto-muted">Ingresos del turno</dt>
+                            <dd class="tabular-nums" x-text="pesos(t.total_ingresos)"></dd>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <dt class="text-texto-muted">Egresos del turno</dt>
+                            <dd class="tabular-nums" x-text="pesos(t.total_egresos)"></dd>
+                        </div>
+                        <div class="flex justify-between gap-3 pt-1 text-base font-semibold">
+                            <dt>Efectivo esperado en caja</dt>
+                            <dd class="tabular-nums" x-text="pesos(t.efectivo_esperado)"></dd>
+                        </div>
+                    </dl>
+                </section>
+            </template>
+        </div>
+    </template>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/reportes_caja.js') }}"></script>
+{% endblock %}

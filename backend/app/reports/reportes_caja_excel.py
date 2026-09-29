@@ -84,7 +84,9 @@ def xls_movimientos(datos: dict) -> bytes:
     t = _Tabla()
     for turno in datos["turnos"]:
         for m in turno["movimientos"]:
-            t.fila([_turno(turno), _hora(m["timestamp"]), m["detalle"],
+            # Pago con seña: no suma (la plata entró cuando se dejó la seña).
+            detalle = m["detalle"] + (" — no suma" if m.get("informativo") else "")
+            t.fila([_turno(turno), _hora(m["timestamp"]), detalle,
                     m["medio_de_pago"] or "", m["ingreso"] or "", m["egreso"] or ""])
         t.fila([_turno(turno), "", "Totales del turno", "",
                 turno["total_ingresos"], turno["total_egresos"]], negrita=True)

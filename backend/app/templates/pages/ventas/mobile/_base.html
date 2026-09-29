@@ -3,8 +3,8 @@
 
    Sin sidebar y sin el header de escritorio: en el local no hay PC ni
    impresora, todo pasa en el celular de la vendedora con una mano. Lo que
-   reemplaza al sidebar es la barra inferior fija, que deja los tres destinos
-   —inicio, venta nueva, configuración— al alcance del pulgar.
+   reemplaza al sidebar es la barra inferior fija, que deja los destinos
+   —inicio, venta nueva, movimientos de caja y stock— al alcance del pulgar.
 
    El canvas del diseño es de 390px, pero el layout NO está clavado a esa
    medida: la columna ocupa el ancho disponible y se limita a 26rem centrada.
@@ -143,12 +143,33 @@
                 {{ icono('cart', clases='w-8 h-8') }}
             </a>
 
-            <a href="/ventas/consulta-stock" aria-label="Consulta de stock"
-               class="flex flex-col items-center justify-center gap-1 min-h-toque min-w-toque
-                      pb-2 {{ 'text-primary' if activa_mobile == 'stock' else 'text-texto-muted' }}">
-                {{ icono('box', clases='w-7 h-7') }}
-                <span class="text-[0.625rem] font-semibold">Stock</span>
-            </a>
+            {# A la derecha del botón central, dos destinos: los movimientos
+               de caja del local (con permiso de caja; sin él se ve apagado,
+               igual que las tarjetas del home) y la consulta de stock. #}
+            <div class="flex items-end gap-7">
+                {% if puede_ver_caja %}
+                <a href="/caja/movimientos" aria-label="Movimientos de caja"
+                   class="flex flex-col items-center justify-center gap-1 min-h-toque min-w-toque
+                          pb-2 {{ 'text-primary' if activa_mobile == 'movimientos' else 'text-texto-muted' }}">
+                    {{ icono('list', clases='w-7 h-7') }}
+                    <span class="text-[0.625rem] font-semibold">Caja</span>
+                </a>
+                {% else %}
+                <span aria-disabled="true" title="Sin permiso"
+                      class="flex flex-col items-center justify-center gap-1 min-h-toque min-w-toque
+                             pb-2 text-texto-muted opacity-50">
+                    {{ icono('list', clases='w-7 h-7') }}
+                    <span class="text-[0.625rem] font-semibold">Caja</span>
+                </span>
+                {% endif %}
+
+                <a href="/ventas/consulta-stock" aria-label="Consulta de stock"
+                   class="flex flex-col items-center justify-center gap-1 min-h-toque min-w-toque
+                          pb-2 {{ 'text-primary' if activa_mobile == 'stock' else 'text-texto-muted' }}">
+                    {{ icono('box', clases='w-7 h-7') }}
+                    <span class="text-[0.625rem] font-semibold">Stock</span>
+                </a>
+            </div>
         </div>
     </nav>
 </div>

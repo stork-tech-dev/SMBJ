@@ -5,11 +5,13 @@
    respuesta de cada uno trae su propio `opciones_locales`. Lo que cambia
    entre reportes es la tabla, que arma cada plantilla sobre `datos`.
    Sin paginar: lo de un día es poco. Los filtros se resuelven en el backend
-   (Principio 5).
+   (Principio 5). La pantalla mobile de movimientos de caja reusa este mismo
+   componente con otra `base`.
    ========================================================================== */
 
-function reporteCaja(slug, { conLocal = true } = {}) {
-    const base = '/api/v1/reportes/caja/' + slug;
+function reporteCaja(slug, { conLocal = true, base = '/api/v1/reportes/caja/' + slug } = {}) {
+    // `base` distinta: el mismo reporte servido por otro endpoint (los
+    // movimientos de caja del celular, con permiso de caja y local fijo).
 
     return {
         datos: null,

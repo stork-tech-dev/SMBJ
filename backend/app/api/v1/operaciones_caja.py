@@ -1,6 +1,7 @@
 """
 Endpoints de las operaciones de caja (sesión 09): retiros de efectivo,
 novedades de caja, retiros de mercadería de empleadas y cobros de joyero.
+Además, los movimientos de caja por turno vistos desde el celular.
 
 Las cuatro se registran desde el celular del local, sobre el turno abierto de
 ESE local: el punto de venta sale del dispositivo (`get_active_device`), nunca
@@ -20,7 +21,7 @@ from app.core.database import get_db
 from app.core.device_deps import get_active_device
 from app.core.device_scope import DeviceScope, get_device_scope
 from app.core.permisos import Modulo, Recurso, requiere_permiso
-from app.core.utils import ip_de_request
+from app.core.utils import ahora_db, ip_de_request
 from app.schemas.comunes import RespuestaPaginada
 from app.schemas.operaciones_caja import (
     CobroJoyeroRequest,
@@ -38,8 +39,10 @@ from app.schemas.operaciones_caja import (
     RetiroMercaderiaRequest,
     RetiroMercaderiaResponse,
 )
+from app.schemas.reportes_caja import MovimientosCajaLocal
 from app.services import cobros_joyero as servicio_joyero
 from app.services import novedades_caja as servicio_novedades
+from app.services import reportes_caja as servicio_reportes
 from app.services import retiros as servicio_retiros
 from app.services import retiros_mercaderia as servicio_mercaderia
 from app.services import stock as servicio_stock
@@ -535,4 +538,32 @@ def listar_cobros(
     return RespuestaPaginada[CobroJoyeroResponse](
         total=total, pagina=pagina, tamano=tamano,
         resultados=[CobroJoyeroResponse.de(c) for c in filas],
+    )
+
+
+# ============================================================================
+# MOVIMIENTOS DE CAJA (celular)
+# ============================================================================
+
+movimientos_router = APIRouter(prefix="/movimientos-caja", tags=["operaciones-caja"])
+
+
+@movimientos_router.get(
+    "", response_model=MovimientosCajaLocal, summary="Movimientos de caja por turno del local"
+)
+def movimientos_del_local(
+    fecha: date | None = Query(default=None, description="Día; vacío = hoy"),
+    db: Session = Depends(get_db),
+    dispositivo=Depends(get_active_device),
+    scope: DeviceScope = Depends(get_device_scope),
+    _=Depends(requiere_permiso(Modulo.CAJA, "ver")),
+):
+    """
+    El reporte "Movimientos de caja por turno" de Reportes de Caja, para la
+    vendedora: mismo cálculo (`reportes_caja.movimientos`), pero con el
+    permiso de caja y siempre del local del celular. Así puede controlar su
+    caja sin tener acceso al resto de los reportes ni a otros locales.
+    """
+    return servicio_reportes.movimientos(
+        db, fecha or ahora_db().date(), _local(dispositivo, scope)
     )
