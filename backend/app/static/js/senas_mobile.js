@@ -10,7 +10,7 @@
 const API_SENAS = '/api/v1/senas';
 
 function senaNueva() {
-    const nuevoVacio = () => ({ nombre: '', dni: '', telefono: '' });
+    const nuevoVacio = () => ({ nombre: '', dni: '', telefono: '', fecha_nacimiento: '' });
 
     return {
         ...window.buscadorClientes(),
@@ -88,6 +88,7 @@ function senaNueva() {
                         nombre: this.nuevo.nombre.trim(),
                         dni: this.nuevo.dni.trim() || null,
                         telefono: this.nuevo.telefono.trim() || null,
+                        fecha_nacimiento: this.nuevo.fecha_nacimiento || null,
                     };
                 } else {
                     cuerpo.cliente_id = this.cliente.id;

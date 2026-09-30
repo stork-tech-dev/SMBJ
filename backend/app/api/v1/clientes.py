@@ -32,6 +32,7 @@ from app.schemas.comunes import MensajeResponse, RespuestaPaginada
 from app.schemas.promociones import ClientePromocionCrear
 from app.services import clientes as servicio
 from app.services import promociones as servicio_promociones
+from app.services import fidelizacion as servicio_fidelizacion
 from app.services import senas as servicio_senas
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -124,6 +125,9 @@ def ficha(
     respuesta = ClienteFicha.model_validate(cliente)
     respuesta.puntos = servicio.saldo_puntos(db, cliente_id)
     respuesta.saldo_senas = servicio_senas.saldo_total(db, cliente_id)
+    respuesta.puntos_historicos = servicio_fidelizacion.puntos_historicos(db, cliente_id)
+    categoria = servicio_fidelizacion.categoria_de(db, cliente_id)
+    respuesta.categoria = categoria.nombre if categoria else None
     respuesta.senas = [
         SenaDeCliente.model_validate(s)
         for s in servicio_senas.senas_disponibles(db, cliente_id)
@@ -176,6 +180,7 @@ def editar(
             autor,
             cliente_id,
             editar_dni="dni" in datos.model_fields_set,
+            editar_fecha_nacimiento="fecha_nacimiento" in datos.model_fields_set,
             ip_origen=ip_de_request(request),
             **datos.model_dump(),
         )

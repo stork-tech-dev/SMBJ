@@ -35,3 +35,19 @@ class AjustesEditar(BaseModel):
     dias_vigencia_sena: int | None = Field(default=None, gt=0, le=3650)
     pesos_por_punto: Decimal | None = Field(default=None, gt=0)
     dias_plazo_cambio: int | None = Field(default=None, gt=0, le=3650)
+
+
+class CategoriaFidelizacionItem(BaseModel):
+    """Una categoría de fidelización: desde cuántos puntos y su % de cumpleaños."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    nombre: str = Field(min_length=1, max_length=50)
+    puntos_desde: int = Field(ge=0)
+    porcentaje_cumpleanos: Decimal = Field(ge=0, le=100)
+
+
+class CategoriasFidelizacion(BaseModel):
+    """La lista completa: se reemplaza en bloque (vacía = sin categorías)."""
+
+    categorias: list[CategoriaFidelizacionItem]

@@ -107,6 +107,12 @@ class MotivoDescuento(Base):
         Boolean, nullable=False, server_default="false"
     )
 
+    # El motivo de los descuentos automáticos del mes del cumpleaños
+    # (fidelización). Uno solo, mismo criterio que el de empleada.
+    es_descuento_cumpleanos: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     activo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true", index=True
     )
@@ -245,6 +251,12 @@ class Venta(Base):
         BigInteger, ForeignKey("promociones.id", ondelete="RESTRICT"), nullable=True, index=True
     )
 
+    # La vendedora sacó el descuento de cumpleaños en esta venta. Sin esta
+    # marca, el recálculo lo volvería a poner con el próximo producto.
+    sin_descuento_cumpleanos: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now(), index=True
     )
@@ -341,6 +353,13 @@ class VentaItem(Base):
     # TRUE si la vendedora se apartó del porcentaje sugerido por el motivo.
     # No bloquea nada: deja el rastro para el reporte de descuentos.
     porcentaje_modificado: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
+    # El descuento lo puso el sistema (cumpleaños de fidelización), no la
+    # vendedora. El recálculo solo toca estos: uno manual con el mismo motivo
+    # "Cumpleaños" se respeta.
+    descuento_automatico: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
 

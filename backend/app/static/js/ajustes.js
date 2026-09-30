@@ -8,6 +8,26 @@
    ========================================================================== */
 
 const API_AJUSTES = '/api/v1/ajustes';
+const API_CATEGORIAS = '/api/v1/ajustes/categorias';
+
+/* Categorías comparables: números, sin espacios de más y ordenadas por
+   puntos (así el orden en que se cargaron no cuenta como cambio). */
+function normalizarCategorias(lista) {
+    return lista
+        .map((c) => ({
+            nombre: String(c.nombre || '').trim(),
+            puntos_desde: Number(c.puntos_desde),
+            porcentaje_cumpleanos: Number(c.porcentaje_cumpleanos),
+        }))
+        .sort((a, b) => a.puntos_desde - b.puntos_desde);
+}
+
+function textoCategorias(lista) {
+    if (!lista.length) return 'sin categorías';
+    return lista
+        .map((c) => `${c.nombre} desde ${c.puntos_desde} pts (${c.porcentaje_cumpleanos}%)`)
+        .join(', ');
+}
 
 // Orden y rótulos del resumen de cambios. `tipo` decide el formato.
 const CAMPOS_AJUSTES = {
@@ -31,12 +51,19 @@ function ajustesSistema() {
         guardando: false,
         originales: {},
         valores: {},
+        // Categorías de fidelización: la tabla editable y lo que había.
+        categoriasOriginales: [],
+        categorias: [],
         revision: modalVacio(),
         confirmacionFinal: { ...modalVacio(), advertencia: '' },
 
         async cargar() {
             try {
-                this.tomar(await window.pedir(API_AJUSTES));
+                const [ajustes, categorias] = await Promise.all([
+                    window.pedir(API_AJUSTES), window.pedir(API_CATEGORIAS),
+                ]);
+                this.tomar(ajustes);
+                this.tomarCategorias(categorias);
                 this.cargado = true;
             } catch (e) {
                 window.toast(e.message, 'error');
@@ -54,6 +81,29 @@ function ajustesSistema() {
             this.valores = { ...numeros };
         },
 
+        tomarCategorias(datos) {
+            this.categoriasOriginales = normalizarCategorias(datos.categorias);
+            this.categorias = this.categoriasOriginales.map((c) => ({ ...c }));
+        },
+
+        agregarCategoria() {
+            const ultima = this.categorias[this.categorias.length - 1];
+            this.categorias.push({
+                nombre: '',
+                puntos_desde: ultima ? ultima.puntos_desde + 100 : 0,
+                porcentaje_cumpleanos: 0,
+            });
+        },
+
+        quitarCategoria(indice) {
+            this.categorias.splice(indice, 1);
+        },
+
+        get cambioCategorias() {
+            return JSON.stringify(normalizarCategorias(this.categorias))
+                !== JSON.stringify(this.categoriasOriginales);
+        },
+
         cambio(campo) {
             return Number(this.valores[campo]) !== this.originales[campo];
         },
@@ -63,7 +113,7 @@ function ajustesSistema() {
         },
 
         get hayCambios() {
-            return this.cambios.length > 0;
+            return this.cambios.length > 0 || this.cambioCategorias;
         },
 
         /* Preview de la lista de la vendedora con lo que está en pantalla. */
@@ -85,6 +135,7 @@ function ajustesSistema() {
 
         descartar() {
             this.valores = { ...this.originales };
+            this.categorias = this.categoriasOriginales.map((c) => ({ ...c }));
         },
 
         /* Confirmación 1: el resumen de lo que cambia. */
@@ -93,6 +144,12 @@ function ajustesSistema() {
             const renglones = this.cambios.map((c) =>
                 `• ${CAMPOS_AJUSTES[c].nombre}: ${this.formato(c, this.originales[c])} → ${this.formato(c, this.valores[c])}`
             );
+            if (this.cambioCategorias) {
+                renglones.push(
+                    `• Categorías de fidelización: ${textoCategorias(this.categoriasOriginales)}`
+                    + ` → ${textoCategorias(normalizarCategorias(this.categorias))}`
+                );
+            }
             this.revision = {
                 abierta: true,
                 titulo: 'Revisá los cambios',
@@ -104,7 +161,7 @@ function ajustesSistema() {
         /* Confirmación 2: aplicar. */
         confirmarFinal() {
             this.revision.abierta = false;
-            const n = this.cambios.length;
+            const n = this.cambios.length + (this.cambioCategorias ? 1 : 0);
             this.confirmacionFinal = {
                 abierta: true,
                 titulo: 'Confirmación final',
@@ -121,10 +178,18 @@ function ajustesSistema() {
 
             this.guardando = true;
             try {
-                this.tomar(await window.pedir(API_AJUSTES, {
-                    method: 'PATCH',
-                    body: JSON.stringify(cuerpo),
-                }));
+                if (this.cambios.length) {
+                    this.tomar(await window.pedir(API_AJUSTES, {
+                        method: 'PATCH',
+                        body: JSON.stringify(cuerpo),
+                    }));
+                }
+                if (this.cambioCategorias) {
+                    this.tomarCategorias(await window.pedir(API_CATEGORIAS, {
+                        method: 'PUT',
+                        body: JSON.stringify({ categorias: normalizarCategorias(this.categorias) }),
+                    }));
+                }
                 window.toast('Ajustes guardados', 'exito');
             } catch (e) {
                 window.toast(e.message, 'error');

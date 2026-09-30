@@ -17,6 +17,7 @@ class ClienteNuevoEnSena(BaseModel):
     nombre: str = Field(min_length=1, max_length=150)
     dni: str | None = Field(default=None, max_length=15)
     telefono: str | None = Field(default=None, max_length=30)
+    fecha_nacimiento: date | None = None
 
 
 class SenaCrear(BaseModel):

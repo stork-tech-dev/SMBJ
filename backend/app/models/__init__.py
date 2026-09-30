@@ -18,6 +18,7 @@ from app.models.categoria import NIVEL_MAXIMO, Categoria
 from app.models.cliente import Cliente, ClientePromocion, PuntoCliente, TipoPunto
 from app.models.configuracion import ConfiguracionSistema
 from app.models.dispositivo import Dispositivo
+from app.models.fidelizacion import CategoriaFidelizacion
 from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.motivo_baja import MotivoBaja
 from app.models.operaciones_caja import (
@@ -73,6 +74,7 @@ from app.models.turno import (
 )
 
 __all__ = [
+    "CategoriaFidelizacion",
     "Base",
     "Auditoria",
     "Cambio",

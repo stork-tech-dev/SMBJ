@@ -17,6 +17,7 @@
 {% from "components/icons.html" import icono %}
 {% from "components/buscador_cliente.html" import buscador_cliente %}
 {% from "components/switch_si_no.html" import switch_si_no %}
+{% from "components/beneficio_cumpleanos.html" import beneficio_cumpleanos %}
 
 {% block contenido_mobile %}
 <div x-data="finalizarVenta()" x-init="cargar()">
@@ -91,7 +92,9 @@
                                 rounded-input bg-surface-alt">
                         <div class="min-w-0">
                             <p class="text-base font-medium truncate" x-text="venta.cliente.nombre"></p>
-                            <p class="text-xs text-texto-muted" x-text="venta.cliente.dni || 'Sin DNI'"></p>
+                            <p class="text-xs text-texto-muted"
+                               x-text="(venta.cliente.dni || 'Sin DNI')
+                                       + (venta.categoria_cliente ? ' · Categoría ' + venta.categoria_cliente : '')"></p>
                         </div>
                         <button type="button" @click="asociarCliente(null)"
                                 aria-label="Quitar el cliente"
@@ -102,6 +105,8 @@
                     </div>
                 </template>
             </section>
+
+            {{ beneficio_cumpleanos('cumple-cobro') }}
 
             {# ---------- Seña ----------
                Solo si el cliente tiene una vigente. Arranca en Sí: si dejó

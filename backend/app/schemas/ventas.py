@@ -287,6 +287,19 @@ class VentaResumen(BaseModel):
     medios_pago: list[str]
 
 
+class CumpleanosCambiar(BaseModel):
+    """Quitar (`false`) o reponer (`true`) el descuento de cumpleaños de la venta."""
+
+    activo: bool
+
+
+class BeneficioCumpleanosResponse(BaseModel):
+    categoria: str
+    porcentaje: Decimal
+    # False si la vendedora lo quitó en esta venta.
+    activo: bool
+
+
 class VentaResponse(VentaResumen):
     """El detalle completo, que es lo que dibuja el carrito y el cobro."""
 
@@ -300,6 +313,11 @@ class VentaResponse(VentaResumen):
     # SIN recargos. Es el número contra el que se validan los pagos, y va
     # calculado para que la pantalla no tenga que sumar la lista de ítems.
     a_cobrar: Decimal = Decimal("0")
+
+    # Fidelización del cliente de la venta: su categoría y, si está en el mes
+    # de su cumpleaños, el descuento que le corresponde y si está aplicado.
+    categoria_cliente: str | None = None
+    beneficio_cumpleanos: BeneficioCumpleanosResponse | None = None
 
 
 class ItemAgregadoResponse(BaseModel):
