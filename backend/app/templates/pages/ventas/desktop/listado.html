@@ -17,7 +17,7 @@
 {% block contenido %}
 <div x-data="listadoVentas({{ 'true' if puede_anular else 'false' }})" x-init="cargarCatalogos(); cargar()">
 
-    {% call encabezado('Resumen de Ventas Netas', volver_url='/ventas', volver_texto='Ventas') %}
+    {% call encabezado('Resumen de Ventas Netas', volver_url='/reportes/ventas', volver_texto='Reportes de Ventas') %}
         {% if puede_ver_clientes %}
         <a href="/clientes"
            class="h-control px-5 inline-flex items-center gap-2 rounded-input border border-borde

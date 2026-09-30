@@ -9,8 +9,8 @@
 {% block contenido %}
 <div x-data="resumenPorPunto()" x-init="cargar()">
 
-    {% call encabezado('Resumen por Punto de Venta', volver_url='/ventas',
-                       volver_texto='Ventas') %}
+    {% call encabezado('Resumen por Punto de Venta', volver_url='/reportes/ventas',
+                       volver_texto='Reportes de Ventas') %}
         <a :href="urlExportar()"
            class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
                   hover:bg-primary/15 inline-flex items-center gap-2">

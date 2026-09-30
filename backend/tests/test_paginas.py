@@ -1111,7 +1111,13 @@ def test_sidebar_se_filtra_por_permisos(client, crear_usuario, roles, dar_permis
 
     resp = client.get("/")
     assert resp.status_code == 200
-    assert 'href="/ventas"' in resp.text
+    # En escritorio Ventas no tiene ítem propio: sus reportes cuelgan de
+    # Reportes, que se ve aunque no tenga el permiso de Reportes.
+    assert 'href="/ventas"' not in resp.text
+    assert 'href="/reportes"' in resp.text
+    hub = client.get("/reportes").text
+    assert 'href="/reportes/ventas"' in hub
+    assert 'href="/reportes/caja"' not in hub
     # Sin permiso sobre usuarios ni acceso a roles (exclusivo Cuenta Maestra).
     assert 'href="/usuarios"' not in resp.text
     assert 'href="/roles"' not in resp.text
@@ -2495,9 +2501,9 @@ def test_ventas_rutea_por_dispositivo(client, db, crear_usuario, crear_punto_de_
     navegador.
 
     Es la regla del módulo: desde un celular registrado en un local se
-    trabaja el punto de venta, y desde cualquier otro equipo se ve el menú
-    de Ventas (con el listado colgando de ahí, en "Resumen de Ventas
-    Netas"). Si dependiera del ancho, una vendedora que gira el teléfono
+    trabaja el punto de venta, y desde cualquier otro equipo se va a
+    Reportes → Reportes de Ventas (con el listado colgando de ahí, en
+    "Resumen de Ventas Netas"). Si dependiera del ancho, una vendedora que gira el teléfono
     perdería la caja, y un supervisor en una notebook angosta recibiría el
     flujo de venta.
     """
@@ -2507,8 +2513,12 @@ def test_ventas_rutea_por_dispositivo(client, db, crear_usuario, crear_punto_de_
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    # Sin dispositivo de local: menú de Ventas, con la tarjeta al listado.
+    # Sin dispositivo de local: redirige al grupo de Reportes de Ventas.
+    resp = client.get("/ventas", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/reportes/ventas"
     html = client.get("/ventas").text
+    assert "Reportes de Ventas" in html
     assert 'href="/ventas/resumen-ventas"' in html
     assert "homeVentas()" not in html
     assert "listadoVentas(" not in html

@@ -60,8 +60,18 @@ MENU_SIDEBAR = [
         "modulo": Modulo.STOCK,
     },
     {"nombre": "Clientes", "url": "/clientes", "icono": "users", "modulo": Modulo.CLIENTES},
-    {"nombre": "Ventas", "url": "/ventas", "icono": "cart", "modulo": Modulo.VENTAS},
-    {"nombre": "Reportes", "url": "/reportes", "icono": "chart", "modulo": Modulo.REPORTES},
+    # Sin "Ventas": en escritorio sus reportes viven en Reportes → Reportes de
+    # Ventas. `/ventas` sigue siendo el home de la vendedora en el celular.
+    {
+        "nombre": "Reportes",
+        "url": "/reportes",
+        "icono": "chart",
+        "modulo": None,
+        # Visible si el usuario ve alguna tarjeta del hub: los reportes de
+        # ventas piden el permiso de Ventas, no el de Reportes, y quien solo
+        # tiene ese no puede quedarse sin la puerta de entrada.
+        "hub_reportes": True,
+    },
     # Oculto hasta que exista su pantalla: hoy /auditoria no tiene ruta HTML
     # y el ítem llevaba a un 404. El endpoint GET /api/v1/auditoria sigue
     # funcionando; lo que se esconde es la entrada del menú. Para reactivarlo
@@ -157,9 +167,8 @@ CONFIGURACION_SECCIONES = [
 ]
 
 
-# Tarjetas de la página de menú de Ventas. Hoy es una sola, pero entra por el
-# mismo molde que Stock/Reportes para que agregar la próxima sea una línea
-# acá y no otro rediseño de la página.
+# Reportes que agrupa la tarjeta "Reportes de Ventas" del hub de Reportes
+# (página RUTA_REPORTES_VENTAS). Piden el permiso de Ventas, como sus endpoints.
 SECCIONES_VENTAS = [
     {
         "nombre": "Resumen de Ventas Netas",
@@ -238,6 +247,7 @@ SECCIONES_STOCK = [
 RUTA_HUB_REPORTES = "/reportes"
 RUTA_REPORTES_PRODUCTO = "/reportes/productos"
 RUTA_REPORTES_CAJA = "/reportes/caja"
+RUTA_REPORTES_VENTAS = "/reportes/ventas"
 
 _CRITERIO_BAJO_MINIMO = (
     "Combinaciones de producto y ubicación cuyo stock actual es igual o "
@@ -344,6 +354,7 @@ def _grupo_de_reportes(nombre: str, url: str, secciones: list[dict]) -> dict:
 
 # Tarjetas del hub de Reportes: un grupo por tema.
 SECCIONES_REPORTES = [
+    _grupo_de_reportes("Reportes de Ventas", RUTA_REPORTES_VENTAS, SECCIONES_VENTAS),
     _grupo_de_reportes("Reportes de Producto", RUTA_REPORTES_PRODUCTO, SECCIONES_REPORTES_PRODUCTO),
     _grupo_de_reportes("Reportes de Caja", RUTA_REPORTES_CAJA, SECCIONES_REPORTES_CAJA),
 ]
@@ -407,6 +418,9 @@ def _visible(db: Session, usuario, item: dict, es_maestra: bool) -> bool:
         return any(
             _visible(db, usuario, s, es_maestra) for s in CONFIGURACION_SECCIONES  # type: ignore[arg-type]
         )
+    # Hub de Reportes: mismo criterio, sobre sus grupos.
+    if item.get("hub_reportes"):
+        return any(_visible(db, usuario, s, es_maestra) for s in SECCIONES_REPORTES)
     # Tarjeta que agrupa otras (p. ej. "Reportes de Producto"): mismo criterio.
     if item.get("secciones"):
         return any(_visible(db, usuario, s, es_maestra) for s in item["secciones"])
@@ -436,12 +450,6 @@ def secciones_configuracion(db: Session, usuario) -> list[dict]:
     """Tarjetas de la página de Configuraciones visibles para el usuario."""
     es_maestra = _es_maestra(usuario)
     return [s for s in CONFIGURACION_SECCIONES if _visible(db, usuario, s, es_maestra)]  # type: ignore[arg-type, misc]
-
-
-def secciones_ventas(db: Session, usuario) -> list[dict]:
-    """Tarjetas de la página de menú de Ventas visibles para el usuario."""
-    es_maestra = _es_maestra(usuario)
-    return [s for s in SECCIONES_VENTAS if _visible(db, usuario, s, es_maestra)]
 
 
 def secciones_stock(db: Session, usuario) -> list[dict]:
@@ -871,6 +879,13 @@ async def reportes_de_producto(
     return _sub_hub_reportes(request, db, usuario, "Reportes de Producto", SECCIONES_REPORTES_PRODUCTO)
 
 
+@router.get(RUTA_REPORTES_VENTAS, response_class=HTMLResponse)
+async def reportes_de_ventas(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return _sub_hub_reportes(request, db, usuario, "Reportes de Ventas", SECCIONES_VENTAS)
+
+
 @router.get(RUTA_REPORTES_CAJA, response_class=HTMLResponse)
 async def reportes_de_caja(
     request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
@@ -1280,7 +1295,8 @@ def _contexto_ventas(request, db, usuario, titulo, **extra):
     return contexto_base(
         request, db, usuario,
         titulo=titulo,
-        ruta_activa="/ventas",
+        # Las pantallas de escritorio que cuelgan de Reportes lo pisan.
+        ruta_activa=extra.pop("ruta_activa", "/ventas"),
         sin_asignacion=scope.sin_asignacion,
         mensaje_sin_asignacion=MENSAJE_SIN_ASIGNACION,
         # Con un solo local a la vista el combobox de punto de venta sobra.
@@ -1312,8 +1328,8 @@ async def ventas(
 
     Desde un celular de local: el home de la vendedora, con el acceso a la
     venta nueva y el aviso de venta sin concluir. Desde cualquier otro
-    equipo: el menú de Ventas (hoy, una sola tarjeta: el listado con sus
-    filtros, como "Resumen de Ventas Netas").
+    equipo: los reportes de ventas, que en escritorio viven en el hub de
+    Reportes (la redirección mantiene vivos los enlaces viejos a `/ventas`).
     """
     dispositivo = _dispositivo_de_request(request, db)
     if _es_dispositivo_de_local(dispositivo):
@@ -1322,19 +1338,7 @@ async def ventas(
             "pages/ventas/mobile/home.html",
             _contexto_ventas(request, db, usuario, "Ventas", activa_mobile="inicio"),
         )
-    # No usa `_contexto_ventas` porque no muestra ventas: el aislamiento por
-    # dispositivo lo resuelve la pantalla del listado, y el menú es el mismo
-    # para todos (mismo criterio que `gestion_de_stock`, más abajo).
-    return templates.TemplateResponse(
-        request,
-        "pages/ventas/desktop/hub.html",
-        contexto_base(
-            request, db, usuario,
-            titulo="Ventas",
-            ruta_activa="/ventas",
-            secciones=secciones_ventas(db, usuario),
-        ),
-    )
+    return RedirectResponse(RUTA_REPORTES_VENTAS, status_code=303)
 
 
 @router.get("/ventas/resumen-ventas", response_class=HTMLResponse)
@@ -1349,7 +1353,9 @@ async def ventas_resumen(
     return templates.TemplateResponse(
         request,
         "pages/ventas/desktop/listado.html",
-        _contexto_ventas(request, db, usuario, "Resumen de Ventas Netas"),
+        _contexto_ventas(
+            request, db, usuario, "Resumen de Ventas Netas", ruta_activa=RUTA_HUB_REPORTES
+        ),
     )
 
 
@@ -1368,7 +1374,7 @@ async def ventas_resumen_por_punto(
         contexto_base(
             request, db, usuario,
             titulo="Resumen por Punto de Venta",
-            ruta_activa="/ventas",
+            ruta_activa=RUTA_HUB_REPORTES,
         ),
     )
 
@@ -1388,7 +1394,7 @@ async def ventas_resumen_diario(
         contexto_base(
             request, db, usuario,
             titulo="Resumen diario consolidado",
-            ruta_activa="/ventas",
+            ruta_activa=RUTA_HUB_REPORTES,
         ),
     )
 
