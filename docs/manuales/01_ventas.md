@@ -13,7 +13,7 @@ El módulo de Ventas es el corazón del sistema. Desde acá se registran las ven
 Al abrir la app desde el celular del local aparece la pantalla de inicio con:
 
 - **Estado del turno**: muestra si el turno está abierto o no. Va primero porque sin turno abierto no se puede vender.
-- **Alerta de venta sin concluir**: si hay una venta abierta que no se terminó de cobrar, aparece en rojo. Tocala para retomar.
+- **Alerta de venta sin concluir**: si hay una venta abierta que no se terminó de cobrar, aparece en rojo. Tocala para retomar. Solo aparece si esa venta tiene al menos un producto cargado.
 - **Botón "Nueva venta"**: solo aparece si no tenés ninguna venta sin concluir. Si la tenés, el botón se oculta a propósito — para seguirla usás la alerta roja, así no se te ocurre arrancar una segunda venta antes de cerrar la primera. Si el local no tiene turno iniciado, el botón se ve **apagado** (gris, no responde) con el aviso *"Iniciá el turno para vender"*; lo mismo pasa con el botón del carrito de la barra inferior.
 - Accesos rápidos: consulta de stock, recepción de mercadería, anulaciones y cambios (según tu permiso — ver más abajo).
 
@@ -54,7 +54,9 @@ El cierre del turno incluye el arqueo de caja (ver módulo Caja).
 ### Nueva venta
 
 1. Tocá **"Nueva venta"** en la pantalla de inicio. Si está apagado, primero iniciá el turno (o sumate al del día).
-2. Aparece el carrito vacío.
+2. Aparece la pantalla para escanear o buscar productos.
+
+> **La venta se crea recién con el primer producto.** Si entrás a "Nueva venta" y volvés sin agregar nada, no queda ninguna venta guardada y en el inicio no aparece el aviso de "venta sin concluir". Si escaneás un código que no existe, tampoco se crea la venta.
 
 #### Agregar productos
 
@@ -66,6 +68,7 @@ El cierre del turno incluye el arqueo de caja (ver módulo Caja).
 
 - Tocá el producto en el carrito para cambiar la cantidad.
 - Deslizá a la derecha para eliminarlo.
+- Si quitás el **último** producto, la venta se descarta sola (una venta sin productos no existe) y volvés a la pantalla de inicio con el aviso *"Venta descartada: no quedaban productos"*.
 
 #### Aplicar descuento
 
@@ -77,7 +80,7 @@ Si tenés permiso:
 
 #### Cobrar
 
-1. Tocá **"Cobrar"** (o el botón de confirmación con el total).
+1. En el carrito, tocá **"Cerrar Venta"**.
 2. Seleccioná el medio de pago (efectivo, tarjeta, transferencia, etc.).
 3. Si el pago es en cuotas, elegí el plan.
 4. Si usás señas, podés aplicar el saldo disponible del cliente.
@@ -88,7 +91,7 @@ Si tenés permiso:
 
 #### Cancelar una venta en curso
 
-Tocá la flecha de retorno. La venta queda guardada como "en curso" por si querés retomar. Para descartarla definitivamente, usá el botón de eliminar del carrito.
+Tocá la flecha de retorno. Si la venta ya tiene productos, queda guardada como "en curso" por si querés retomar (es la alerta roja del inicio). Para descartarla definitivamente, usá el botón de eliminar del carrito o quitá todos sus productos. Si todavía no agregaste ningún producto, no hay nada que cancelar: la venta no llegó a crearse.
 
 ---
 
