@@ -59,6 +59,27 @@ El retiro queda registrado en el turno y se descuenta del efectivo esperado en e
 
 ---
 
+## Novedades de caja
+
+Una novedad registra plata que entra o sale de la caja y que no es una venta ni un retiro de efectivo (por ejemplo, un pago a un proveedor en el momento o un ingreso extra). Si es una entrada o una salida lo define el **concepto** que elijas: se muestra en pantalla, pero no se edita.
+
+### Registrar una novedad
+
+Requiere permiso de caja y un turno abierto en el local.
+
+1. En el celular, desde la pantalla de inicio, tocá **"Operaciones de caja"** y después **"Novedad"**.
+2. Elegí el **concepto**.
+3. Ingresá el **monto**.
+4. En **"Autorizó"**, elegí de la lista quién aprobó el movimiento.
+5. Si querés, agregá **notas**.
+6. Tocá **"Registrar novedad"**.
+
+### ¿Quiénes aparecen en "Autorizó"?
+
+Los usuarios **activos** que la Cuenta Maestra habilitó como **"Autorizador de cambios y novedades de caja"** desde Configuración → Usuarios. Es la misma lista que se usa para autorizar los cambios por falla. El paso a paso para habilitar a alguien está en el manual de Usuarios y Roles, en la sección *"Autorizador de cambios y novedades de caja"*.
+
+---
+
 ## Cierre de turno y arqueo
 
 El cierre del turno incluye un **arqueo de caja**: comparación entre lo que el sistema esperaba recaudar y lo que la vendedora declara que hay físicamente.
@@ -118,6 +139,9 @@ Una vez confirmado no se puede cambiar. El sistema registra el monto declarado a
 
 **¿El arqueo ajusta el stock o las ventas?**
 No. El arqueo solo registra las diferencias de caja. No modifica ningún otro dato.
+
+**¿Por qué no aparece nadie en "Autorizó" al cargar una novedad?**
+Porque no hay ningún usuario activo habilitado como autorizador, o porque tu usuario no tiene permiso de Ventas para crear. Pedile a la Cuenta Maestra que habilite al menos a una persona (manual de Usuarios y Roles) o que revise tus permisos.
 
 **¿Puedo ver el arqueo de otro local?**
 Solo si tenés permiso de supervisor o superior. Las vendedoras solo ven el turno de su propio local.

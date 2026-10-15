@@ -192,7 +192,7 @@ Permite que un cliente devuelva uno o varios productos y se lleve otros distinto
 
 ### El autorizador del cambio por falla
 
-Como un cambio por falla no tiene ticket, alguien tiene que responsabilizarse de aprobarlo. Por eso se elige de una lista de personas habilitadas como **"Autorizador de cambios"** — esa lista la administra la Cuenta Maestra desde el módulo de Usuarios (ver el manual de Usuarios y Roles). Si no aparece nadie en la lista, avisale a la Cuenta Maestra para que habilite al menos una persona.
+Como un cambio por falla no tiene ticket, alguien tiene que responsabilizarse de aprobarlo. Por eso se elige de una lista de personas habilitadas como **autorizadores** — esa lista la administra la Cuenta Maestra desde el módulo de Usuarios, con el casillero **"Autorizador de cambios y novedades de caja"** (ver el manual de Usuarios y Roles). Es la misma lista que aparece en el campo "Autorizó" de las novedades de caja. Si no aparece nadie en la lista, avisale a la Cuenta Maestra para que habilite al menos una persona.
 
 ---
 

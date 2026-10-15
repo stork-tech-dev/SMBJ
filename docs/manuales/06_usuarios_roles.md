@@ -74,13 +74,33 @@ La tabla muestra todos los usuarios del sistema.
 
 ---
 
-## Autorizador de cambios (solo Cuenta Maestra)
+## Autorizador de cambios y novedades de caja (solo Cuenta Maestra)
 
-Al editar un usuario, la Cuenta Maestra ve un casillero adicional: **"Autorizador de cambios (por falla)"**.
+Al editar un usuario, la Cuenta Maestra ve un casillero adicional: **"Autorizador de cambios y novedades de caja"**.
 
-Marcarlo agrega a esa persona a la lista de la que se elige el autorizador cuando alguien hace un **cambio por falla** en el módulo de Ventas (ver el manual de Ventas). Puede ser cualquier rol, no hace falta que sea Supervisor o Dueño.
+Marcarlo agrega a esa persona a la lista de autorizadores. Esa misma lista aparece en dos lugares:
 
-> Este casillero solo lo ve y lo puede tocar la Cuenta Maestra. Al crear un usuario nuevo no está disponible todavía — hay que guardarlo primero y después editarlo para marcarlo.
+- **Cambio por falla** (módulo de Ventas): se elige quién autoriza el cambio, porque no hay ticket (ver el manual de Ventas).
+- **Novedades de caja** (celular del local): es la lista que se despliega en el campo **"Autorizó"**, con el texto *"Elegí quién autorizó"* (ver el manual de Caja y Turnos).
+
+Puede ser cualquier rol, no hace falta que sea Supervisor o Dueño.
+
+### Cómo habilitar a un autorizador
+
+1. Entrá desde la computadora con la **Cuenta Maestra**.
+2. Andá a **Configuración → Usuarios**.
+3. Abrí el usuario para **editarlo**. Al crear un usuario nuevo el casillero todavía no está: primero guardalo y después editalo.
+4. Tildá **"Autorizador de cambios y novedades de caja"** y guardá.
+5. Fijate que el usuario esté **activo**: los usuarios inactivos no aparecen en la lista aunque tengan el casillero tildado.
+
+Para sacar a alguien de la lista, destildá el casillero (o desactivá al usuario).
+
+> Este casillero solo lo ve y lo puede tocar la Cuenta Maestra. Ningún otro rol puede cambiar quién autoriza.
+
+> **Si la lista sale vacía en el celular**, revisá:
+> - Que haya al menos un usuario con el casillero tildado.
+> - Que ese usuario esté activo.
+> - Que la persona que está usando el celular tenga permiso de **Ventas** para crear: sin ese permiso la lista no se carga.
 
 ---
 
