@@ -80,6 +80,23 @@ Los usuarios **activos** que la Cuenta Maestra habilitó como **"Autorizador de 
 
 ---
 
+## Movimientos de caja (celular)
+
+Muestra todo lo que entró y salió de la caja en cada turno del día, para controlar el recorrido antes de cerrar. Requiere permiso de caja.
+
+1. En el celular, tocá **"Caja"** en la barra inferior.
+2. Elegí el **día** (por defecto, hoy).
+
+Cada turno aparece como una tarjeta con su horario y tres secciones bien separadas:
+
+- **Saldo inicial**: el efectivo con el que se abrió la caja, con la hora de apertura. Va aparte y en negro (no en verde) porque no es una venta ni plata que entró durante el turno: es con lo que se arrancó.
+- **Ventas y movimientos**: cada venta, seña, cobro de joyero, novedad y retiro de efectivo, en orden de hora, con su medio de pago. Los ingresos se ven en verde con "+", los egresos en rojo con "−". La parte de una venta pagada con seña aparece en gris con la leyenda *"no suma"*, porque esa plata ya entró cuando se dejó la seña.
+- **Totales**: ingresos y egresos del turno y, destacado abajo, el **efectivo esperado en caja**, que es lo que tendría que dar el arqueo al cerrar.
+
+> Los **ingresos del turno** incluyen el saldo inicial, así la cuenta cierra con el efectivo esperado.
+
+---
+
 ## Cierre de turno y arqueo
 
 El cierre del turno incluye un **arqueo de caja**: comparación entre lo que el sistema esperaba recaudar y lo que la vendedora declara que hay físicamente.
