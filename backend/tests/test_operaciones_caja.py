@@ -492,3 +492,7 @@ def test_pantalla_de_movimientos_y_acceso_en_la_barra(db, vendedora_en_local):
     html = vendedora_en_local.get("/caja/movimientos").text
     assert "/api/v1/movimientos-caja" in html
     assert 'href="/caja/movimientos"' in html
+    # Tres secciones por turno; el saldo inicial va aparte de las ventas.
+    for seccion in ("Saldo inicial", "Ventas y movimientos", "Totales"):
+        assert seccion in html, seccion
+    assert "m.tipo === 'apertura'" in html

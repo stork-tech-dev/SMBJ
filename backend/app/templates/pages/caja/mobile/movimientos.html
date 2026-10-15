@@ -6,10 +6,18 @@
    con otro endpoint.
 
    En lugar de la tabla de cinco columnas, cada movimiento es una fila de
-   dos líneas: en 320px una tabla obligaría a scrollear de costado. #}
+   dos líneas: en 320px una tabla obligaría a scrollear de costado.
+
+   Cada turno tiene tres secciones bien separadas: el saldo inicial (con lo
+   que abrió la caja, aparte para que no se lea como una venta), las ventas
+   y movimientos, y los totales. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% block contenido_mobile %}
+{# Título de cada sección de la tarjeta del turno. #}
+{% macro titulo_seccion(texto) -%}
+<h3 class="text-xs font-semibold uppercase tracking-wider text-texto-header">{{ texto }}</h3>
+{%- endmacro %}
 {% if sin_asignacion or not puede_ver_caja %}
     {% include "pages/caja/mobile/_sin_acceso.html" %}
 {% else %}
@@ -31,50 +39,82 @@
         <div class="mt-5 space-y-5">
             <template x-for="t in datos.turnos" :key="t.turno_id">
                 <section class="rounded-input border-2 border-borde overflow-hidden">
-                    <h2 class="px-4 py-3 text-sm font-semibold text-welcome bg-surface-alt"
+                    <h2 class="px-4 py-3 text-sm font-semibold text-welcome"
                         x-text="rangoTurno(t)"></h2>
 
-                    <ul class="divide-y divide-borde">
-                        <template x-for="(m, i) in t.movimientos" :key="i">
-                            <li class="flex items-start justify-between gap-3 px-4 py-3">
-                                <div class="min-w-0">
-                                    <p class="text-base text-texto break-words" x-text="m.detalle"></p>
-                                    <p class="text-xs text-texto-muted"
-                                       x-text="hora(m.timestamp) + (m.medio_de_pago ? ' · ' + m.medio_de_pago : '')"></p>
-                                </div>
-                                {# Pago con seña: en gris y sin signo, no suma
-                                   (la plata entró cuando se dejó la seña). #}
-                                <div class="shrink-0 text-right">
-                                    <template x-if="!esCero(m.informativo)">
-                                        <p class="text-base font-medium tabular-nums text-texto-disabled">
-                                            <span x-text="pesos(m.informativo)"></span>
-                                            <span class="block text-[0.625rem] font-normal">no suma</span>
-                                        </p>
-                                    </template>
-                                    <template x-if="esCero(m.informativo)">
-                                        <p class="text-base font-medium tabular-nums"
-                                           :class="esCero(m.egreso) ? 'text-success' : 'text-danger'"
-                                           x-text="esCero(m.egreso) ? '+' + pesos(m.ingreso) : '−' + pesos(m.egreso)"></p>
-                                    </template>
-                                </div>
-                            </li>
-                        </template>
-                    </ul>
+                    {# 1. Saldo inicial: el efectivo con el que abrió la caja.
+                       Aparte y sin verde: no es una venta ni plata que entró
+                       en el turno, es con lo que arrancó. El rótulo lo pone
+                       la pantalla; el backend lo marca con `tipo`. #}
+                    <template x-for="m in t.movimientos.filter(m => m.tipo === 'apertura')"
+                              :key="'apertura'">
+                        <div class="px-4 py-3 bg-surface-alt border-y-2 border-borde">
+                            {{ titulo_seccion('Saldo inicial') }}
+                            <div class="mt-1 flex items-center justify-between gap-3">
+                                <p class="text-xs text-texto-muted"
+                                   x-text="'Efectivo al abrir la caja · ' + hora(m.timestamp)"></p>
+                                <p class="shrink-0 text-lg font-semibold tabular-nums text-texto"
+                                   x-text="pesos(m.ingreso)"></p>
+                            </div>
+                        </div>
+                    </template>
 
-                    <dl class="px-4 py-3 space-y-1 border-t border-borde text-sm">
-                        <div class="flex justify-between gap-3">
-                            <dt class="text-texto-muted">Ingresos del turno</dt>
-                            <dd class="tabular-nums" x-text="pesos(t.total_ingresos)"></dd>
-                        </div>
-                        <div class="flex justify-between gap-3">
-                            <dt class="text-texto-muted">Egresos del turno</dt>
-                            <dd class="tabular-nums" x-text="pesos(t.total_egresos)"></dd>
-                        </div>
-                        <div class="flex justify-between gap-3 pt-1 text-base font-semibold">
-                            <dt>Efectivo esperado en caja</dt>
-                            <dd class="tabular-nums" x-text="pesos(t.efectivo_esperado)"></dd>
-                        </div>
-                    </dl>
+                    {# 2. Ventas y el resto de los movimientos del turno
+                       (señas, cobros de joyero, novedades, retiros). #}
+                    <div class="pt-3">
+                        <div class="px-4">{{ titulo_seccion('Ventas y movimientos') }}</div>
+                        <p x-show="!t.movimientos.some(m => m.tipo !== 'apertura')"
+                           class="px-4 py-3 text-sm text-texto-disabled">
+                            Sin ventas ni movimientos todavía.
+                        </p>
+                        <ul class="divide-y divide-borde">
+                            <template x-for="(m, i) in t.movimientos.filter(m => m.tipo !== 'apertura')"
+                                      :key="i">
+                                <li class="flex items-start justify-between gap-3 px-4 py-3">
+                                    <div class="min-w-0">
+                                        <p class="text-base text-texto break-words" x-text="m.detalle"></p>
+                                        <p class="text-xs text-texto-muted"
+                                           x-text="hora(m.timestamp) + (m.medio_de_pago ? ' · ' + m.medio_de_pago : '')"></p>
+                                    </div>
+                                    {# Pago con seña: en gris y sin signo, no suma
+                                       (la plata entró cuando se dejó la seña). #}
+                                    <div class="shrink-0 text-right">
+                                        <template x-if="!esCero(m.informativo)">
+                                            <p class="text-base font-medium tabular-nums text-texto-disabled">
+                                                <span x-text="pesos(m.informativo)"></span>
+                                                <span class="block text-[0.625rem] font-normal">no suma</span>
+                                            </p>
+                                        </template>
+                                        <template x-if="esCero(m.informativo)">
+                                            <p class="text-base font-medium tabular-nums"
+                                               :class="esCero(m.egreso) ? 'text-success' : 'text-danger'"
+                                               x-text="esCero(m.egreso) ? '+' + pesos(m.ingreso) : '−' + pesos(m.egreso)"></p>
+                                        </template>
+                                    </div>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+
+                    {# 3. Totales del turno. #}
+                    <div class="px-4 py-3 bg-surface-alt border-t-2 border-borde">
+                        {{ titulo_seccion('Totales') }}
+                        <dl class="mt-2 space-y-1 text-sm">
+                            <div class="flex justify-between gap-3">
+                                <dt class="text-texto-muted">Ingresos del turno</dt>
+                                <dd class="tabular-nums" x-text="pesos(t.total_ingresos)"></dd>
+                            </div>
+                            <div class="flex justify-between gap-3">
+                                <dt class="text-texto-muted">Egresos del turno</dt>
+                                <dd class="tabular-nums" x-text="pesos(t.total_egresos)"></dd>
+                            </div>
+                            <div class="flex justify-between gap-3 pt-2 mt-1 border-t border-borde
+                                        text-base font-semibold">
+                                <dt>Efectivo esperado en caja</dt>
+                                <dd class="tabular-nums" x-text="pesos(t.efectivo_esperado)"></dd>
+                            </div>
+                        </dl>
+                    </div>
                 </section>
             </template>
         </div>
