@@ -52,7 +52,7 @@ from app.services import promociones as servicio_promociones
 from app.services import senas as servicio_senas
 from app.services import stock as servicio_stock
 from app.services.roles import NoEncontrado, ReglaDeNegocio
-from app.services.turnos import obtener_turno_activo, verificar_bloqueo_turno
+from app.services.turnos import obtener_turno_activo, turno_para_operar
 
 # Alfabeto del código de cambio. Sin I, O, 0 ni 1: la vendedora lo copia a
 # mano al ticket de papel y después alguien lo tipea para hacer el cambio.
@@ -296,6 +296,8 @@ def iniciar_venta(
             "Este dispositivo no tiene un local asignado: no se puede vender desde acá"
         )
     scope.exigir(punto_de_venta_id)
+    # Sin turno abierto no se vende: no hay caja donde entre la plata.
+    turno_para_operar(punto_de_venta_id, db)
 
     abierta = venta_en_curso(db, autor.id, punto_de_venta_id)
     if abierta is not None:
@@ -1012,8 +1014,9 @@ def confirmar_venta(
     _exigir_en_curso(venta)
     scope.exigir(venta.punto_de_venta_id)
 
-    # Bloqueo duro: turno del día anterior sin cerrar bloquea la confirmación
-    verificar_bloqueo_turno(venta.punto_de_venta_id, db)
+    # Exige el turno abierto hoy: un turno del día anterior sin cerrar, o
+    # uno cerrado mientras la venta estaba en curso, bloquean el cobro.
+    turno_para_operar(venta.punto_de_venta_id, db)
 
     if not venta.items:
         raise ReglaDeNegocio("No se puede confirmar una venta sin productos")

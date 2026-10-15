@@ -79,6 +79,18 @@ function cajaTurno(puntoDeVentaId) {
                 && Number(this.efectivoApertura) !== Number(this.cierreAnterior.efectivo);
         },
 
+        /**
+         * Habilita el botón "Nueva venta" (components/boton_nueva_venta.html)
+         * sin recargar. Solo se emite al abrir o sumarse: el estado inicial
+         * ya lo dibujó el servidor, que es el que sabe si un turno de ayer
+         * sin cerrar bloquea la venta.
+         */
+        avisarTurno() {
+            window.dispatchEvent(new CustomEvent('turno-cambiado', {
+                detail: { activo: !!this.turno },
+            }));
+        },
+
         cerrarOverlay() {
             this.overlay = null;
             this.efectivoApertura = '';
@@ -102,6 +114,7 @@ function cajaTurno(puntoDeVentaId) {
                     throw new Error(err.detail || 'No se pudo abrir el turno');
                 }
                 this.turno = await resp.json();
+                this.avisarTurno();
                 this.cerrarOverlay();
                 window.toast('Turno iniciado', 'exito');
             } catch (e) {
@@ -125,6 +138,7 @@ function cajaTurno(puntoDeVentaId) {
                     throw new Error(err.detail || 'No se pudo unir al turno');
                 }
                 this.turno = await resp.json();
+                this.avisarTurno();
                 this.cerrarOverlay();
                 window.toast('Te sumaste al turno', 'exito');
             } catch (e) {

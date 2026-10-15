@@ -1,0 +1,52 @@
+{# ===========================================================================
+   Macro: acceso a "Nueva venta" de las pantallas mobile.
+
+   Sin turno abierto en el local no se vende (lo exige `iniciar_venta` en el
+   backend), así que el acceso se dibuja apagado en vez de llevar a una
+   pantalla que termina en error. Se muestra igual, no se esconde: la
+   vendedora tiene que ver que el botón existe y por qué no anda.
+
+   El estado inicial sale del servidor (`hay_turno` en `_contexto_ventas`) y
+   después sigue al evento `turno-cambiado` que emite `cajaTurno()` en
+   caja.js: al iniciar o sumarse al turno desde el home, el botón se
+   habilita sin recargar la página.
+
+   Parámetros:
+     hay_turno   estado inicial (bool).
+     clases      clases del botón (forma y color), compartidas por el
+                 enlace y por su versión apagada.
+     contenedor  clases del envoltorio (posición, márgenes).
+     etiqueta    `aria-label`, para los botones que son solo ícono.
+     aviso       texto bajo el botón apagado ("" para no mostrarlo).
+     El contenido del botón va en el cuerpo del `{% call %}`.
+
+   Uso:
+     {% from "components/boton_nueva_venta.html" import boton_nueva_venta %}
+     {% call boton_nueva_venta(hay_turno, 'h-12 rounded-input bg-primary') %}
+         Nueva venta
+     {% endcall %}
+   =========================================================================== #}
+
+{% macro boton_nueva_venta(hay_turno, clases, contenedor='', etiqueta='Nueva venta', aviso='') %}
+<div x-data="{ hayTurno: {{ hay_turno|tojson }} }"
+     @turno-cambiado.window="hayTurno = $event.detail.activo"
+     class="{{ contenedor }}">
+    <a href="/ventas/nueva" aria-label="{{ etiqueta }}"
+       x-show="hayTurno" {% if not hay_turno %}style="display: none"{% endif %}
+       class="{{ clases }} hover:bg-primary-hover">
+        {{ caller() }}
+    </a>
+    <span role="link" aria-disabled="true" aria-label="{{ etiqueta }} (sin turno iniciado)"
+          title="Iniciá el turno para vender"
+          x-show="!hayTurno" {% if hay_turno %}style="display: none"{% endif %}
+          class="{{ clases }} opacity-50 cursor-not-allowed">
+        {{ caller() }}
+    </span>
+    {% if aviso %}
+    <p x-show="!hayTurno" {% if hay_turno %}style="display: none"{% endif %}
+       class="mt-2 text-sm text-texto-muted text-center">
+        {{ aviso }}
+    </p>
+    {% endif %}
+</div>
+{% endmacro %}

@@ -2580,6 +2580,43 @@ def test_el_layout_mobile_no_arrastra_el_sidebar(client, db, crear_usuario,
         assert f'href="{destino}"' in html, destino
 
 
+def test_sin_turno_el_boton_de_nueva_venta_se_ve_apagado(
+    client, db, crear_usuario, crear_punto_de_venta, asegurar_turno
+):
+    """
+    Sin turno iniciado no se vende: "Nueva venta" (home y barra inferior)
+    se dibuja apagado, y se prende cuando el local tiene turno abierto.
+    """
+    import re
+
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    vendedora = crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    def visibles(html):
+        """Los enlaces a /ventas/nueva que el servidor dibuja visibles."""
+        etiquetas = re.findall(r'<a href="/ventas/nueva"[^>]*>', html)
+        return [e for e in etiquetas if "display: none" not in e]
+
+    html = client.get("/ventas").text
+    assert "{ hayTurno: false }" in html
+    assert visibles(html) == []
+    assert "Iniciá el turno para vender" in html
+
+    asegurar_turno(local.id, vendedora.id)
+    html = client.get("/ventas").text
+    assert "{ hayTurno: false }" not in html
+    assert len(visibles(html)) == 2  # el del home y el de la barra
+
+
 def test_la_barra_inferior_respeta_el_area_segura(client, db, crear_usuario,
                                                   crear_punto_de_venta):
     """

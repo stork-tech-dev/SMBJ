@@ -28,13 +28,14 @@ from tests.test_arqueo import (  # noqa: F401
 
 
 @pytest.fixture
-def venta(db, autor, dispositivo, crear_variante, con_stock):
+def venta(db, autor, dispositivo, crear_variante, con_stock, asegurar_turno):
     """Venta confirmada de dos productos distintos, con su código de cambio."""
     anillo = crear_variante("Anillo", "1000")
     aro = crear_variante("Aro", "500")
     for v in (anillo, aro):
         con_stock(v, 5)
 
+    asegurar_turno(dispositivo.punto_de_venta_id, autor.id)
     venta = servicio_ventas.iniciar_venta(db, autor, dispositivo, LIBRE)
     for v in (anillo, aro):
         servicio_ventas.agregar_item(db, autor, venta, variante_id=v.id)

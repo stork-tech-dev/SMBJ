@@ -499,6 +499,10 @@ def contexto_base(request: Request, db: Session, actual, **extra) -> dict:
         # cambios, remitos—, que arman su contexto por caminos distintos:
         # por eso va acá y no en cada uno.
         "puede_ver_caja": resolver_permiso(db, actual.id, Modulo.CAJA, "ver"),
+        # El botón "Nueva venta" de la misma barra: sin turno abierto en el
+        # local se dibuja apagado. Mismo motivo que `puede_ver_caja` para
+        # vivir acá.
+        "hay_turno": _hay_turno_para_vender(request, db),
         # Define qué logotipo se muestra ('S' Soleil / 'M' Mallorca).
         "letra_empresa": servicio_configuracion.letra_empresa(db),
         # Cuánto se tolera sin actividad. Lo necesita el JavaScript para
@@ -1263,6 +1267,28 @@ def _dispositivo_de_request(request: Request, db: Session):
 
     uuid_cookie = request.cookies.get(settings.DEVICE_COOKIE_NAME)
     return DeviceService(db).repo.get_by_uuid(uuid_cookie) if uuid_cookie else None
+
+
+def _hay_turno_para_vender(request: Request, db: Session) -> bool:
+    """
+    TRUE si el local del equipo tiene un turno en el que se puede vender.
+
+    Pregunta a `turno_para_operar`, la misma puerta que aplica
+    `iniciar_venta`: un turno de ayer sin cerrar cuenta como "sin turno"
+    acá también, porque la venta igual terminaría bloqueada. Desde un equipo
+    sin local no hay barra mobile, así que ni se consulta.
+    """
+    from app.services.roles import ReglaDeNegocio
+    from app.services.turnos import turno_para_operar
+
+    dispositivo = _dispositivo_de_request(request, db)
+    if not _es_dispositivo_de_local(dispositivo):
+        return False
+    try:
+        turno_para_operar(dispositivo.punto_de_venta_id, db)
+    except ReglaDeNegocio:
+        return False
+    return True
 
 
 def _es_dispositivo_de_local(dispositivo) -> bool:

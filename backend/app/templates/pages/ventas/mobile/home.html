@@ -17,6 +17,7 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/tarjeta_acceso.html" import tarjeta_acceso %}
+{% from "components/boton_nueva_venta.html" import boton_nueva_venta %}
 
 {% block encabezado_mobile %}
     {# En el home no hay retorno: es la raíz del flujo. En su lugar va el
@@ -189,13 +190,17 @@
     {# ---------- Acción principal ----------
        Oculta si hay venta sin concluir: seguirla ya sale del aviso de
        arriba, y dos botones a la vez invitarían a arrancar una segunda
-       venta antes de cerrar la primera. #}
-    <a x-show="!enCurso" x-cloak href="/ventas/nueva"
-       class="mt-5 flex items-center justify-center gap-2 h-[3.25rem] rounded-input
-              bg-primary text-white text-base font-medium hover:bg-primary-hover">
-        {{ icono('cart', clases='w-5 h-5') }}
-        <span>Nueva venta</span>
-    </a>
+       venta antes de cerrar la primera. Sin turno iniciado se ve apagada:
+       no se vende fuera de turno. #}
+    <div x-show="!enCurso" x-cloak class="mt-5">
+        {% call boton_nueva_venta(hay_turno,
+                'flex items-center justify-center gap-2 h-[3.25rem] rounded-input
+                 bg-primary text-white text-base font-medium',
+                aviso='Iniciá el turno para vender') %}
+            {{ icono('cart', clases='w-5 h-5') }}
+            <span>Nueva venta</span>
+        {% endcall %}
+    </div>
 
     {# ---------- Accesos rápidos ----------
        Seis tarjetas iguales en dos columnas. El alto de cada fila sale del

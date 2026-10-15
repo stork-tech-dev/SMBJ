@@ -38,7 +38,6 @@ from app.services import promociones as servicio_promociones
 from app.services import proveedores as servicio_proveedores
 from app.services import senas as servicio_senas
 from app.services import stock as servicio_stock
-from app.services import turnos as servicio_turnos
 from app.services import ventas as servicio
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -155,18 +154,14 @@ def medio_sena(db):
 
 
 @pytest.fixture
-def dejar_sena(db, autor, local, efectivo):
+def dejar_sena(db, autor, local, efectivo, asegurar_turno):
     """
     Registra una seña en efectivo. Abre el turno del local la primera vez:
     sin turno no hay caja donde recibir la plata.
     """
 
     def _dejar(cliente, monto: str):
-        if servicio_turnos.obtener_turno_activo(local.id, db) is None:
-            servicio_turnos.abrir_turno(
-                punto_de_venta_id=local.id, usuario_id=autor.id,
-                efectivo_apertura=0, notas=None, db=db,
-            )
+        asegurar_turno(local.id, autor.id)
         return servicio_senas.registrar_sena(
             db, autor, cliente_id=cliente.id, monto=Decimal(monto),
             punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
@@ -176,7 +171,8 @@ def dejar_sena(db, autor, local, efectivo):
 
 
 @pytest.fixture
-def venta(db, autor, dispositivo):
+def venta(db, autor, dispositivo, asegurar_turno):
+    asegurar_turno(dispositivo.punto_de_venta_id, autor.id)
     return servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
 
 
@@ -959,21 +955,50 @@ def test_una_vendedora_no_ve_ventas_de_otro_local(
     assert "403" in str(error.value) or "local asignado" in str(error.value)
 
 
-def test_iniciar_dos_veces_devuelve_la_misma_venta(db, autor, dispositivo):
+def test_iniciar_dos_veces_devuelve_la_misma_venta(db, autor, dispositivo, asegurar_turno):
     """
     Dos ventas `en_curso` de la misma vendedora significan que una quedó
     huérfana, con productos que nadie va a cobrar.
     """
+    asegurar_turno(dispositivo.punto_de_venta_id, autor.id)
     primera = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
     segunda = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
     assert primera.id == segunda.id
 
 
-def test_venta_en_curso_alimenta_el_banner(db, autor, dispositivo, local):
+def test_venta_en_curso_alimenta_el_banner(db, autor, dispositivo, local, asegurar_turno):
     assert servicio.venta_en_curso(db, autor.id, local.id) is None
+    asegurar_turno(local.id, autor.id)
 
     abierta = servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
     assert servicio.venta_en_curso(db, autor.id, local.id).id == abierta.id
+
+
+def test_sin_turno_abierto_no_se_inicia_una_venta(db, autor, dispositivo):
+    """Sin turno no hay caja donde entre la plata: no se vende."""
+    with pytest.raises(ReglaDeNegocio, match="turno"):
+        servicio.iniciar_venta(db, autor, dispositivo, LIBRE)
+
+
+def test_con_el_turno_cerrado_no_se_confirma_la_venta_en_curso(
+    db, autor, venta, crear_variante, con_stock, efectivo, asegurar_turno
+):
+    """
+    Una venta que quedó abierta cuando se cerró el turno tampoco se cobra:
+    la plata no tendría turno al que sumarse.
+    """
+    from app.models.turno import EstadoTurno
+
+    variante = crear_variante("Anillo", "1000")
+    con_stock(variante, 1)
+    servicio.agregar_item(db, autor, venta, variante_id=variante.id)
+    _cobrar_todo(db, autor, venta, efectivo)
+
+    asegurar_turno(venta.punto_de_venta_id, autor.id).estado = EstadoTurno.CERRADO
+    db.flush()
+
+    with pytest.raises(ReglaDeNegocio, match="turno"):
+        servicio.confirmar_venta(db, autor, venta, LIBRE)
 
 
 # ============================================================================
@@ -1104,7 +1129,8 @@ def test_los_porcentajes_validos_los_sirve_la_api(
 
 
 def test_el_aviso_de_stock_viaja_en_el_cuerpo_y_no_como_error(
-    client, db, crear_usuario, dar_permiso, roles, local, equipo_en, crear_variante
+    client, db, crear_usuario, dar_permiso, roles, local, equipo_en, crear_variante,
+    asegurar_turno,
 ):
     """
     Sin stock, agregar al carrito devuelve 201 con un aviso — no un 4xx.
@@ -1115,8 +1141,9 @@ def test_el_aviso_de_stock_viaja_en_el_cuerpo_y_no_como_error(
     variante = crear_variante("Anillo fantasma", "10000")
     db.commit()
 
-    crear_usuario("vende", ROL_VENDEDOR)
+    vendedora = crear_usuario("vende", ROL_VENDEDOR)
     dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo="ventas", ver=True, crear=True)
+    asegurar_turno(local.id, vendedora.id)
     db.commit()
 
     client.cookies.set("device_uuid", equipo_en(local))
@@ -1212,7 +1239,7 @@ def _venta_confirmada(db, autor, dispositivo, crear_variante, efectivo, variante
 
 
 def test_analisis_por_producto_toma_confirmadas_de_los_ultimos_90_dias(
-    db, autor, dispositivo, crear_variante, con_stock, efectivo, local
+    db, autor, dispositivo, crear_variante, con_stock, efectivo, local, asegurar_turno
 ):
     """
     Solo entran variantes con una venta CONFIRMADA en los últimos 90 días.
@@ -1220,6 +1247,7 @@ def test_analisis_por_producto_toma_confirmadas_de_los_ultimos_90_dias(
     venta de hace 120 días no cuenta para aparecer, pero si la variante ya
     entró por otra más reciente, esa venta vieja pasa a ser la primera.
     """
+    asegurar_turno(local.id, autor.id)
     vendida = crear_variante("Anillo plata", "1000")
     con_stock(vendida, 10)
     nunca_reciente = crear_variante("Cadena vieja", "1000")
@@ -1291,7 +1319,8 @@ def test_analisis_productos_no_choca_con_el_detalle_de_venta(client, crear_usuar
 
 
 def test_resumen_por_punto_de_venta_solo_cuenta_confirmadas(
-    db, autor, dispositivo, local, otro_local, crear_variante, con_stock, efectivo
+    db, autor, dispositivo, local, otro_local, crear_variante, con_stock, efectivo,
+    asegurar_turno,
 ):
     """
     Una fila por local con su total, y el porcentaje cobrado con cada medio
@@ -1307,6 +1336,8 @@ def test_resumen_por_punto_de_venta_solo_cuenta_confirmadas(
     )
     db.add(otro_dispositivo)
     db.flush()
+    for punto in (local, otro_local):
+        asegurar_turno(punto.id, autor.id)
 
     vendida = crear_variante("Anillo plata", "1000")
     con_stock(vendida, 10)

@@ -58,6 +58,7 @@
 {% from "components/toast.html" import contenedor_toasts %}
 {% from "components/marca.html" import marca %}
 {% from "components/icons.html" import icono %}
+{% from "components/boton_nueva_venta.html" import boton_nueva_venta %}
 
 <div class="mx-auto w-full max-w-[26rem] min-h-screen flex flex-col">
 
@@ -134,14 +135,14 @@
             </a>
 
             {# Sobresale por encima del borde de la barra: es el centro
-               óptico de la pantalla y el destino más buscado. #}
-            <a href="/ventas/nueva" aria-label="Nueva venta"
-               class="absolute left-1/2 -translate-x-1/2 -top-6
-                      grid place-items-center w-[4.375rem] h-[4.375rem] rounded-full
-                      bg-primary text-white shadow-[0_4px_14px_0_rgba(0,0,0,0.25)]
-                      hover:bg-primary-hover">
+               óptico de la pantalla y el destino más buscado. Apagado
+               sin turno iniciado. #}
+            {% call boton_nueva_venta(hay_turno,
+                    'grid place-items-center w-[4.375rem] h-[4.375rem] rounded-full
+                     bg-primary text-white shadow-[0_4px_14px_0_rgba(0,0,0,0.25)]',
+                    contenedor='absolute left-1/2 -translate-x-1/2 -top-6') %}
                 {{ icono('cart', clases='w-8 h-8') }}
-            </a>
+            {% endcall %}
 
             {# A la derecha del botón central, dos destinos: los movimientos
                de caja del local (con permiso de caja; sin él se ve apagado,

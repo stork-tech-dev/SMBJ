@@ -1619,7 +1619,7 @@ def test_listar_stock_sin_restar_carrito_no_calcula_reservado(db, con_stock, aut
     assert filas[0].cantidad == 100  # el stock real, sin tocar
 
 
-def test_listar_stock_restar_carrito_resta_lo_reservado(db, autor, con_stock, cd):
+def test_listar_stock_restar_carrito_resta_lo_reservado(db, autor, con_stock, cd, asegurar_turno):
     """
     Lo que ya está en el carrito en curso del usuario NO se toca en
     `cantidad` (el stock real sigue igual), pero se informa aparte para que
@@ -1630,6 +1630,7 @@ def test_listar_stock_restar_carrito_resta_lo_reservado(db, autor, con_stock, cd
 
     dispositivo = _dispositivo(db, True, cd.id)
     scope = DeviceScope(restringido=True, punto_de_venta_id=cd.id)
+    asegurar_turno(cd.id, autor.id)
     venta = servicio_ventas.iniciar_venta(db, autor, dispositivo, scope)
     servicio_ventas.agregar_item(db, autor, venta, variante_id=con_stock.id)
     db.flush()

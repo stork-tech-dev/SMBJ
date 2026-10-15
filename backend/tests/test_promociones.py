@@ -116,7 +116,8 @@ def efectivo(db):
 
 
 @pytest.fixture
-def venta_base(db, autor, dispositivo):
+def venta_base(db, autor, dispositivo, asegurar_turno):
+    asegurar_turno(dispositivo.punto_de_venta_id, autor.id)
     return servicio_ventas.iniciar_venta(db, autor, dispositivo, LIBRE)
 
 
@@ -351,7 +352,7 @@ def test_porcentaje_no_aplica_si_hay_descuento_item(
 
 
 def test_porcentaje_no_se_aplica_en_sucursal_incorrecta(
-    db, autor, crear_punto_de_venta, crear_variante, config
+    db, autor, crear_punto_de_venta, crear_variante, config, asegurar_turno
 ):
     """Promo restringida al local A no aplica en venta abierta desde local B."""
     local_a = crear_punto_de_venta("PA1", "Local A Test Suc", TipoPuntoVenta.LOCAL)
@@ -360,6 +361,7 @@ def test_porcentaje_no_se_aplica_en_sucursal_incorrecta(
     equipo_b = Dispositivo(punto_de_venta_id=local_b.id, activo=True, descripcion="Celu B2")
     db.add(equipo_b)
     db.flush()
+    asegurar_turno(local_b.id, autor.id)
     venta_b = servicio_ventas.iniciar_venta(db, autor, equipo_b, LIBRE)
 
     variante = crear_variante("Collar Test Suc", "150")

@@ -224,6 +224,26 @@ def punto_de_venta(crear_punto_de_venta):
 
 
 @pytest.fixture
+def asegurar_turno(db):
+    """
+    Abre el turno del local si todavía no tiene uno. Sin turno abierto no se
+    vende ni se cobra una seña: no hay caja donde entre la plata.
+    """
+    from app.services import turnos as servicio_turnos
+
+    def _asegurar(punto_de_venta_id: int, usuario_id: int):
+        turno = servicio_turnos.obtener_turno_activo(punto_de_venta_id, db)
+        if turno is None:
+            turno = servicio_turnos.abrir_turno(
+                punto_de_venta_id=punto_de_venta_id, usuario_id=usuario_id,
+                efectivo_apertura=0, notas=None, db=db,
+            )
+        return turno
+
+    return _asegurar
+
+
+@pytest.fixture
 def login(client):
     """Hace login y devuelve los headers con el Bearer token."""
 
