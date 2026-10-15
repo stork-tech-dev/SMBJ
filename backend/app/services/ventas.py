@@ -289,6 +289,9 @@ def iniciar_venta(
     ventas `en_curso` de la misma vendedora en el mismo local significan que
     una quedó huérfana, con productos que nadie va a cobrar y que tampoco
     están reservados. El banner del home lleva justamente a esta.
+
+    Es un paso interno: una venta sin productos no existe, así que la API
+    abre ventas solo a través de `iniciar_con_producto`.
     """
     punto_de_venta_id = dispositivo.punto_de_venta_id
     if punto_de_venta_id is None:
@@ -400,17 +403,8 @@ def agregar_item(
     """
     _exigir_en_curso(venta)
 
-    if variante_id is not None:
-        variante = servicio_stock.obtener_variante(db, variante_id)
-    else:
-        assert codigo is not None, "Se requiere variante_id o codigo"
-        variante = buscar_variante(db, codigo)
-
+    variante = _variante_vendible(db, codigo, variante_id)
     producto = variante.producto
-    if not producto.activo or not variante.activo:
-        raise ReglaDeNegocio(
-            f"'{producto.descripcion}' está dado de baja: no se puede vender"
-        )
 
     aviso = None
     if not producto.stock_infinito:
@@ -454,6 +448,52 @@ def agregar_item(
     return item, aviso
 
 
+def _variante_vendible(db: Session, codigo: str | None, variante_id: int | None) -> Variante:
+    """La variante a sumar al carrito, por id o por código, si se puede vender."""
+    if variante_id is not None:
+        variante = servicio_stock.obtener_variante(db, variante_id)
+    else:
+        assert codigo is not None, "Se requiere variante_id o codigo"
+        variante = buscar_variante(db, codigo)
+
+    producto = variante.producto
+    if not producto.activo or not variante.activo:
+        raise ReglaDeNegocio(
+            f"'{producto.descripcion}' está dado de baja: no se puede vender"
+        )
+    return variante
+
+
+def iniciar_con_producto(
+    db: Session,
+    autor: Usuario,
+    dispositivo: Dispositivo,
+    scope: DeviceScope,
+    *,
+    codigo: str | None = None,
+    variante_id: int | None = None,
+    ip_origen: str | None = None,
+) -> tuple[Venta, VentaItem, str | None]:
+    """
+    Abre la venta junto con su primer producto (o suma a la que ya estaba
+    abierta).
+
+    Una venta sin productos no existe: si existiera, el home avisaría de una
+    "venta sin concluir" que no tiene nada que cobrar. Por eso la venta nace
+    con el primer escaneo y no al entrar a la pantalla.
+
+    El producto se valida ANTES de abrir la venta: un código mal escaneado
+    no tiene que consumir un número de venta (la secuencia no vuelve atrás
+    con el rollback).
+    """
+    variante = _variante_vendible(db, codigo, variante_id)
+    venta = iniciar_venta(db, autor, dispositivo, scope, ip_origen=ip_origen)
+    item, aviso = agregar_item(
+        db, autor, venta, variante_id=variante.id, ip_origen=ip_origen
+    )
+    return venta, item, aviso
+
+
 def _proximo_orden(venta: Venta) -> int:
     """
     El siguiente número de orden de carga.
@@ -467,8 +507,13 @@ def _proximo_orden(venta: Venta) -> int:
 
 def quitar_item(
     db: Session, autor: Usuario, venta: Venta, item_id: int, ip_origen: str | None = None
-) -> None:
-    """Saca una unidad del carrito y vuelve a calcular todo."""
+) -> bool:
+    """
+    Saca una unidad del carrito y vuelve a calcular todo.
+
+    Si era la última, la venta se descarta: una venta sin productos no
+    existe. Devuelve True en ese caso.
+    """
     _exigir_en_curso(venta)
 
     item = next((i for i in venta.items if i.id == item_id), None)
@@ -479,7 +524,12 @@ def quitar_item(
     db.flush()
     db.refresh(venta)
 
+    if not venta.items:
+        descartar_venta(db, autor, venta, ip_origen=ip_origen)
+        return True
+
     _recalcular(db, venta)
+    return False
 
 
 def asociar_cliente(

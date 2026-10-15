@@ -31,6 +31,19 @@ const API_TURNOS = '/api/v1/turnos';
 // este script no lleva `defer` y corre antes que app.js.
 const pedir = (url, opciones) => window.pedir(url, opciones);
 
+/**
+ * Suma una unidad al carrito. Sin venta abierta, la abre con este mismo
+ * producto: una venta sin productos no existe, así que nace con el primero.
+ * Devuelve `{venta, item_id, aviso}`.
+ */
+function sumarAlCarrito(ventaId, varianteId) {
+    const url = ventaId ? `${API_VENTAS}/${ventaId}/items` : API_VENTAS;
+    return pedir(url, {
+        method: 'POST',
+        body: JSON.stringify({ variante_id: varianteId }),
+    });
+}
+
 /* Lo que comparten las pantallas del flujo: la venta en curso y el formato
    de importes. */
 function ventaBase() {
@@ -110,13 +123,9 @@ function nuevaVenta() {
         },
 
         async iniciar() {
-            // Abre la venta al entrar, o recupera la que estaba abierta: el
-            // endpoint devuelve la existente en vez de crear una segunda.
-            try {
-                this.venta = await pedir(API_VENTAS, { method: 'POST', body: '{}' });
-            } catch (e) {
-                window.toast(e.message, 'error');
-            }
+            // Solo recupera la venta abierta, si hay: entrar a la pantalla no
+            // crea nada. La venta nace con el primer producto (`agregar`).
+            await this.cargarVenta();
             this.enfocar();
 
             // F2 vuelve el foco al campo: el lector escribe donde esté el
@@ -157,14 +166,11 @@ function nuevaVenta() {
         },
 
         async agregar() {
-            if (!this.producto || !this.venta) return;
+            if (!this.producto) return;
 
             this.agregando = true;
             try {
-                const datos = await pedir(`${API_VENTAS}/${this.venta.id}/items`, {
-                    method: 'POST',
-                    body: JSON.stringify({ variante_id: this.producto.variante_id }),
-                });
+                const datos = await sumarAlCarrito(this.venta?.id, this.producto.variante_id);
 
                 this.venta = datos.venta;
                 // El aviso del backend gana sobre el que calculó la pantalla:
@@ -231,6 +237,12 @@ function carritoVenta(puedeDescontar = false) {
                     `${API_VENTAS}/${this.venta.id}/items/${item.id}`,
                     { method: 'DELETE' }
                 );
+                // Era el último producto: la venta se descartó, no hay
+                // carrito al que volver.
+                if (!this.venta) {
+                    window.toast('Venta descartada: no quedaban productos', 'exito');
+                    window.location.href = '/ventas';
+                }
             } catch (e) {
                 window.toast(e.message, 'error');
             }
@@ -764,15 +776,14 @@ function consultaStockMobile(puntoDeVentaId) {
         async agregarFilas(filas) {
             this.agregando = true;
             try {
-                const venta = await pedir(API_VENTAS, { method: 'POST', body: '{}' });
+                // La venta la abre (o la recupera) la primera fila que entra.
+                let ventaId = null;
                 const avisos = [];
                 let agregados = 0;
                 for (const f of filas) {
                     try {
-                        const datos = await pedir(`${API_VENTAS}/${venta.id}/items`, {
-                            method: 'POST',
-                            body: JSON.stringify({ variante_id: f.variante.id }),
-                        });
+                        const datos = await sumarAlCarrito(ventaId, f.variante.id);
+                        ventaId = datos.venta.id;
                         agregados += 1;
                         if (datos.aviso) avisos.push(datos.aviso);
                     } catch (e) {

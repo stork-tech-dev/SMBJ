@@ -582,13 +582,23 @@ def promociones_de_venta(
 # ============================================================================
 
 
+def _exigir_producto(datos: ItemAgregar) -> None:
+    """Agregar al carrito pide el código de la etiqueta o el id de la variante."""
+    if datos.codigo is None and datos.variante_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Hay que mandar el código de la etiqueta o el id de la variante",
+        )
+
+
 @router.post(
     "",
-    response_model=VentaResponse,
+    response_model=ItemAgregadoResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Iniciar una venta",
+    summary="Iniciar una venta con su primer producto",
 )
 def iniciar(
+    datos: ItemAgregar,
     request: Request,
     db: Session = Depends(get_db),
     dispositivo=Depends(get_active_device),
@@ -596,21 +606,31 @@ def iniciar(
     autor=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
 ):
     """
-    Abre una venta, o devuelve la que ya estaba abierta en este local.
+    Abre una venta con su primer producto, o lo suma a la que ya estaba
+    abierta en este local.
 
-    Devolver la existente en vez de crear otra evita dejar carritos
-    huérfanos: dos ventas `en_curso` de la misma vendedora significan que
-    una tiene productos que nadie va a cobrar.
+    Una venta sin productos no existe: por eso este endpoint exige el
+    producto y no hay forma de abrir un carrito vacío. Devolver la existente
+    en vez de crear otra evita dejar carritos huérfanos: dos ventas
+    `en_curso` de la misma vendedora significan que una tiene productos que
+    nadie va a cobrar.
     """
+    _exigir_producto(datos)
     try:
-        venta = servicio.iniciar_venta(
-            db, autor, dispositivo, scope, ip_origen=ip_de_request(request)
+        venta, item, aviso = servicio.iniciar_con_producto(
+            db, autor, dispositivo, scope,
+            codigo=datos.codigo,
+            variante_id=datos.variante_id,
+            ip_origen=ip_de_request(request),
         )
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
     except ReglaDeNegocio as exc:
         raise _409(exc) from exc
 
     db.commit()
-    return _respuesta(venta)
+    db.refresh(venta)
+    return ItemAgregadoResponse(venta=_respuesta(venta), item_id=item.id, aviso=aviso)
 
 
 @router.post(
@@ -635,12 +655,7 @@ def agregar_item(
     La vendedora tiene el producto en la mano, así que lo que corresponde es
     pedirle que controle el código, no frenarle la venta.
     """
-    if datos.codigo is None and datos.variante_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Hay que mandar el código de la etiqueta o el id de la variante",
-        )
-
+    _exigir_producto(datos)
     venta = _venta(db, venta_id, scope)
     try:
         item, aviso = servicio.agregar_item(
@@ -663,7 +678,7 @@ def agregar_item(
 
 @router.delete(
     "/{venta_id}/items/{item_id}",
-    response_model=VentaResponse,
+    response_model=VentaResponse | None,
     summary="Quitar una unidad del carrito",
 )
 def quitar_item(
@@ -674,15 +689,23 @@ def quitar_item(
     scope: DeviceScope = Depends(get_device_scope),
     autor=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
 ):
+    """
+    Si era la última unidad, la venta se descarta (una venta sin productos
+    no existe) y la respuesta es `null`.
+    """
     venta = _venta(db, venta_id, scope)
     try:
-        servicio.quitar_item(db, autor, venta, item_id, ip_origen=ip_de_request(request))
+        descartada = servicio.quitar_item(
+            db, autor, venta, item_id, ip_origen=ip_de_request(request)
+        )
     except NoEncontrado as exc:
         raise _404(exc) from exc
     except ReglaDeNegocio as exc:
         raise _409(exc) from exc
 
     db.commit()
+    if descartada:
+        return None
     db.refresh(venta)
     return _respuesta(venta)
 

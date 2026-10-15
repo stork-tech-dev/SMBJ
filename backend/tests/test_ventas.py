@@ -1149,14 +1149,62 @@ def test_el_aviso_de_stock_viaja_en_el_cuerpo_y_no_como_error(
     client.cookies.set("device_uuid", equipo_en(local))
     client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
 
-    venta_id = client.post("/api/v1/ventas").json()["id"]
-    resp = client.post(
-        f"/api/v1/ventas/{venta_id}/items", json={"variante_id": variante.id}
-    )
-
+    # La venta nace con el primer producto: el aviso viaja en esa misma
+    # respuesta, y también en la de los productos siguientes.
+    resp = client.post("/api/v1/ventas", json={"variante_id": variante.id})
     assert resp.status_code == 201
     assert resp.json()["aviso"] is not None
     assert len(resp.json()["venta"]["items"]) == 1
+
+    venta_id = resp.json()["venta"]["id"]
+    resp = client.post(
+        f"/api/v1/ventas/{venta_id}/items", json={"variante_id": variante.id}
+    )
+    assert resp.status_code == 201
+    assert resp.json()["aviso"] is not None
+    assert len(resp.json()["venta"]["items"]) == 2
+
+
+def test_una_venta_sin_productos_no_existe(
+    client, db, crear_usuario, dar_permiso, roles, local, equipo_en, crear_variante,
+    asegurar_turno,
+):
+    """
+    La venta nace con el primer producto y muere con el último: sin
+    productos no hay venta, ni aviso de "venta sin concluir" en el home.
+    """
+    from app.models.auditoria import Auditoria
+    from app.models.venta import Venta
+
+    variante = crear_variante("Anillo", "1000")
+    vendedora = crear_usuario("vende", ROL_VENDEDOR)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo="ventas", ver=True, crear=True)
+    asegurar_turno(local.id, vendedora.id)
+    db.commit()
+
+    client.cookies.set("device_uuid", equipo_en(local))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    # Sin producto no se abre nada.
+    assert client.post("/api/v1/ventas", json={}).status_code == 422
+    # Un código que no existe tampoco deja una venta vacía.
+    assert client.post("/api/v1/ventas", json={"codigo": "NOEXISTE"}).status_code == 404
+    assert client.get("/api/v1/ventas/en-curso").json()["venta"] is None
+
+    # Con el primer producto, la venta existe y el home la avisa.
+    venta = client.post("/api/v1/ventas", json={"variante_id": variante.id}).json()["venta"]
+    assert client.get("/api/v1/ventas/en-curso").json()["venta"]["id"] == venta["id"]
+
+    # Quitar el último producto la descarta.
+    item_id = venta["items"][0]["id"]
+    resp = client.delete(f"/api/v1/ventas/{venta['id']}/items/{item_id}")
+    assert resp.status_code == 200
+    assert resp.json() is None
+    assert client.get("/api/v1/ventas/en-curso").json()["venta"] is None
+    assert db.get(Venta, venta["id"]) is None
+    assert db.query(Auditoria).filter_by(
+        accion="venta.descartar", entidad_id=venta["id"]
+    ).count() == 1
 
 
 def test_el_recurso_de_promociones_no_abre_los_medios_de_pago(
