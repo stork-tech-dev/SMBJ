@@ -25,6 +25,17 @@ function reporteCaja(slug, { conLocal = true, base = '/api/v1/reportes/caja/' + 
             this.cargar();
         },
 
+        /** Clase de color de un medio de pago (`.serie-n` en custom.css). */
+        colorMedio(serie) {
+            return serie ? `serie-${serie}` : 'serie-otro';
+        },
+
+        /** Ancho del tramo de un medio en la barra: su parte de los ingresos por medio. */
+        partePorcentual(fila, filas) {
+            const suma = filas.reduce((total, f) => total + Number(f.total), 0);
+            return suma ? (Number(fila.total) / suma) * 100 : 0;
+        },
+
         hoy() {
             return window.hoyISO();
         },

@@ -111,13 +111,38 @@
                         </ul>
                     </div>
 
-                    {# 3. Totales del turno. #}
+                    {# 3. Totales del turno, sin el saldo inicial (ya está
+                       arriba; sí cuenta en el efectivo esperado, que es la
+                       plata que tiene que haber). Los ingresos se abren por medio de
+                       pago, cada uno con su color fijo (`serie` del backend):
+                       una barra con la proporción de cada medio y, debajo, la
+                       lista con el nombre y el monto, que es la que se lee —
+                       el color solo ayuda a ubicarlo. #}
                     <div class="px-4 py-3 bg-surface-alt border-t-2 border-borde">
                         {{ titulo_seccion('Totales') }}
-                        <dl class="mt-2 space-y-1 text-sm">
-                            <div class="flex justify-between gap-3">
-                                <dt class="text-texto-muted">Ingresos del turno</dt>
-                                <dd class="tabular-nums" x-text="pesos(t.total_ingresos)"></dd>
+
+                        <div x-show="t.ingresos_por_medio.length" aria-hidden="true"
+                             class="mt-3 flex h-3 gap-[2px] overflow-hidden rounded-full">
+                            <template x-for="f in t.ingresos_por_medio" :key="f.medio_de_pago_id">
+                                <span :class="colorMedio(f.serie)"
+                                      :style="'width: ' + partePorcentual(f, t.ingresos_por_medio) + '%'"></span>
+                            </template>
+                        </div>
+
+                        <dl class="mt-3 space-y-1 text-sm">
+                            <template x-for="f in t.ingresos_por_medio" :key="f.medio_de_pago_id">
+                                <div class="flex items-center justify-between gap-3">
+                                    <dt class="flex items-center gap-2 min-w-0 text-texto-muted">
+                                        <span class="w-2.5 h-2.5 shrink-0 rounded-full"
+                                              :class="colorMedio(f.serie)"></span>
+                                        <span class="truncate" x-text="f.medio_de_pago"></span>
+                                    </dt>
+                                    <dd class="tabular-nums" x-text="pesos(f.total)"></dd>
+                                </div>
+                            </template>
+                            <div class="flex justify-between gap-3 pt-1 mt-1 border-t border-borde font-semibold">
+                                <dt>Ingresos del turno</dt>
+                                <dd class="tabular-nums" x-text="pesos(t.ingresos_sin_saldo_inicial)"></dd>
                             </div>
                             <div class="flex justify-between gap-3">
                                 <dt class="text-texto-muted">Egresos del turno</dt>

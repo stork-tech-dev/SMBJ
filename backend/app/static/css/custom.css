@@ -38,6 +38,19 @@
     --color-danger: #f60509;           /* pendiente / error */
     --color-success: #00bf29;          /* autorizado / éxito */
 
+    /* --- Series (colores por categoría: medios de pago en caja) ---
+       Seis tonos en orden fijo, validados para daltonismo y contraste con
+       el validador de paleta de dataviz (claro sobre #f0f0f0, oscuro sobre
+       #262c35). Sin verde ni rojo: esos son los de ingreso/egreso y estado.
+       El color sigue al medio (su posición por id), nunca a su ranking. */
+    --serie-1: #2a78d6;   /* azul */
+    --serie-2: #eb6834;   /* naranja */
+    --serie-3: #1baf7a;   /* aqua */
+    --serie-4: #eda100;   /* amarillo */
+    --serie-5: #e87ba4;   /* magenta */
+    --serie-6: #6250d6;   /* violeta */
+    --serie-otro: #8f9090; /* séptimo medio en adelante */
+
     /* --- Sidebar --- */
     --color-sidebar-bg: #0073e3;
     --color-sidebar-text: #ffffff;
@@ -133,6 +146,15 @@ canvas {
 
 /* Modo oscuro: mismas variables, otros valores. Nada más cambia. */
 .dark {
+    /* Series: los mismos seis tonos, escalonados para el fondo oscuro. */
+    --serie-1: #3987e5;
+    --serie-2: #d95926;
+    --serie-3: #199e70;
+    --serie-4: #c98500;
+    --serie-5: #d55181;
+    --serie-6: #9085e9;
+    --serie-otro: #6b727d;
+
     --color-primary: #2a8cf0;
     --color-primary-hover: #4ba0f5;
     --color-accent: #6d95c0;
@@ -481,3 +503,16 @@ select.campo-linea {
         display: none !important;
     }
 }
+
+/* --------------------------------------------------------------------------
+   Series: relleno de cada color de categoría (puntos de leyenda y tramos
+   de barra). La clase la elige la pantalla con la `serie` que manda el
+   backend; sin serie, `.serie-otro`.
+   -------------------------------------------------------------------------- */
+.serie-1 { background-color: var(--serie-1); }
+.serie-2 { background-color: var(--serie-2); }
+.serie-3 { background-color: var(--serie-3); }
+.serie-4 { background-color: var(--serie-4); }
+.serie-5 { background-color: var(--serie-5); }
+.serie-6 { background-color: var(--serie-6); }
+.serie-otro { background-color: var(--serie-otro); }

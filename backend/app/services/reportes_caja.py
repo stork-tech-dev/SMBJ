@@ -302,6 +302,45 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
     return movimientos
 
 
+# Cuántos colores distintos tiene la pantalla para los medios de pago
+# (`.serie-1` … `.serie-6` en custom.css). Del séptimo en adelante, gris.
+SERIES_MEDIOS = 6
+
+
+def _ingresos_por_medio(db: Session, lista: list[dict]) -> list[dict]:
+    """
+    Suma de los ingresos del turno por medio de pago, de mayor a menor.
+
+    Sin el saldo inicial (la pantalla lo muestra aparte) y sin los importes
+    informativos, que ya tienen `ingreso` en cero: así saldo inicial + la
+    suma de estos da `total_ingresos`.
+
+    `serie` es la posición del medio entre todos los medios por id: el mismo
+    medio sale siempre del mismo color, en cualquier turno o día, y uno nuevo
+    se suma al final sin repintar a los demás.
+    """
+    totales: dict[str, Decimal] = {}
+    for m in lista:
+        if m["tipo"] == "apertura" or not m["ingreso"]:
+            continue
+        totales[m["medio_de_pago"]] = totales.get(m["medio_de_pago"], CERO) + m["ingreso"]
+    if not totales:
+        return []
+
+    medios = db.execute(select(MedioDePago.id, MedioDePago.nombre).order_by(MedioDePago.id)).all()
+    posicion = {nombre: (i, id_) for i, (id_, nombre) in enumerate(medios)}
+    filas = []
+    for nombre, total in totales.items():
+        i, id_ = posicion[nombre]
+        filas.append({
+            "medio_de_pago_id": id_,
+            "medio_de_pago": nombre,
+            "total": total,
+            "serie": i + 1 if i < SERIES_MEDIOS else None,
+        })
+    return sorted(filas, key=lambda f: f["total"], reverse=True)
+
+
 def movimientos(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> dict:
     """
     Todos los ingresos y egresos de cada turno, en orden cronológico:
@@ -366,6 +405,10 @@ def movimientos(db: Session, fecha: date, punto_de_venta_id: int | None = None) 
         grupos.append({
             **_datos_turno(turno),
             "movimientos": lista,
+            "ingresos_por_medio": _ingresos_por_medio(db, lista),
+            "ingresos_sin_saldo_inicial": sum(
+                (m["ingreso"] for m in lista if m["tipo"] != "apertura"), CERO
+            ),
             "total_ingresos": sum((m["ingreso"] for m in lista), CERO),
             "total_egresos": sum((m["egreso"] for m in lista), CERO),
             "efectivo_esperado": servicio_arqueo.efectivo_esperado(turno.id, db),

@@ -457,6 +457,45 @@ def test_cada_pago_de_venta_trae_su_venta_para_abrir_el_detalle(
     assert detalle.codigo_cambio
 
 
+def test_ingresos_por_medio_sin_saldo_inicial_ni_lo_pagado_con_sena(
+    db, autor, local, turno, variante
+):
+    """
+    El desglose por medio de la sección Totales: agrupa por medio, deja
+    afuera el saldo inicial (Totales no lo incluye) y la parte pagada con
+    seña (no suma).
+    """
+    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    servicio_senas.registrar_sena(
+        db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
+        punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,
+    )
+    _venta_con_sena(db, autor, local, variante, cliente)
+    credito = _medio(db, "Tarjeta de Crédito")
+    servicio_joyero.registrar_cobro(
+        db, autor, punto_de_venta_id=local.id, medio_de_pago_id=credito.id,
+        monto_efectivo=Decimal("0"), monto_otros=Decimal("600"),
+    )
+
+    grupo = servicio.movimientos(db, _hoy(), local.id)["turnos"][0]
+    por_medio = {f["medio_de_pago"]: f for f in grupo["ingresos_por_medio"]}
+
+    # Seña dejada 2500 + efectivo de la venta 7500; la seña usada no suma.
+    assert por_medio["Efectivo"]["total"] == Decimal("10000")
+    assert por_medio["Tarjeta de Crédito"]["total"] == Decimal("600")
+    assert por_medio["Tarjeta de Crédito"]["medio_de_pago_id"] == credito.id
+    # De mayor a menor, y con un color fijo por medio.
+    assert [f["medio_de_pago"] for f in grupo["ingresos_por_medio"]][0] == "Efectivo"
+    assert all(f["serie"] for f in grupo["ingresos_por_medio"])
+
+    # La suma de los medios son los ingresos del turno sin el saldo inicial;
+    # con él, el total de siempre.
+    suma = sum(f["total"] for f in grupo["ingresos_por_medio"])
+    assert suma == grupo["ingresos_sin_saldo_inicial"] == Decimal("10600")
+    apertura = next(m for m in grupo["movimientos"] if m["tipo"] == "apertura")
+    assert apertura["ingreso"] + suma == grupo["total_ingresos"]
+
+
 def test_sena_de_otro_dia_solo_suma_lo_cobrado_aparte(db, autor, local, turno, variante):
     """Venta de 10.000 con 2.500 de una seña anterior: a la caja entran 7.500."""
     cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")

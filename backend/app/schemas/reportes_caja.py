@@ -99,8 +99,25 @@ class MovimientoCaja(BaseModel):
     venta_id: int | None = None
 
 
+class IngresoPorMedio(BaseModel):
+    """Lo que entró en el turno por un medio de pago (sin el saldo inicial)."""
+
+    medio_de_pago_id: int
+    medio_de_pago: str
+    total: Decimal
+    # Posición fija del medio entre todos los medios (por id), para que la
+    # pantalla le dé siempre el mismo color. None: hay más medios que
+    # colores, va en gris.
+    serie: int | None = None
+
+
 class MovimientosTurno(_Turno):
     movimientos: list[MovimientoCaja]
+    # Desglose de los ingresos por medio. Su suma es
+    # `ingresos_sin_saldo_inicial`; con el saldo inicial, `total_ingresos`.
+    ingresos_por_medio: list[IngresoPorMedio] = []
+    # Lo que entró durante el turno, sin el efectivo con el que se abrió.
+    ingresos_sin_saldo_inicial: Decimal = Decimal("0")
     total_ingresos: Decimal
     total_egresos: Decimal
     efectivo_esperado: Decimal
