@@ -563,7 +563,10 @@ def movimientos_del_local(
     vendedora: mismo cálculo (`reportes_caja.movimientos`), pero con el
     permiso de caja y siempre del local del celular. Así puede controlar su
     caja sin tener acceso al resto de los reportes ni a otros locales.
+
+    El turno más reciente primero: el que está en curso es el que se mira.
     """
     return servicio_reportes.movimientos(
-        db, fecha or ahora_db().date(), _local(dispositivo, scope)
+        db, fecha or ahora_db().date(), _local(dispositivo, scope),
+        recientes_primero=True,
     )

@@ -474,6 +474,25 @@ def test_movimientos_del_celular_solo_muestran_su_local(db, vendedora_en_local, 
     assert client.get(f"/api/v1/movimientos-caja?fecha={ayer}").json()["turnos"] == []
 
 
+def test_movimientos_del_celular_muestran_primero_el_turno_en_curso(
+    db, vendedora_en_local, local, turno, autor
+):
+    """El turno en curso arriba y los anteriores del día debajo."""
+    from app.core.utils import ahora_db
+    from app.models.turno import EstadoTurno
+
+    turno.estado = EstadoTurno.CERRADO
+    turno.fecha_cierre = ahora_db()
+    db.flush()
+    en_curso = servicio_turnos.abrir_turno(
+        punto_de_venta_id=local.id, usuario_id=autor.id, efectivo_apertura=0, notas=None, db=db,
+    )
+    db.commit()
+
+    datos = vendedora_en_local.get("/api/v1/movimientos-caja").json()
+    assert [t["turno_id"] for t in datos["turnos"]] == [en_curso.id, turno.id]
+
+
 def test_movimientos_del_celular_piden_permiso_de_caja(client, db, crear_usuario, local):
     from app.models.dispositivo import Dispositivo
 

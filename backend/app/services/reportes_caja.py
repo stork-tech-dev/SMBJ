@@ -341,7 +341,10 @@ def _ingresos_por_medio(db: Session, lista: list[dict]) -> list[dict]:
     return sorted(filas, key=lambda f: f["total"], reverse=True)
 
 
-def movimientos(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> dict:
+def movimientos(
+    db: Session, fecha: date, punto_de_venta_id: int | None = None,
+    recientes_primero: bool = False,
+) -> dict:
     """
     Todos los ingresos y egresos de cada turno, en orden cronológico:
     apertura, pagos de ventas, cobros de joyero, señas recibidas, novedades y
@@ -349,8 +352,16 @@ def movimientos(db: Session, fecha: date, punto_de_venta_id: int | None = None) 
 
     Cada turno trae además `efectivo_esperado` —la misma cuenta que el
     arqueo—, para controlar el recorrido contra lo que había que contar.
+
+    `recientes_primero` da vuelta el orden de los turnos de cada local: el
+    celular muestra arriba el turno en curso y los anteriores debajo.
     """
     turnos = turnos_del_dia(db, fecha, punto_de_venta_id)
+    if recientes_primero:
+        # Dos ordenamientos estables: la hora de mayor a menor, y por encima
+        # el local, que mantiene el orden alfabético de siempre.
+        turnos.sort(key=lambda t: (t.fecha_apertura, t.id), reverse=True)
+        turnos.sort(key=lambda t: t.punto_de_venta.nombre.lower())
     efectivo = servicio_arqueo.medio_efectivo(db)
     nombre_efectivo = efectivo.nombre if efectivo else "Efectivo"
 
