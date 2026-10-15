@@ -91,9 +91,26 @@ Cada turno aparece como una tarjeta con su horario y tres secciones bien separad
 
 - **Saldo inicial**: el efectivo con el que se abrió la caja, con la hora de apertura. Va aparte y en negro (no en verde) porque no es una venta ni plata que entró durante el turno: es con lo que se arrancó.
 - **Ventas y movimientos**: cada venta, seña, cobro de joyero, novedad y retiro de efectivo, en orden de hora, con su medio de pago. Los ingresos se ven en verde con "+", los egresos en rojo con "−". La parte de una venta pagada con seña aparece en gris con la leyenda *"no suma"*, porque esa plata ya entró cuando se dejó la seña.
-- **Totales**: ingresos y egresos del turno y, destacado abajo, el **efectivo esperado en caja**, que es lo que tendría que dar el arqueo al cerrar.
+- **Totales**: lo que entró y salió durante el turno, **sin el saldo inicial**:
+  - Una **barra de colores** que muestra qué parte de los ingresos entró por cada medio de pago.
+  - Debajo, la lista de **ingresos por medio de pago** (efectivo, tarjetas, transferencias, etc.), de mayor a menor, cada uno con su color. Cada medio tiene siempre el mismo color, en cualquier turno o día.
+  - **Ingresos del turno** (la suma de los medios), **egresos del turno** y, destacado abajo, el **efectivo esperado en caja**, que es lo que tendría que dar el arqueo al cerrar.
 
-> Los **ingresos del turno** incluyen el saldo inicial, así la cuenta cierra con el efectivo esperado.
+> Los ingresos del turno **no** incluyen el saldo inicial (se ve aparte, arriba). El **efectivo esperado en caja** sí lo incluye, porque es toda la plata que tiene que haber en la caja. Lo pagado con seña tampoco suma en los ingresos: esa plata ya entró el día que se dejó la seña.
+
+### Ver el detalle de una venta
+
+Las ventas de la lista tienen una flechita (›): tocá una para abrir su detalle. Se abre un panel desde abajo con:
+
+- Número de venta, fecha y hora, cliente (si tiene) y promoción aplicada.
+- Los **productos**, igual que en el carrito: descripción, categoría y código (SKU), promoción o descuento con su motivo, y el precio final (con el de lista tachado si hubo descuento).
+- **Subtotal**, **descuentos y promociones**, **recargo por cuotas** (si hubo) y **total**.
+- Los **pagos**: cada medio de pago con su monto y las cuotas, si las hubo.
+- El **código de cambio** (tachado si ya se usó) y los **puntos sumados**.
+
+Para cerrarlo tocá la **✕**. Es solo de consulta: desde acá no se modifica la venta.
+
+> Para ver el detalle hace falta también permiso de **Ventas** para ver. Las señas, novedades, retiros y cobros de joyero no tienen detalle.
 
 ---
 
