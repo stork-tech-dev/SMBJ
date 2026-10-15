@@ -430,6 +430,33 @@ def test_el_pago_con_sena_de_una_venta_no_suma_a_la_caja(db, autor, local, turno
     assert grupo["efectivo_esperado"] == Decimal("11000")
 
 
+def test_cada_pago_de_venta_trae_su_venta_para_abrir_el_detalle(
+    db, autor, local, turno, variante
+):
+    """
+    Desde Movimientos de caja se toca una venta para ver su detalle: los
+    pagos de venta traen el id; el resto de los movimientos, no. Y el
+    detalle trae los nombres del medio de pago, sin depender de otro catálogo.
+    """
+    from app.api.v1.ventas import _respuesta
+
+    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    servicio_senas.registrar_sena(
+        db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
+        punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,
+    )
+    venta = _venta_con_sena(db, autor, local, variante, cliente)
+
+    grupo = servicio.movimientos(db, _hoy(), local.id)["turnos"][0]
+    de_venta = [m for m in grupo["movimientos"] if m["tipo"] == "venta"]
+    assert de_venta and all(m["venta_id"] == venta.id for m in de_venta)
+    assert all(m["venta_id"] is None for m in grupo["movimientos"] if m["tipo"] != "venta")
+
+    detalle = _respuesta(venta)
+    assert {p.medio_de_pago.nombre for p in detalle.pagos} >= {"Efectivo"}
+    assert detalle.codigo_cambio
+
+
 def test_sena_de_otro_dia_solo_suma_lo_cobrado_aparte(db, autor, local, turno, variante):
     """Venta de 10.000 con 2.500 de una seña anterior: a la caja entran 7.500."""
     cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")

@@ -229,6 +229,22 @@ class VentaAnular(BaseModel):
     motivo: str | None = None
 
 
+class IdNombre(BaseModel):
+    """Una referencia con su nombre: el motivo de un descuento, un medio de pago."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+
+
+class PlanCuotasResumen(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cuotas: int
+
+
 class VentaItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -244,6 +260,9 @@ class VentaItemResponse(BaseModel):
     precio_final: Decimal
     descuento_item: Decimal
     motivo_descuento_id: int | None
+    # El nombre viaja con el ítem para que el detalle de una venta ya
+    # cerrada no dependa del catálogo de motivos (que pide otro permiso).
+    motivo_descuento: IdNombre | None = None
     porcentaje_modificado: bool
     en_promocion: bool
 
@@ -253,7 +272,9 @@ class VentaPagoResponse(BaseModel):
 
     id: int
     medio_de_pago_id: int
+    medio_de_pago: IdNombre
     plan_cuotas_id: int | None
+    plan_cuotas: PlanCuotasResumen | None = None
     monto: Decimal
     recargo: Decimal
     monto_total: Decimal

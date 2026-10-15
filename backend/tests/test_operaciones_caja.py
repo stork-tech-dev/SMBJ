@@ -496,3 +496,6 @@ def test_pantalla_de_movimientos_y_acceso_en_la_barra(db, vendedora_en_local):
     for seccion in ("Saldo inicial", "Ventas y movimientos", "Totales"):
         assert seccion in html, seccion
     assert "m.tipo === 'apertura'" in html
+    # Cada venta abre su detalle (productos, pagos, código de cambio).
+    assert "detalleVenta()" in html
+    assert "Código de cambio" in html

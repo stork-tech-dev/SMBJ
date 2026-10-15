@@ -243,10 +243,11 @@ def arqueos(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> d
 
 def _movimiento(timestamp: datetime, tipo: str, detalle: str, medio: str | None,
                 ingreso: Decimal = CERO, egreso: Decimal = CERO,
-                informativo: Decimal = CERO) -> dict:
+                informativo: Decimal = CERO, venta_id: int | None = None) -> dict:
     """
     `informativo` es un importe que se muestra pero no suma a la caja: el
     pago con seña de una venta, cuya plata entró cuando se dejó la seña.
+    `venta_id` va en los pagos de venta, para poder abrir su detalle.
     """
     return {
         "timestamp": timestamp,
@@ -256,6 +257,7 @@ def _movimiento(timestamp: datetime, tipo: str, detalle: str, medio: str | None,
         "ingreso": ingreso,
         "egreso": egreso,
         "informativo": informativo,
+        "venta_id": venta_id,
     }
 
 
@@ -273,7 +275,7 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
     if turno.fecha_cierre is not None:
         condicion = and_(condicion, Venta.created_at <= turno.fecha_cierre)
     filas = db.execute(
-        select(Venta.created_at, Venta.numero, MedioDePago.nombre, VentaPago.monto_total,
+        select(Venta.id, Venta.created_at, Venta.numero, MedioDePago.nombre, VentaPago.monto_total,
                VentaPago.sena_id, Cliente.nombre)
         .join(VentaPago, VentaPago.venta_id == Venta.id)
         .join(MedioDePago, MedioDePago.id == VentaPago.medio_de_pago_id)
@@ -284,9 +286,10 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
     ).all()
 
     movimientos = []
-    for creada, numero, medio, monto, sena_id, cliente in filas:
+    for venta_id, creada, numero, medio, monto, sena_id, cliente in filas:
         if sena_id is None:
-            movimientos.append(_movimiento(creada, "venta", f"Venta {numero}", medio, ingreso=monto))
+            movimientos.append(_movimiento(creada, "venta", f"Venta {numero}", medio,
+                                           ingreso=monto, venta_id=venta_id))
         else:
             # La parte pagada con seña no entra a la caja: la plata ya entró
             # cuando se dejó la seña (ese mismo día o antes). Se muestra para
@@ -294,7 +297,7 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
             # el arqueo, que trata al medio de las señas como informativo.
             movimientos.append(_movimiento(
                 creada, "venta", f"Venta {numero} (seña de {cliente})", medio,
-                informativo=monto,
+                informativo=monto, venta_id=venta_id,
             ))
     return movimientos
 

@@ -471,3 +471,48 @@ function cobroJoyero() {
         },
     };
 }
+
+/* ==========================================================================
+   Movimientos de caja — detalle de una venta (panel inferior).
+
+   Se abre con el evento `ver-venta` (el id de la venta) que emite cada
+   renglón de venta de la lista. Solo lee: una venta cerrada no se toca
+   desde acá.
+   ========================================================================== */
+
+function detalleVenta() {
+    return {
+        abierto: false,
+        cargando: false,
+        venta: null,
+
+        pesos: (v) => window.pesos(v),
+
+        fechaHora(iso) {
+            if (!iso) return '';
+            return new Date(iso).toLocaleString('es-AR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+            });
+        },
+
+        async abrir(ventaId) {
+            if (!ventaId) return;
+            this.venta = null;
+            this.abierto = true;
+            this.cargando = true;
+            try {
+                this.venta = await window.pedir(`${API_OPERACIONES}/ventas/${ventaId}`);
+            } catch (e) {
+                window.toast(e.message, 'error');
+                this.abierto = false;
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        cerrar() {
+            this.abierto = false;
+        },
+    };
+}

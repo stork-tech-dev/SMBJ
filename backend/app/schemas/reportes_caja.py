@@ -95,6 +95,8 @@ class MovimientoCaja(BaseModel):
     # Se muestra pero no suma: la parte de una venta pagada con seña (la
     # plata entró a la caja cuando se dejó la seña).
     informativo: Decimal = Decimal("0")
+    # Solo en los movimientos de tipo `venta`: para abrir su detalle.
+    venta_id: int | None = None
 
 
 class MovimientosTurno(_Turno):
