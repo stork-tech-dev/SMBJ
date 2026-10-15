@@ -16,14 +16,16 @@ Documentación de usuario del sistema, organizada por módulo.
 
 ## Compilar los PDFs
 
-Los PDFs se generan con WeasyPrint desde dentro del contenedor Docker del backend (donde están las dependencias instaladas).
+Los PDFs se generan con WeasyPrint **desde el host**, parado en la raíz del repo. No se puede hacer desde el contenedor del backend: ahí solo está montado `backend/` (en `/app`), y `docs/` no existe adentro.
+
+Requiere `markdown` y `weasyprint` instalados en el Python del host (`pip install markdown weasyprint`).
 
 ```bash
 # Compilar todos los manuales
-docker compose exec backend python docs/manuales/compilar_pdf.py
+python3 docs/manuales/compilar_pdf.py
 
 # Compilar solo uno (por prefijo)
-docker compose exec backend python docs/manuales/compilar_pdf.py 01
+python3 docs/manuales/compilar_pdf.py 01
 ```
 
 Los PDFs se guardan en `docs/manuales/pdfs/` (ignorado por git).
@@ -33,5 +35,5 @@ Los PDFs se guardan en `docs/manuales/pdfs/` (ignorado por git).
 Cuando cambia una funcionalidad:
 
 1. Editá el archivo `.md` del módulo correspondiente.
-2. Recompilá ese manual: `docker compose exec backend python docs/manuales/compilar_pdf.py XX` (donde `XX` es el número del módulo).
+2. Recompilá ese manual: `python3 docs/manuales/compilar_pdf.py XX` (donde `XX` es el número del módulo).
 3. Commiteá solo el `.md` — los PDFs no van al repositorio.

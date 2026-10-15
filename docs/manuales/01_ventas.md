@@ -14,7 +14,7 @@ Al abrir la app desde el celular del local aparece la pantalla de inicio con:
 
 - **Estado del turno**: muestra si el turno está abierto o no. Va primero porque sin turno abierto no se puede vender.
 - **Alerta de venta sin concluir**: si hay una venta abierta que no se terminó de cobrar, aparece en rojo. Tocala para retomar.
-- **Botón "Nueva venta"**: solo aparece si no tenés ninguna venta sin concluir. Si la tenés, el botón se oculta a propósito — para seguirla usás la alerta roja, así no se te ocurre arrancar una segunda venta antes de cerrar la primera.
+- **Botón "Nueva venta"**: solo aparece si no tenés ninguna venta sin concluir. Si la tenés, el botón se oculta a propósito — para seguirla usás la alerta roja, así no se te ocurre arrancar una segunda venta antes de cerrar la primera. Si el local no tiene turno iniciado, el botón se ve **apagado** (gris, no responde) con el aviso *"Iniciá el turno para vender"*; lo mismo pasa con el botón del carrito de la barra inferior.
 - Accesos rápidos: consulta de stock, recepción de mercadería, anulaciones y cambios (según tu permiso — ver más abajo).
 
 ---
@@ -29,6 +29,8 @@ El turno es el período de trabajo del local. Sin turno abierto **no se puede ve
 2. Se abre un panel con el campo **"Efectivo inicial en caja"**.
 3. Ingresá el monto en efectivo que hay en caja al abrir.
 4. Tocá **Confirmar**.
+
+Apenas se inicia el turno (o te sumás a uno), el botón **"Nueva venta"** se habilita solo, sin recargar la pantalla.
 
 #### Sumarse a un turno existente
 
@@ -51,7 +53,7 @@ El cierre del turno incluye el arqueo de caja (ver módulo Caja).
 
 ### Nueva venta
 
-1. Tocá **"Nueva venta"** en la pantalla de inicio.
+1. Tocá **"Nueva venta"** en la pantalla de inicio. Si está apagado, primero iniciá el turno (o sumate al del día).
 2. Aparece el carrito vacío.
 
 #### Agregar productos
@@ -197,7 +199,7 @@ Como un cambio por falla no tiene ticket, alguien tiene que responsabilizarse de
 ## Preguntas frecuentes
 
 **¿Puedo vender si no hay turno abierto?**
-No. El sistema requiere un turno activo para registrar ventas.
+No. Sin turno iniciado el botón "Nueva venta" queda apagado y el sistema no deja abrir ni cobrar una venta. Si cerraron el turno mientras tenías una venta a medio cobrar, tampoco vas a poder confirmarla hasta que se abra un turno nuevo.
 
 **¿Qué pasa si se va la señal de internet mientras cobro?**
 La venta queda guardada como "en curso" hasta que vuelva la conexión.
