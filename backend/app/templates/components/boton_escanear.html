@@ -1,0 +1,38 @@
+{# ===========================================================================
+   Macro: botón de cámara para leer el código de barras de una etiqueta.
+
+   Va al lado de cada campo mobile que busca o espera un código de producto.
+   Abre la cámara (`window.escanearCodigo()` en app.js), carga lo leído en
+   el campo y dispara la misma acción que tipearlo + Enter. Una sola
+   definición para todas esas pantallas (Principio 2).
+
+   Parámetros:
+     destino   expresión Alpine asignable donde va el código leído
+               (ej. 'filtros.busqueda').
+     al_leer   expresión Alpine que se ejecuta después de cargarlo
+               (ej. 'buscar()').
+     clases    clases extra de posición/borde según dónde se ubique.
+
+   Si el navegador no tiene cámara, el botón no aparece. Si falta https o
+   niegan el permiso, avisa con un toast: el campo sigue funcionando a mano.
+
+   Uso:
+     {% from "components/boton_escanear.html" import boton_escanear %}
+     {{ boton_escanear('codigo', 'buscar()') }}
+   =========================================================================== #}
+
+{% from "components/icons.html" import icono %}
+
+{% macro boton_escanear(destino, al_leer, clases='') %}
+<button type="button" aria-label="Escanear con la cámara"
+        {# Sin https el navegador esconde `mediaDevices`: ahí el botón se
+           muestra igual, para que el toast explique por qué no anda. #}
+        x-show="!window.isSecureContext || !!navigator.mediaDevices"
+        @click="window.escanearCodigo()
+                    .then((c) => { if (!c) return; {{ destino }} = c; $nextTick(() => { {{ al_leer }} }); })
+                    .catch((e) => window.toast(e.message, 'error'))"
+        class="grid place-items-center min-h-toque min-w-toque text-texto-muted
+               hover:text-primary {{ clases }}">
+    {{ icono('camara', clases='w-5 h-5') }}
+</button>
+{% endmacro %}

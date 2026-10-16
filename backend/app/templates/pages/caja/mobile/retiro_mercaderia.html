@@ -4,6 +4,7 @@
    confirmar y mostrar el código de cambio. No toca la caja. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
+{% from "components/boton_escanear.html" import boton_escanear %}
 
 {% block contenido_mobile %}
 {% if sin_asignacion or not puede_operar_caja %}
@@ -69,7 +70,9 @@
             <p class="text-sm font-semibold text-texto-header">2. Producto</p>
             <form @submit.prevent="buscarProducto()" class="mt-2 flex gap-2">
                 <input x-model="codigo" placeholder="Escanear o tipear código"
-                       class="campo-linea flex-1" aria-label="Código del producto">
+                       class="campo-linea flex-1 min-w-0" aria-label="Código del producto">
+                {{ boton_escanear('codigo', 'buscarProducto()',
+                                  clases='h-boton rounded-input border border-borde') }}
                 <button type="submit" class="h-boton px-4 rounded-input border border-borde text-sm">Buscar</button>
             </form>
 

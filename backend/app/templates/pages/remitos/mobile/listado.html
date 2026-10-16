@@ -6,6 +6,7 @@
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/boton_escanear.html" import boton_escanear %}
 
 {% block encabezado_mobile %}
 <div class="min-w-0">
@@ -352,7 +353,9 @@
                        @input.debounce.500ms="agregarSiEsUnico()"
                        inputmode="text"
                        placeholder="Escanear o tipear código"
-                       class="flex-1 h-boton border border-borde rounded-input px-3 text-base">
+                       class="flex-1 min-w-0 h-boton border border-borde rounded-input px-3 text-base">
+                {{ boton_escanear('alta.codigo', 'agregarItem()',
+                                  clases='h-boton rounded-input border border-borde') }}
                 <button type="button"
                         @click="agregarItem()"
                         class="px-4 h-boton bg-surface-alt rounded-input text-sm text-texto-muted

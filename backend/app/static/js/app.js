@@ -416,6 +416,117 @@ window.cerrarSesion = async function () {
 };
 
 /* --------------------------------------------------------------------------
+   Cámara: overlay compartido
+   --------------------------------------------------------------------------
+
+   Lo que tienen en común la foto de producto (`webcamCapture`) y el lector
+   de códigos (`escanearCodigo`): el velo, el video de la cámara trasera, la
+   barra de botones, Cancelar/Escape y apagar la cámara al cerrar. Una sola
+   implementación para que "cerrar" signifique lo mismo en las dos — sobre
+   todo cortar el stream, si no la luz de la cámara queda prendida.
+
+   `alCancelar` se llama con Cancelar o Escape; `alFallar(error)` si no se
+   pudo abrir la cámara. Devuelve `{ card, video, barra, cerrar }`; `cerrar`
+   se puede llamar más de una vez.
+   -------------------------------------------------------------------------- */
+
+function abrirCamara({ alCancelar, alFallar }) {
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+
+    const card = document.createElement('div');
+    card.className = 'w-full max-w-[36rem] bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)] overflow-hidden';
+    overlay.appendChild(card);
+
+    // El video va dentro de un contenedor `relative` para poder dibujarle
+    // encima (el recuadro guía del lector).
+    const marco = document.createElement('div');
+    marco.className = 'relative';
+    card.appendChild(marco);
+
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.className = 'w-full aspect-[4/3] object-cover bg-black';
+    marco.appendChild(video);
+
+    const barra = document.createElement('div');
+    barra.className = 'flex justify-center gap-4 px-6 py-4';
+    card.appendChild(barra);
+
+    const btnCancelar = document.createElement('button');
+    btnCancelar.type = 'button';
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.className = 'h-boton px-5 rounded-input border border-borde text-base hover:border-primary hover:text-primary';
+    barra.appendChild(btnCancelar);
+
+    document.body.appendChild(overlay);
+
+    let stream = null;
+    let cerrada = false;
+
+    function onEscape(e) {
+        if (e.key === 'Escape') {
+            cerrar();
+            alCancelar();
+        }
+    }
+
+    function cerrar() {
+        if (cerrada) return;
+        cerrada = true;
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        document.removeEventListener('keydown', onEscape);
+        overlay.remove();
+    }
+
+    btnCancelar.addEventListener('click', () => {
+        cerrar();
+        alCancelar();
+    });
+    document.addEventListener('keydown', onEscape);
+
+    navigator.mediaDevices
+        .getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1280 } },
+        })
+        .then((s) => {
+            // Si cancelaron mientras el navegador pedía permiso, no queda
+            // una cámara prendida sin overlay.
+            if (cerrada) {
+                s.getTracks().forEach((t) => t.stop());
+                return;
+            }
+            stream = s;
+            video.srcObject = stream;
+        })
+        .catch((err) => {
+            cerrar();
+            const denegado = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+            alFallar(new Error(denegado
+                ? 'Permiso de cámara denegado: habilitalo en el navegador para usarla'
+                : 'No se pudo acceder a la cámara: ' + err.message));
+        });
+
+    return { card, marco, video, barra, cerrar };
+}
+
+/* Mismo chequeo para los dos usos: sin esto, el error del navegador es
+   críptico ("undefined is not an object"). */
+function camaraNoDisponible() {
+    if (!window.isSecureContext) {
+        return new Error('La cámara necesita que el sistema esté en https');
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+        return new Error('El navegador no soporta acceso a la cámara');
+    }
+    return null;
+}
+
+/* --------------------------------------------------------------------------
    Captura de foto desde webcam
    --------------------------------------------------------------------------
 
@@ -430,38 +541,16 @@ window.cerrarSesion = async function () {
 
 window.webcamCapture = function () {
     return new Promise((resolve, reject) => {
-        if (!navigator.mediaDevices?.getUserMedia) {
-            reject(new Error('El navegador no soporta acceso a la cámara'));
+        const error = camaraNoDisponible();
+        if (error) {
+            reject(error);
             return;
         }
 
-        // Crear overlay.
-        const overlay = document.createElement('div');
-        overlay.className = 'fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4';
-        overlay.setAttribute('role', 'dialog');
-        overlay.setAttribute('aria-modal', 'true');
-
-        const card = document.createElement('div');
-        card.className = 'w-full max-w-[36rem] bg-surface rounded-[10px] shadow-[0_0_15px_0_rgba(0,0,0,0.25)] overflow-hidden';
-        overlay.appendChild(card);
-
-        // Video.
-        const video = document.createElement('video');
-        video.autoplay = true;
-        video.playsInline = true;
-        video.className = 'w-full aspect-[4/3] object-cover bg-black';
-        card.appendChild(video);
-
-        // Botones.
-        const barra = document.createElement('div');
-        barra.className = 'flex justify-center gap-4 px-6 py-4';
-        card.appendChild(barra);
-
-        const btnCancelar = document.createElement('button');
-        btnCancelar.type = 'button';
-        btnCancelar.textContent = 'Cancelar';
-        btnCancelar.className = 'h-boton px-5 rounded-input border border-borde text-base hover:border-primary hover:text-primary';
-        barra.appendChild(btnCancelar);
+        const { video, barra, cerrar } = abrirCamara({
+            alCancelar: () => resolve(null),
+            alFallar: reject,
+        });
 
         const btnCapturar = document.createElement('button');
         btnCapturar.type = 'button';
@@ -469,54 +558,155 @@ window.webcamCapture = function () {
         btnCapturar.className = 'h-boton px-8 rounded-input bg-primary text-white text-base font-medium hover:bg-primary-hover';
         barra.appendChild(btnCapturar);
 
-        document.body.appendChild(overlay);
-
-        let stream = null;
-
-        function limpiar() {
-            if (stream) stream.getTracks().forEach((t) => t.stop());
-            overlay.remove();
-        }
-
-        // Iniciar cámara.
-        navigator.mediaDevices
-            .getUserMedia({
-                video: { facingMode: 'environment', width: { ideal: 1280 } },
-            })
-            .then((s) => {
-                stream = s;
-                video.srcObject = stream;
-            })
-            .catch((err) => {
-                limpiar();
-                reject(new Error('No se pudo acceder a la cámara: ' + err.message));
-            });
-
         btnCapturar.addEventListener('click', () => {
             const canvas = document.createElement('canvas');
             canvas.width = video.videoWidth || 1280;
             canvas.height = video.videoHeight || 960;
             canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
             canvas.toBlob(
-                (blob) => { limpiar(); resolve(blob); },
+                (blob) => { cerrar(); resolve(blob); },
                 'image/jpeg', 0.85
             );
         });
+    });
+};
 
-        btnCancelar.addEventListener('click', () => {
-            limpiar();
-            resolve(null);
+/* --------------------------------------------------------------------------
+   Lector de código de barras con la cámara
+   --------------------------------------------------------------------------
+
+   Lee el Code128 de las etiquetas (ver `barcode_svg_para_etiqueta` en
+   services/productos.py) y devuelve el texto. null si cancelan. Se rechaza
+   si no hay cámara, no hay https o niegan el permiso — quien llama lo
+   muestra con un toast.
+
+   Motor: `BarcodeDetector` nativo cuando el navegador lo trae con Code128
+   (Chrome Android); si no (Safari, Firefox), ZXing desde el CDN, cargado
+   recién la primera vez que se abre el lector — no pesa en cada pantalla.
+   Los dos leen el mismo recorte del cuadro: la franja del recuadro guía,
+   que es donde la vendedora apunta y donde está el código.
+
+   Uso (ver components/boton_escanear.html):
+     const codigo = await window.escanearCodigo();
+   -------------------------------------------------------------------------- */
+
+const ZXING_URL = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+let zxingCargando = null;
+
+function cargarZXing() {
+    if (window.ZXing) return Promise.resolve(window.ZXing);
+    if (!zxingCargando) {
+        zxingCargando = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = ZXING_URL;
+            script.onload = () => resolve(window.ZXing);
+            script.onerror = () => {
+                zxingCargando = null;
+                reject(new Error('No se pudo cargar el lector de códigos'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+    return zxingCargando;
+}
+
+/* Devuelve `async (canvas) => texto | null` con el motor disponible. */
+async function prepararDetector() {
+    if ('BarcodeDetector' in window) {
+        try {
+            const formatos = await window.BarcodeDetector.getSupportedFormats();
+            if (formatos.includes('code_128')) {
+                const detector = new window.BarcodeDetector({ formats: ['code_128'] });
+                return async (canvas) => {
+                    const hallados = await detector.detect(canvas);
+                    return hallados.length ? hallados[0].rawValue : null;
+                };
+            }
+        } catch (e) {
+            /* Sigue con ZXing */
+        }
+    }
+    const ZXing = await cargarZXing();
+    const lector = new ZXing.Code128Reader();
+    return async (canvas) => {
+        try {
+            const imagen = new ZXing.BinaryBitmap(
+                new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas))
+            );
+            return lector.decode(imagen).getText();
+        } catch (e) {
+            // NotFoundException en cada cuadro sin código: es lo normal.
+            return null;
+        }
+    };
+}
+
+window.escanearCodigo = function () {
+    return new Promise((resolve, reject) => {
+        const error = camaraNoDisponible();
+        if (error) {
+            reject(error);
+            return;
+        }
+
+        let activo = true;
+        const terminar = (accion) => {
+            activo = false;
+            accion();
+        };
+
+        const { card, marco, video, cerrar } = abrirCamara({
+            alCancelar: () => terminar(() => resolve(null)),
+            alFallar: (e) => terminar(() => reject(e)),
         });
 
-        // Escape cierra.
-        function onEscape(e) {
-            if (e.key === 'Escape') {
-                document.removeEventListener('keydown', onEscape);
-                limpiar();
-                resolve(null);
-            }
-        }
-        document.addEventListener('keydown', onEscape);
+        // Recuadro guía: ancho y bajo, como el código de la etiqueta.
+        const guia = document.createElement('div');
+        guia.className = 'pointer-events-none absolute left-[10%] right-[10%] top-[35%] bottom-[35%] '
+            + 'rounded-input border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]';
+        marco.appendChild(guia);
+
+        const ayuda = document.createElement('p');
+        ayuda.className = 'px-6 pt-4 text-center text-base text-texto';
+        ayuda.textContent = 'Apuntá al código de barras de la etiqueta';
+        card.insertBefore(ayuda, card.lastChild);
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        prepararDetector()
+            .then((detectar) => {
+                let ultimo = 0;
+                const ciclo = async (ahora) => {
+                    if (!activo) return;
+                    // ~8 lecturas por segundo: más no lee mejor y gasta batería.
+                    if (ahora - ultimo >= 125 && video.videoWidth) {
+                        ultimo = ahora;
+                        // Recorte de la franja del recuadro guía (80% x 30%).
+                        const ancho = video.videoWidth;
+                        const alto = video.videoHeight;
+                        const sx = ancho * 0.1;
+                        const sy = alto * 0.35;
+                        canvas.width = ancho * 0.8;
+                        canvas.height = alto * 0.3;
+                        ctx.drawImage(video, sx, sy, canvas.width, canvas.height,
+                                      0, 0, canvas.width, canvas.height);
+                        const texto = (await detectar(canvas))?.trim();
+                        if (texto && activo) {
+                            navigator.vibrate?.(60);
+                            cerrar();
+                            terminar(() => resolve(texto));
+                            return;
+                        }
+                    }
+                    requestAnimationFrame(ciclo);
+                };
+                requestAnimationFrame(ciclo);
+            })
+            .catch((e) => {
+                cerrar();
+                terminar(() => reject(e));
+            });
     });
 };
 

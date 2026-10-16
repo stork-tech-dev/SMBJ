@@ -2,6 +2,7 @@
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/boton_escanear.html" import boton_escanear %}
 {% from "pages/cambios/mobile/_diferencia.html" import resumen_diferencia %}
 
 {% block contenido_mobile %}
@@ -13,14 +14,18 @@
             <input id="codigo-nuevo" x-model="scan.codigo"
                    type="search" inputmode="text" autocomplete="off"
                    enterkeyhint="search" placeholder="Escanear o tipear código"
-                   class="w-full h-[3.25rem] pl-4 pr-12 text-base text-center bg-surface
+                   class="w-full h-[3.25rem] px-24 text-base text-center bg-surface
                           border-2 border-borde rounded-input placeholder:text-texto-disabled
                           focus:outline-none focus:border-primary">
-            <button type="submit" aria-label="Buscar"
-                    class="absolute right-1 top-1/2 -translate-y-1/2 grid place-items-center
-                           min-h-toque min-w-toque text-texto-muted hover:text-primary">
-                {{ icono('lupa', clases='w-5 h-5') }}
-            </button>
+            {# Cámara y lupa juntas a la derecha del campo. #}
+            <div class="absolute right-1 top-1/2 -translate-y-1/2 flex items-center">
+                {{ boton_escanear('scan.codigo', 'buscar()') }}
+                <button type="submit" aria-label="Buscar"
+                        class="grid place-items-center min-h-toque min-w-toque
+                               text-texto-muted hover:text-primary">
+                    {{ icono('lupa', clases='w-5 h-5') }}
+                </button>
+            </div>
         </div>
     </form>
 
