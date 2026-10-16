@@ -27,7 +27,7 @@ Hacé clic en **"Exportar XLS"** para descargar el listado en Excel.
 
 ### Desde el celular del local
 
-En el celular, tocá **"Consultar stock"** en la pantalla de inicio (o **"Stock"** en la barra inferior). Buscá por código, SKU o descripción.
+En el celular, tocá **"Consultar stock"** en la pantalla de inicio (o **"Stock"** en la barra inferior). Buscá por código, SKU o descripción, o tocá el **ícono de la cámara** para leer el código de barras de la etiqueta.
 
 Cada producto se muestra así:
 
@@ -40,6 +40,15 @@ Los productos aparecen **de mayor a menor stock** en tu local. Los que tienen **
 Por defecto se ve solo el stock de **tu local**. Marcá **"Ver todos los locales"** para saber dónde más hay: esos aparecen debajo, bajo el título **"Otras Sucursales"**, con el nombre del local al lado del código. En los productos de tu propio local el nombre no se muestra, porque ya sabés dónde están.
 
 Con **"Filtros"** podés acotar por categoría, eligiendo nivel por nivel.
+
+#### Agregar un producto al carrito desde la consulta
+
+No hace falta filtrar: **deslizá la fila del producto hacia un costado** (izquierda o derecha). Aparece un fondo azul con **"Agregar"** y, al soltar, el sistema pregunta **"¿Agregar al carrito?"** mostrando el producto y su precio:
+
+- **Agregar**: lo suma al carrito y te deja en la consulta de stock, en el mismo lugar de la lista. Las unidades disponibles de ese producto bajan en 1.
+- **Cancelar**: no agrega nada.
+
+Si la deslizás poco, la fila vuelve a su lugar sin preguntar. Solo se pueden deslizar los productos de **tu local** que tienen unidades disponibles: los que están en 0 y los de otras sucursales no se agregan desde acá.
 
 ---
 
@@ -173,7 +182,7 @@ La pantalla mobile muestra tres secciones:
 
 1. Tocá el botón flotante **"+ Armar envío"**.
 2. Elegí origen y destino.
-3. Escaneá los artículos con la cámara del celular.
+3. Escaneá los artículos con la cámara del celular (el **ícono de la cámara** al lado del campo) o tipeá el código.
 4. Confirmá.
 
 ---

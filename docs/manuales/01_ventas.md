@@ -60,7 +60,7 @@ El cierre del turno incluye el arqueo de caja (ver módulo Caja).
 
 #### Agregar productos
 
-- **Por código de barras**: apuntá la cámara o ingresá el código manualmente.
+- **Por código de barras**: tocá el **ícono de la cámara** al lado del campo y apuntá al código de barras de la etiqueta, dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo. También podés tipear el código o usar un lector.
 - **Por búsqueda**: escribí el nombre o parte del código y seleccioná de la lista.
 - Si el código corresponde a una única variante, se agrega sola. Si hay ambigüedad, el sistema pide que elijas.
 
@@ -173,7 +173,7 @@ Permite que un cliente devuelva uno o varios productos y se lleve otros distinto
 1. Elegí el **tipo de cambio**.
 2. Si es común, de promoción o gift card: ingresá el **código de cambio** del ticket.
    Si es por falla: elegí de la lista quién **autoriza** el cambio (ver más abajo quién puede aparecer ahí).
-3. Indicá qué producto(s) devuelve el cliente, buscándolos por código o nombre.
+3. Indicá qué producto(s) devuelve el cliente, buscándolos por código o nombre. En el celular también podés leer la etiqueta con el **ícono de la cámara**.
 4. Indicá qué producto(s) nuevo(s) se lleva, de la misma forma.
 5. El sistema muestra la **diferencia**:
    - Si el cliente se lleva algo más caro, paga la diferencia con el medio de pago que elijas.
@@ -200,6 +200,9 @@ Como un cambio por falla no tiene ticket, alguien tiene que responsabilizarse de
 ---
 
 ## Preguntas frecuentes
+
+**Toco el ícono de la cámara y aparece un aviso en lugar de la cámara. ¿Qué pasa?**
+El aviso dice el motivo. *"Permiso de cámara denegado"*: el navegador tiene bloqueada la cámara para el sistema; habilitala desde el candado de la barra de direcciones. *"La cámara necesita que el sistema esté en https"*: el celular entra al sistema por una dirección sin https, y el navegador no deja usar la cámara así; avisale al administrador. Mientras tanto, el código se puede tipear a mano.
 
 **¿Puedo vender si no hay turno abierto?**
 No. Sin turno iniciado el botón "Nueva venta" queda apagado y el sistema no deja abrir ni cobrar una venta. Si cerraron el turno mientras tenías una venta a medio cobrar, tampoco vas a poder confirmarla hasta que se abra un turno nuevo.
