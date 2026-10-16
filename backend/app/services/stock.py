@@ -17,8 +17,8 @@ invertir el sentido de una operación.
 
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import case, exists, func, or_, select
+from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
 from app.core.auditoria import registrar_auditoria, snapshot
 from app.core.device_scope import DeviceScope
@@ -488,6 +488,48 @@ def _consulta_base(scope: DeviceScope):
     return consulta
 
 
+def _hay_en_otra_ubicacion_sql():
+    """
+    EXISTS: la variante de la fila tiene stock (> 0) en alguna OTRA ubicación
+    que no sea especial — el mismo universo que muestra "Ver todos los
+    locales", así lo que avisa la consulta es lo que después aparece.
+    """
+    otra = aliased(Stock)
+    otro_punto = aliased(PuntoDeVenta)
+    return exists().where(
+        otra.variante_id == Stock.variante_id,
+        otra.punto_de_venta_id != Stock.punto_de_venta_id,
+        otra.cantidad > 0,
+        otro_punto.id == otra.punto_de_venta_id,
+        otro_punto.tipo != TipoPuntoVenta.ESPECIAL,
+    )
+
+
+def _variantes_en_otras_ubicaciones(db: Session, filas: list[Stock]) -> None:
+    """
+    Marca `fila.hay_en_otros` en las filas ya paginadas: una sola consulta
+    para toda la página, no una por fila.
+    """
+    if not filas:
+        return
+    con_stock = db.execute(
+        select(Stock.variante_id, Stock.punto_de_venta_id)
+        .join(PuntoDeVenta, PuntoDeVenta.id == Stock.punto_de_venta_id)
+        .where(
+            Stock.variante_id.in_({f.variante_id for f in filas}),
+            Stock.cantidad > 0,
+            PuntoDeVenta.tipo != TipoPuntoVenta.ESPECIAL,
+        )
+    ).all()
+    puntos_por_variante: dict[int, set[int]] = {}
+    for variante_id, punto_id in con_stock:
+        puntos_por_variante.setdefault(variante_id, set()).add(punto_id)
+    for fila in filas:
+        fila.hay_en_otros = bool(
+            puntos_por_variante.get(fila.variante_id, set()) - {fila.punto_de_venta_id}
+        )
+
+
 def listar_stock(
     db: Session,
     scope: DeviceScope,
@@ -497,6 +539,8 @@ def listar_stock(
     busqueda: str | None = None,
     solo_bajo_minimo: bool = False,
     incluir_sin_stock: bool = True,
+    sin_stock_solo_si_hay_en_otros: bool = False,
+    orden: str = "descripcion",
     todos_los_locales: bool = False,
     punto_propio_id: int | None = None,
     usuario_id: int | None = None,
@@ -524,6 +568,15 @@ def listar_stock(
     pantalla general de stock no se ve afectada; es dato adicional para que
     la consulta de stock del celular no ofrezca vender lo que ya se está
     vendiendo.
+
+    `sin_stock_solo_si_hay_en_otros=True` deja afuera las filas en cero,
+    salvo que esa variante tenga stock en otra ubicación: en ese caso la
+    fila en cero sí interesa, porque avisa (`hay_en_otros`) que "Ver todos
+    los locales" la va a encontrar en otro lado.
+
+    `orden="stock"` ordena de mayor a menor cantidad, con las filas de la
+    ubicación propia primero (así no quedan mezcladas con las de otros
+    locales entre páginas). Por defecto, por descripción.
     """
     consulta_scope = DeviceScope(restringido=False) if todos_los_locales else scope
     consulta = _consulta_base(consulta_scope)
@@ -562,8 +615,10 @@ def listar_stock(
         consulta = consulta.where(Stock.cantidad <= minimo_aplicable_sql(), minimo_aplicable_sql() > 0)
     if not incluir_sin_stock:
         consulta = consulta.where(Stock.cantidad > 0)
+    if sin_stock_solo_si_hay_en_otros:
+        consulta = consulta.where(or_(Stock.cantidad > 0, _hay_en_otra_ubicacion_sql()))
+    propio = punto_propio_id if punto_propio_id is not None else scope.punto_de_venta_id
     if todos_los_locales:
-        propio = punto_propio_id if punto_propio_id is not None else scope.punto_de_venta_id
         consulta = consulta.where(
             or_(Stock.punto_de_venta_id == propio, Stock.cantidad > 0)
             if propio is not None
@@ -574,9 +629,13 @@ def listar_stock(
         select(func.count()).select_from(consulta.order_by(None).subquery())
     ).scalar_one()
 
-    consulta_ordenada = consulta.order_by(
-        func.lower(Producto.descripcion), Variante.codigo_completo, PuntoDeVenta.codigo
-    )
+    criterio = [func.lower(Producto.descripcion), Variante.codigo_completo, PuntoDeVenta.codigo]
+    if orden == "stock":
+        primero_propio = (
+            [case((Stock.punto_de_venta_id == propio, 0), else_=1)] if propio is not None else []
+        )
+        criterio = [*primero_propio, Stock.cantidad.desc(), *criterio]
+    consulta_ordenada = consulta.order_by(*criterio)
     # `tamano=None` trae todo lo filtrado sin paginar — lo usa la
     # exportación a Excel, que necesita las filas completas y no solo la
     # página que se ve en pantalla.
@@ -624,6 +683,8 @@ def listar_stock(
             if fila.punto_de_venta_id == punto_de_venta_dispositivo
             else 0
         )
+
+    _variantes_en_otras_ubicaciones(db, filas)
 
     return filas, total
 

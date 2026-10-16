@@ -76,6 +76,10 @@ class StockResponse(BaseModel):
     # la columna `stock.cantidad` no se toca — es para que la pantalla de
     # consulta no ofrezca vender lo que ya se está vendiendo.
     reservado_carrito: int = 0
+    # Si esta variante tiene stock (> 0) en alguna OTRA ubicación no
+    # especial. Con la fila en cero, es el aviso de que "Ver todos los
+    # locales" la encuentra en otro lado.
+    hay_en_otros: bool = False
 
 
 class MinimosVariante(BaseModel):

@@ -1134,6 +1134,62 @@ def test_api_todos_los_locales_le_muestra_al_vendedor_otros_locales(
     assert puntos == {cd.id, local.id, otro_local.id}
 
 
+def test_sin_stock_solo_aparece_si_hay_en_otra_ubicacion(db, autor, variante, local, otro_local):
+    """
+    Consulta del celular: lo que está en cero acá no se muestra, salvo que
+    haya en otro lado — ahí la fila avisa con `hay_en_otros`.
+    """
+    servicio.fila_de_stock(db, variante.id, local.id)
+    db.flush()
+    scope = DeviceScope(restringido=True, punto_de_venta_id=local.id)
+
+    filas, total = servicio.listar_stock(db, scope, sin_stock_solo_si_hay_en_otros=True)
+    assert (filas, total) == ([], 0)
+
+    servicio.aplicar_movimiento(
+        db, autor, tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id, cantidad=4, punto_venta_destino_id=otro_local.id,
+    )
+    db.flush()
+
+    filas, total = servicio.listar_stock(db, scope, sin_stock_solo_si_hay_en_otros=True)
+    assert total == 1
+    assert filas[0].punto_de_venta_id == local.id
+    assert filas[0].cantidad == 0
+    assert filas[0].hay_en_otros is True
+
+
+def test_orden_por_stock_de_mayor_a_menor_con_el_local_propio_primero(
+    db, autor, variante, otra_variante, local, otro_local
+):
+    for var, cantidad in ((variante, 8), (otra_variante, 3)):
+        servicio.aplicar_movimiento(
+            db, autor, tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+            variante_id=var.id, cantidad=cantidad, punto_venta_destino_id=local.id,
+        )
+    servicio.aplicar_movimiento(
+        db, autor, tipo=TipoMovimiento.INGRESO_PROVEEDOR,
+        variante_id=variante.id, cantidad=50, punto_venta_destino_id=otro_local.id,
+    )
+    db.flush()
+    scope = DeviceScope(restringido=True, punto_de_venta_id=local.id)
+
+    # Por defecto, alfabético: "Campera" antes que "Zapatilla".
+    filas, _ = servicio.listar_stock(db, scope)
+    assert [f.variante_id for f in filas] == [otra_variante.id, variante.id]
+
+    filas, _ = servicio.listar_stock(db, scope, orden="stock")
+    assert [f.variante_id for f in filas] == [variante.id, otra_variante.id]
+
+    # Con todos los locales, las 50 del otro local van después de las propias.
+    filas, _ = servicio.listar_stock(
+        db, scope, orden="stock", todos_los_locales=True, punto_propio_id=local.id,
+    )
+    assert [f.punto_de_venta_id for f in filas][:2] == [local.id, local.id]
+    assert filas[0].hay_en_otros is True
+    assert filas[1].hay_en_otros is True  # la Campera tiene stock en el CD
+
+
 def test_el_listado_de_stock_de_un_vendedor_sin_asignacion_viene_vacio(
     db, autor, con_stock
 ):

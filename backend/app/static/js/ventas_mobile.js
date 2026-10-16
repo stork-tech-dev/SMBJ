@@ -718,9 +718,11 @@ function consultaStockMobile(puntoDeVentaId) {
                 const params = new URLSearchParams({
                     pagina: this.pagina,
                     tamano: this.tamano,
-                    // Sin stock no se puede vender, pero sí se puede querer
-                    // saber que el producto existe y está en cero.
-                    incluir_sin_stock: 'true',
+                    // Lo que está en cero no interesa, salvo que haya en otra
+                    // sucursal: ahí la fila avisa "+Suc" (`hay_en_otros`).
+                    sin_stock_solo_si_hay_en_otros: 'true',
+                    // De mayor a menor stock, este local primero.
+                    orden: 'stock',
                 });
                 if (this.filtros.busqueda) params.set('busqueda', this.filtros.busqueda);
                 if (this.categoriaId) params.set('categoria_id', this.categoriaId);

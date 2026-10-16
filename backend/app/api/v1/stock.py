@@ -9,6 +9,7 @@ dentro de cada handler porque un endpoint que se olvide del filtro no falla
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
@@ -66,6 +67,16 @@ def listar(
     ),
     solo_bajo_minimo: bool = Query(default=False),
     incluir_sin_stock: bool = Query(default=True),
+    sin_stock_solo_si_hay_en_otros: bool = Query(
+        default=False,
+        description="Deja afuera las filas en cero, salvo que la variante "
+        "tenga stock en otra ubicación (ver `hay_en_otros`).",
+    ),
+    orden: Literal["descripcion", "stock"] = Query(
+        default="descripcion",
+        description="`stock`: de mayor a menor cantidad, con la ubicación "
+        "del dispositivo primero.",
+    ),
     todos_los_locales: bool = Query(
         default=False,
         description="Solo lectura: ignora el aislamiento por dispositivo "
@@ -101,6 +112,8 @@ def listar(
         busqueda=busqueda,
         solo_bajo_minimo=solo_bajo_minimo,
         incluir_sin_stock=incluir_sin_stock,
+        sin_stock_solo_si_hay_en_otros=sin_stock_solo_si_hay_en_otros,
+        orden=orden,
         todos_los_locales=todos_los_locales,
         punto_propio_id=dispositivo.punto_de_venta_id if dispositivo else None,
         usuario_id=autor.id if restar_carrito else None,

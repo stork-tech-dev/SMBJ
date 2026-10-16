@@ -60,7 +60,12 @@
             <p class="text-lg font-black tabular-nums"
                :class="disponible(f) <= f.stock_minimo ? 'text-danger' : 'text-texto'"
                x-text="disponible(f)"></p>
-            <p class="text-[0.625rem] text-texto-disabled">unidades</p>
+            {# En cero acá pero con stock en otra sucursal: aviso de que
+               "Ver todos los locales" lo encuentra en otro lado. #}
+            <p x-show="disponible(f) === 0 && f.hay_en_otros" x-cloak
+               class="text-xs font-semibold text-primary">+Suc</p>
+            <p x-show="!(disponible(f) === 0 && f.hay_en_otros)"
+               class="text-[0.625rem] text-texto-disabled">unidades</p>
         </div>
     </div>
 </li>
