@@ -16,63 +16,84 @@
 {# Fila de resultado, para no repetirla entre "mi sucursal" y "otras
    sucursales" (Principio 2). Arriba la descripción con el precio a la
    derecha; abajo Categoría · Material y el código (con el local solo si
-   no es el propio), la foto y lo disponible. #}
+   no es el propio), la foto y lo disponible. Las de este local con
+   disponible se deslizan a un costado para agregarlas al carrito. #}
 {% macro fila_stock() %}
-<li class="py-3">
-    <div class="flex items-baseline gap-2">
-        {# Descripción del producto + la de la variante (si no es la BASE):
-           "Zapatilla Lona — Roja", no solo "Zapatilla Lona". #}
-        <p class="min-w-0 flex-1 text-base font-medium truncate"
-           x-text="(f.variante?.producto?.descripcion || '—')
-                   + (f.variante?.descripcion_sufijo ? ' — ' + f.variante.descripcion_sufijo : '')"></p>
-        {# Con el descuento propio del producto ya aplicado — el mismo
-           número que termina cobrando el carrito. El de lista tachado al
-           lado y el nuevo en verde, mismo criterio visual que el carrito:
-           es la señal de que hay un descuento corriendo, si no el número
-           cambiado pasa desapercibido. #}
-        <p class="shrink-0 text-right text-sm tabular-nums">
-            <span x-show="f.precio_con_descuento < f.variante?.producto?.precio_venta" x-cloak
-                  class="text-xs line-through text-texto-disabled"
-                  x-text="pesos(f.variante?.producto?.precio_venta)"></span>
-            <span :class="f.precio_con_descuento < f.variante?.producto?.precio_venta
-                           ? 'text-success font-semibold' : 'text-texto font-semibold'"
-                  x-text="pesos(f.precio_con_descuento)"></span>
-        </p>
+<li class="relative overflow-hidden">
+    {# Lo que aparece debajo al correr la fila (a cualquiera de los dos
+       lados): la acción que se va a confirmar. Solo mientras se arrastra. #}
+    <div x-show="deslizando.id === f.id" x-cloak aria-hidden="true"
+         class="absolute inset-0 flex items-center justify-between px-4 bg-primary text-white
+                text-sm font-semibold">
+        <span class="flex items-center gap-2">{{ icono('cart', clases='w-5 h-5') }} Agregar</span>
+        <span class="flex items-center gap-2">Agregar {{ icono('cart', clases='w-5 h-5') }}</span>
     </div>
 
-    <div class="mt-1 flex items-center gap-3">
-        <div class="min-w-0 flex-1">
-            <p class="text-xs text-texto-muted truncate" x-text="categoriaMaterial(f)"></p>
-            <p class="text-xs text-texto-muted truncate">
-                <span class="font-mono"
-                      x-text="(f.variante?.codigo_completo || '') + (f.variante?.verificador || '')"></span>
-                <span x-show="mostrarLocal(f)" x-text="' · ' + (f.punto_de_venta?.nombre || '')"></span>
+    {# La fila en sí, que es la que se mueve. `touch-action: pan-y`: el
+       scroll vertical lo sigue manejando el navegador; lo horizontal es el
+       gesto de agregar (ver `inicioDeslizar` en ventas_mobile.js). #}
+    <div class="relative py-3 bg-surface select-none" style="touch-action: pan-y"
+         :style="estiloDeslizar(f)"
+         :aria-description="sePuedeDeslizar(f) ? 'Deslizá a un costado para agregarlo al carrito' : null"
+         @pointerdown="inicioDeslizar(f, $event)"
+         @pointermove="moverDeslizar(f, $event)"
+         @pointerup="finDeslizar(f)"
+         @pointercancel="deslizando.id === f.id && soltarDeslizar()">
+        <div class="flex items-baseline gap-2">
+            {# Descripción del producto + la de la variante (si no es la BASE):
+               "Zapatilla Lona — Roja", no solo "Zapatilla Lona". #}
+            <p class="min-w-0 flex-1 text-base font-medium truncate"
+               x-text="(f.variante?.producto?.descripcion || '—')
+                       + (f.variante?.descripcion_sufijo ? ' — ' + f.variante.descripcion_sufijo : '')"></p>
+            {# Con el descuento propio del producto ya aplicado — el mismo
+               número que termina cobrando el carrito. El de lista tachado al
+               lado y el nuevo en verde, mismo criterio visual que el carrito:
+               es la señal de que hay un descuento corriendo, si no el número
+               cambiado pasa desapercibido. #}
+            <p class="shrink-0 text-right text-sm tabular-nums">
+                <span x-show="f.precio_con_descuento < f.variante?.producto?.precio_venta" x-cloak
+                      class="text-xs line-through text-texto-disabled"
+                      x-text="pesos(f.variante?.producto?.precio_venta)"></span>
+                <span :class="f.precio_con_descuento < f.variante?.producto?.precio_venta
+                               ? 'text-success font-semibold' : 'text-texto font-semibold'"
+                      x-text="pesos(f.precio_con_descuento)"></span>
             </p>
         </div>
 
-        {{ miniatura('f.variante?.foto_url', tamano='w-10 h-10') }}
+        <div class="mt-1 flex items-center gap-3">
+            <div class="min-w-0 flex-1">
+                <p class="text-xs text-texto-muted truncate" x-text="categoriaMaterial(f)"></p>
+                <p class="text-xs text-texto-muted truncate">
+                    <span class="font-mono"
+                          x-text="(f.variante?.codigo_completo || '') + (f.variante?.verificador || '')"></span>
+                    <span x-show="mostrarLocal(f)" x-text="' · ' + (f.punto_de_venta?.nombre || '')"></span>
+                </p>
+            </div>
 
-        <div class="text-right shrink-0">
-            {# Lo DISPONIBLE (stock real menos lo que ya está en mi carrito),
-               no el stock real a secas: si ya lo estoy vendiendo, no es lo que
-               queda. En rojo contra `stock_minimo` ya resuelto por el backend
-               (qué mínimo aplica depende del tipo de local). #}
-            <p class="text-lg font-black tabular-nums"
-               :class="disponible(f) <= f.stock_minimo ? 'text-danger' : 'text-texto'"
-               x-text="disponible(f)"></p>
-            {# En cero acá pero con stock en otra sucursal: aviso de que
-               "Ver todos los locales" lo encuentra en otro lado. #}
-            <p x-show="disponible(f) === 0 && f.hay_en_otros" x-cloak
-               class="text-xs font-semibold text-primary">+Suc</p>
-            <p x-show="!(disponible(f) === 0 && f.hay_en_otros)"
-               class="text-[0.625rem] text-texto-disabled">unidades</p>
+            {{ miniatura('f.variante?.foto_url', tamano='w-10 h-10') }}
+
+            <div class="text-right shrink-0">
+                {# Lo DISPONIBLE (stock real menos lo que ya está en mi carrito),
+                   no el stock real a secas: si ya lo estoy vendiendo, no es lo que
+                   queda. En rojo contra `stock_minimo` ya resuelto por el backend
+                   (qué mínimo aplica depende del tipo de local). #}
+                <p class="text-lg font-black tabular-nums"
+                   :class="disponible(f) <= f.stock_minimo ? 'text-danger' : 'text-texto'"
+                   x-text="disponible(f)"></p>
+                {# En cero acá pero con stock en otra sucursal: aviso de que
+                   "Ver todos los locales" lo encuentra en otro lado. #}
+                <p x-show="disponible(f) === 0 && f.hay_en_otros" x-cloak
+                   class="text-xs font-semibold text-primary">+Suc</p>
+                <p x-show="!(disponible(f) === 0 && f.hay_en_otros)"
+                   class="text-[0.625rem] text-texto-disabled">unidades</p>
+            </div>
         </div>
     </div>
 </li>
 {% endmacro %}
 
 {% block contenido_mobile %}
-<div x-data="consultaStockMobile({{ punto_de_venta_id_num | default(0) }})" x-init="cargar(); asegurarCategorias()">
+<div x-data="consultaStockMobile({{ punto_de_venta_id_num | default(0) }}, {{ 'true' if puede_vender else 'false' }})" x-init="cargar(); asegurarCategorias()">
 
     {% if sin_asignacion %}
     <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
@@ -155,6 +176,12 @@
        esto ACÁ?" y, si no, "¿dónde sí?". Sin `puntoDeVentaId` (roles que
        ya ven todos los locales) no hay "mía" que separar: todo entra en
        `misFilas` y `otrasFilas` queda vacío. #}
+    {% if puede_vender %}
+    <p x-show="misFilas.some((f) => sePuedeDeslizar(f))" x-cloak
+       class="mt-2 px-1 text-xs text-texto-muted">
+        Deslizá un producto a un costado para agregarlo al carrito.
+    </p>
+    {% endif %}
     <ul class="mt-2 divide-y divide-borde">
         <template x-for="f in misFilas" :key="f.id">
             {{ fila_stock() }}

@@ -584,11 +584,12 @@ function finalizarVenta() {
    Pantalla 7 — Consulta de stock
    ========================================================================== */
 
-function consultaStockMobile(puntoDeVentaId) {
+function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
     return {
         // 0 para los roles sin dispositivo de local asignado (ven todo por
         // defecto): ahí no hay "mi sucursal" que separar del resto.
         puntoDeVentaId: Number(puntoDeVentaId) || 0,
+        puedeVender: Boolean(puedeVender),
         filas: [],
         total: 0,
         pagina: 1,
@@ -763,6 +764,87 @@ function consultaStockMobile(puntoDeVentaId) {
         // segunda. Se queda en esta pantalla después de agregar — la
         // vendedora puede seguir consultando otros productos sin perder
         // la búsqueda.
+        // "Código Descripción — Sufijo", para los diálogos de confirmación.
+        nombreFila(f) {
+            return `${f.variante.codigo_completo}${f.variante.verificador} `
+                + `${f.variante.producto?.descripcion || ''}`
+                + (f.variante.descripcion_sufijo ? ` — ${f.variante.descripcion_sufijo}` : '');
+        },
+
+        // ---- Deslizar una fila para agregarla al carrito ----------------
+        // Sin filtrar: cualquier producto de ESTE local con disponible se
+        // agrega corriendo su fila a un lado o al otro y confirmando. Una
+        // fila por vez, así que alcanza con un único estado.
+        deslizando: { id: null, x0: 0, y0: 0, dx: 0, eje: null, ancho: 0 },
+
+        sePuedeDeslizar(f) {
+            return this.puedeVender && !this.mostrarLocal(f) && this.disponible(f) > 0;
+        },
+
+        inicioDeslizar(f, e) {
+            if (!this.sePuedeDeslizar(f) || this.agregando) return;
+            this.deslizando = {
+                id: f.id, x0: e.clientX, y0: e.clientY, dx: 0, eje: null,
+                ancho: e.currentTarget.offsetWidth,
+            };
+        },
+
+        moverDeslizar(f, e) {
+            const d = this.deslizando;
+            if (d.id !== f.id) return;
+            const dx = e.clientX - d.x0;
+            const dy = e.clientY - d.y0;
+            // Los primeros píxeles deciden: si el dedo va para abajo es el
+            // scroll de la lista, y la fila se suelta.
+            if (!d.eje) {
+                if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+                d.eje = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+                if (d.eje === 'y') {
+                    this.soltarDeslizar();
+                    return;
+                }
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+            }
+            const tope = d.ancho * 0.4;
+            d.dx = Math.max(-tope, Math.min(tope, dx));
+        },
+
+        finDeslizar(f) {
+            const d = this.deslizando;
+            if (d.id !== f.id) return;
+            const umbral = Math.min(d.ancho * 0.3, 96);
+            const alcanzo = d.eje === 'x' && Math.abs(d.dx) >= umbral;
+            this.soltarDeslizar();
+            if (alcanzo) this.confirmarAgregar(f);
+        },
+
+        soltarDeslizar() {
+            this.deslizando = { id: null, x0: 0, y0: 0, dx: 0, eje: null, ancho: 0 };
+        },
+
+        // Solo la fila que se arrastra se corre; al soltarla vuelve a su
+        // lugar con transición.
+        estiloDeslizar(f) {
+            const activa = this.deslizando.id === f.id;
+            return {
+                transform: `translateX(${activa ? this.deslizando.dx : 0}px)`,
+                transition: activa ? 'none' : 'transform 200ms ease-out',
+            };
+        },
+
+        confirmarAgregar(f) {
+            this.confirmacion = {
+                abierta: true,
+                titulo: '¿Agregar al carrito?',
+                mensaje: `${this.nombreFila(f)}\n${this.pesos(f.precio_con_descuento)}`,
+                advertencia: '',
+                accion: () => {
+                    this.confirmacion.abierta = false;
+                    this.agregarFilas([f]);
+                },
+            };
+        },
+
         /**
          * Un producto: lo agrega directo, como siempre. Varios: primero pide
          * confirmación diciendo cuántos va a sumar, y solo con el "Agregar"
@@ -777,13 +859,10 @@ function consultaStockMobile(puntoDeVentaId) {
             }
 
             const sinStock = this.misFilas.length - filas.length;
-            const nombre = (f) => `${f.variante.codigo_completo}${f.variante.verificador} `
-                + `${f.variante.producto?.descripcion || ''}`
-                + (f.variante.descripcion_sufijo ? ` — ${f.variante.descripcion_sufijo}` : '');
             this.confirmacion = {
                 abierta: true,
                 titulo: `Agregar ${filas.length} productos`,
-                mensaje: filas.map(nombre).join(' · ')
+                mensaje: filas.map((f) => this.nombreFila(f)).join(' · ')
                     + (sinStock ? ` (${sinStock} sin stock disponible no se agregan)` : ''),
                 advertencia: `Vas a sumar ${filas.length} productos al carrito.`,
                 accion: () => {
@@ -810,6 +889,10 @@ function consultaStockMobile(puntoDeVentaId) {
                         const datos = await sumarAlCarrito(ventaId, f.variante.id);
                         ventaId = datos.venta.id;
                         agregados += 1;
+                        // Lo mismo que devolvería el backend al recargar
+                        // (el stock real no se toca hasta cobrar), sin
+                        // perder los "Ver más" ni el scroll.
+                        f.reservado_carrito = (f.reservado_carrito || 0) + 1;
                         if (datos.aviso) avisos.push(datos.aviso);
                     } catch (e) {
                         avisos.push(`${f.variante.codigo_completo}${f.variante.verificador}: ${e.message}`);
@@ -823,13 +906,6 @@ function consultaStockMobile(puntoDeVentaId) {
                         'exito',
                     );
                 }
-
-                // Refresca `reservado_carrito`: sin esto, el botón seguiría
-                // ofreciendo agregar de más allá de lo que real queda
-                // disponible en el local. `buscar()` no se puede esperar
-                // (no devuelve su promesa), así que se repite acá.
-                this.pagina = 1;
-                await this.cargar();
             } catch (e) {
                 window.toast(e.message, 'error');
             } finally {
