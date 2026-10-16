@@ -9,8 +9,10 @@
        Plancha: 105mm × 10mm (33 + 3 + 33 + 3 + 33)
      - Con colita:  66mm × 11mm, cola izquierda (33mm) + impresión derecha (33mm)
 
-   Contenido: código de barras Code128 + número del código debajo,
-   ocupando ~50% del área imprimible, alineado a la izquierda.
+   Contenido: código de barras Code128 + número del código debajo, a lo
+   ancho de la etiqueta y centrado. El SVG trae su tamaño real (ver
+   `svg_etiqueta` en services/productos.py): no se le fuerza tamaño acá,
+   porque achicarlo o recortarlo deja un código que nadie puede leer.
    =========================================================================== #}
 <!DOCTYPE html>
 <html lang="es">
@@ -44,6 +46,7 @@
 
         .etiqueta-rect svg {
             display: block;
+            margin: 0 auto;
         }
 
         .etiqueta-rect .codigo {
@@ -52,7 +55,7 @@
             font-weight: bold;
             line-height: 1;
             margin-top: 0.3mm;
-            width: 16mm;
+            width: 100%;
             text-align: center;
         }
 
@@ -79,13 +82,13 @@
         }
 
         .colita-contenido {
-            width: 16mm;
-            margin-left: auto;
+            width: 100%;
             padding-top: 1.5mm;
         }
 
         .colita-contenido svg {
             display: block;
+            margin: 0 auto;
         }
 
         .colita-contenido .codigo {

@@ -441,6 +441,59 @@ def test_el_barcode_devuelve_un_svg(client, db, producto, login):
     assert "<svg" in resp.text
 
 
+def _geometria_svg(svg):
+    """Ancho declarado (viewBox, en mm) y bordes [x, x+ancho] de cada barra."""
+    import re
+
+    vb = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
+    barras = [
+        (float(x), float(x) + float(w))
+        for x, w in re.findall(r'<rect x="([\d.]+)(?:mm)?" y="[\d.]+(?:mm)?" width="([\d.]+)(?:mm)?"', svg)
+    ]
+    return vb, barras
+
+
+@pytest.mark.parametrize("codigo", ["MAA0027", "MAA014B8"])
+def test_el_codigo_de_la_etiqueta_entra_entero_sin_recortes(codigo):
+    """
+    Bug real: el SVG se forzaba a 16mm sin viewBox, y eso RECORTA el dibujo
+    en vez de achicarlo — la etiqueta salía con el final del código cortado
+    y ningún lector podía leerla. Ahora cada barra tiene que quedar dentro
+    del ancho declarado, y el todo dentro del ancho útil de la etiqueta.
+    """
+    svg = servicio.svg_etiqueta(codigo)
+    vb, barras = _geometria_svg(svg)
+
+    assert vb is not None, "sin viewBox el motor de PDF puede recortar"
+    ancho = float(vb.group(1))
+    assert barras
+    assert max(fin for _, fin in barras) <= ancho + 1e-6
+    assert ancho <= servicio.ANCHO_UTIL_ETIQUETA_MM
+
+
+def test_las_barras_caen_en_puntos_enteros_de_la_zebra():
+    """
+    Cada barra mide un número entero de puntos de la impresora (0,125mm):
+    si no, al imprimir se deforma la proporción entre finas y gruesas.
+    Los códigos actuales (hasta 8 caracteres) salen con módulo de 2 puntos.
+    """
+    _, barras = _geometria_svg(servicio.svg_etiqueta("MAA014B8"))
+    anchos = {round(fin - inicio, 6) for inicio, fin in barras}
+
+    for a in anchos:
+        assert abs(a / servicio.PUNTO_ZEBRA_MM - round(a / servicio.PUNTO_ZEBRA_MM)) < 1e-6
+    assert min(anchos) == pytest.approx(2 * servicio.PUNTO_ZEBRA_MM)
+
+
+def test_un_codigo_largo_baja_a_un_punto_y_sigue_entrando():
+    svg = servicio.svg_etiqueta("MAA0123456XYZW9")
+    vb, barras = _geometria_svg(svg)
+    anchos = {round(fin - inicio, 6) for inicio, fin in barras}
+
+    assert min(anchos) == pytest.approx(servicio.PUNTO_ZEBRA_MM)
+    assert float(vb.group(1)) <= servicio.ANCHO_UTIL_ETIQUETA_MM
+
+
 def test_sin_permiso_de_productos_no_se_listan(client, crear_usuario, login):
     crear_usuario("juan", ROL_VENDEDOR)
     resp = client.get("/api/v1/productos", headers=login("juan"))

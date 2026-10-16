@@ -1038,53 +1038,79 @@ def cambiar_estado_producto(
 # ============================================================================
 
 
-def barcode_svg_para_etiqueta(db: Session, variante_id: int) -> tuple[str, str]:
+# La Zebra GC420t imprime a 203 dpi: 1 punto = 0,125 mm. Cada barra tiene
+# que medir un número ENTERO de puntos; si no, al imprimir unas se
+# redondean para arriba y otras para abajo, y se deforma la proporción
+# entre barras finas y gruesas, que es justamente lo que lee el lector.
+PUNTO_ZEBRA_MM = 0.125
+# Ancho de la etiqueta (33 mm) menos el padding de los costados.
+ANCHO_UTIL_ETIQUETA_MM = 31.0
+# Tope del módulo: con 2 puntos (0,25 mm) la cámara del celular ya lee
+# cómodo; más ancho solo agranda un código corto sin ganar nada.
+MAX_PUNTOS_POR_MODULO = 2
+ALTO_BARRAS_ETIQUETA_MM = 5.0
+
+
+def svg_etiqueta(codigo: str) -> str:
     """
-    SVG compacto + texto del código, para incrustar en el PDF de etiquetas.
+    Code128 de `codigo` para la etiqueta: lo más ancho que entre en el ancho
+    útil, con módulo de puntos enteros de la Zebra, sin texto (lo pone la
+    plantilla con tipografía controlada) y sin zona blanca propia (la dan
+    el padding de la etiqueta y la separación entre etiquetas).
 
-    El SVG se genera sin texto (lo pone la plantilla HTML con tipografía
-    controlada) y con módulos más finos para que quepa en 3,5 cm de ancho.
-
-    WeasyPrint respeta los atributos ``width``/``height`` del SVG en lugar del
-    CSS, así que se fuerzan a dimensiones fijas que dejan espacio para el texto
-    del código debajo (5.5mm de barcode + ~3.5mm de texto = ~9mm en 1cm).
+    Antes el SVG se forzaba a `width="16mm"` sin `viewBox`: eso no achica el
+    dibujo, lo RECORTA — la etiqueta salía sin el final del código y ningún
+    lector podía leerla. Ahora el SVG declara su tamaño real con un
+    `viewBox` en milímetros (1 unidad = 1 mm), así ningún motor lo recorta
+    ni lo reescala.
     """
     import io
+    import math
     import re
 
     from barcode import Code128
     from barcode.writer import SVGWriter
 
-    variante = obtener_variante(db, variante_id)
-    codigo = variante.codigo_con_verificador
+    modulos = len(Code128(codigo).build()[0])
+    puntos = math.floor(ANCHO_UTIL_ETIQUETA_MM / (modulos * PUNTO_ZEBRA_MM))
+    puntos = max(1, min(MAX_PUNTOS_POR_MODULO, puntos))
+    modulo_mm = puntos * PUNTO_ZEBRA_MM
 
     buffer = io.BytesIO()
     Code128(codigo, writer=SVGWriter()).write(
         buffer,
         options={
-            "module_width": 0.2,
-            "module_height": 4.0,
+            "module_width": modulo_mm,
+            "module_height": ALTO_BARRAS_ETIQUETA_MM,
             "write_text": False,
-            "quiet_zone": 1.0,
+            "quiet_zone": 0,
+            "margin_top": 0,
+            "margin_bottom": 0,
         },
     )
     svg = buffer.getvalue().decode("utf-8")
-    # Quitar la declaración XML para incrustar directo en HTML.
+    # Para incrustar directo en el HTML: sin declaración XML ni DOCTYPE.
     svg = svg.replace('<?xml version="1.0" encoding="UTF-8"?>\n', "")
-
-    # Quitar DOCTYPE (WeasyPrint no lo necesita y puede causar problemas).
     svg = re.sub(r"<!DOCTYPE[^>]+>", "", svg)
 
-    # Forzar dimensiones del SVG para que ocupe ~50% del ancho de la
-    # etiqueta (33mm) y deje espacio al código de texto debajo.
-    # WeasyPrint respeta los atributos width/height del tag SVG, no el CSS.
+    ancho = modulos * modulo_mm
+    alto = ALTO_BARRAS_ETIQUETA_MM
+    # Las barras pasan de "mm" a unidades del viewBox (que son mm): con
+    # unidades mm adentro de un viewBox, el motor las convertiría a px.
+    svg = re.sub(r'(\s(?:x|y|width|height))="([\d.]+)mm"', r'\1="\2"', svg)
     svg = re.sub(
-        r'width="[\d.]+mm"\s+height="[\d.]+mm"',
-        'width="16mm" height="4.5mm"',
+        r'<svg ([^>]*?)width="[^"]*" height="[^"]*"',
+        rf'<svg \1width="{ancho:.3f}mm" height="{alto:.3f}mm" viewBox="0 0 {ancho:.3f} {alto:.3f}"',
         svg,
         count=1,
     )
-    return svg, codigo
+    return svg
+
+
+def barcode_svg_para_etiqueta(db: Session, variante_id: int) -> tuple[str, str]:
+    """SVG (ver `svg_etiqueta`) + texto del código, para el PDF de etiquetas."""
+    codigo = obtener_variante(db, variante_id).codigo_con_verificador
+    return svg_etiqueta(codigo), codigo
 
 
 def barcode_svg(db: Session, variante_id: int) -> str:

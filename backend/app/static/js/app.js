@@ -691,7 +691,15 @@ window.escanearCodigo = function () {
                         canvas.height = alto * 0.3;
                         ctx.drawImage(video, sx, sy, canvas.width, canvas.height,
                                       0, 0, canvas.width, canvas.height);
-                        const texto = (await detectar(canvas))?.trim();
+                        // Un cuadro que falla no corta la lectura: sin
+                        // esto, un error de `detect()` dejaba la cámara
+                        // abierta sin leer nunca más.
+                        let texto = null;
+                        try {
+                            texto = (await detectar(canvas))?.trim();
+                        } catch (e) {
+                            texto = null;
+                        }
                         if (texto && activo) {
                             navigator.vibrate?.(60);
                             cerrar();
