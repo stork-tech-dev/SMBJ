@@ -25,6 +25,22 @@ Mostrá el stock disponible de todos los artículos en cada ubicación.
 
 Hacé clic en **"Exportar XLS"** para descargar el listado en Excel.
 
+### Desde el celular del local
+
+En el celular, tocá **"Consultar stock"** en la pantalla de inicio (o **"Stock"** en la barra inferior). Buscá por código, SKU o descripción.
+
+Cada producto se muestra así:
+
+- **Arriba**: la descripción y, a la derecha, el **precio**. Si el producto tiene un descuento corriendo, el precio de lista aparece tachado y el nuevo en verde.
+- **Debajo**: la **categoría y el material** del producto, y su código.
+- **A la derecha**: la foto y las **unidades disponibles** (en rojo si está en el mínimo o por debajo).
+
+Los productos aparecen **de mayor a menor stock** en tu local. Los que tienen **0** no se muestran, salvo que haya stock en otra sucursal: en ese caso aparecen con el 0 y debajo **"+Suc"** en azul, avisándote que si marcás "Ver todos los locales" vas a ver dónde hay.
+
+Por defecto se ve solo el stock de **tu local**. Marcá **"Ver todos los locales"** para saber dónde más hay: esos aparecen debajo, bajo el título **"Otras Sucursales"**, con el nombre del local al lado del código. En los productos de tu propio local el nombre no se muestra, porque ya sabés dónde están.
+
+Con **"Filtros"** podés acotar por categoría, eligiendo nivel por nivel.
+
 ---
 
 ## Movimientos de stock

@@ -87,6 +87,8 @@ Muestra todo lo que entró y salió de la caja en cada turno del día, para cont
 1. En el celular, tocá **"Caja"** en la barra inferior.
 2. Elegí el **día** (por defecto, hoy).
 
+Los turnos se muestran del más reciente al más antiguo: el **turno en curso aparece primero** y, si ese día hubo turnos anteriores, quedan debajo (bajá para verlos).
+
 Cada turno aparece como una tarjeta con su horario y tres secciones bien separadas:
 
 - **Saldo inicial**: el efectivo con el que se abrió la caja, con la hora de apertura. Va aparte y en negro (no en verde) porque no es una venta ni plata que entró durante el turno: es con lo que se arrancó.
