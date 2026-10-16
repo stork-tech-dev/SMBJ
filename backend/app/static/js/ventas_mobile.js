@@ -615,16 +615,39 @@ function consultaStockMobile(puntoDeVentaId) {
                 : '';
         },
 
-        async abrirFiltros() {
-            this.filtrosAbiertos = !this.filtrosAbiertos;
-            // Las categorías se piden una sola vez, la primera que se abre.
-            if (this.filtrosAbiertos && !this.categorias.length) {
-                try {
-                    this.categorias = await pedir('/api/v1/categorias');
-                } catch (e) {
-                    window.toast(e.message, 'error');
-                }
+        // El catálogo de categorías se pide una sola vez, al entrar: lo usan
+        // los filtros y cada fila (Categoría · Material).
+        async asegurarCategorias() {
+            if (this.categorias.length) return;
+            try {
+                this.categorias = await pedir('/api/v1/categorias');
+            } catch (e) {
+                window.toast(e.message, 'error');
             }
+        },
+
+        abrirFiltros() {
+            this.filtrosAbiertos = !this.filtrosAbiertos;
+            if (this.filtrosAbiertos) this.asegurarCategorias();
+        },
+
+        // "Categoría · Material": los dos primeros niveles de la rama del
+        // producto. Si el catálogo todavía no llegó, el nombre suelto de su
+        // categoría (mismo fallback que `rutaCategoria`).
+        categoriaMaterial(f) {
+            const categoria = f.variante?.producto?.categoria;
+            if (!categoria) return '';
+            const ids = window.rutaDeIds(this.categorias, categoria.id);
+            if (!ids.length) return categoria.nombre || '';
+            const porId = new Map(this.categorias.map((c) => [c.id, c]));
+            return ids.slice(0, 2).map((id) => porId.get(id).nombre).join(' · ');
+        },
+
+        // El nombre del local solo hace falta en las filas de OTROS locales:
+        // las propias ya se sabe dónde están. Sin local asignado todo cae en
+        // `misFilas`, así que ahí se muestra siempre.
+        mostrarLocal(f) {
+            return !this.puntoDeVentaId || f.punto_de_venta?.id !== this.puntoDeVentaId;
         },
 
         elegirCategoria(nivel) {
