@@ -1,0 +1,31 @@
+{# ===========================================================================
+   Macro: filtro Desde/Hasta de los reportes por período.
+
+   Lo usan Novedades de caja y los Reportes de Productividad, con los mismos
+   ids, el mismo ancho y el mismo tope cruzado (el calendario de "desde" no
+   deja pasar del "hasta" y viceversa). Los valores por defecto (inicio del
+   mes / hoy) los pone el componente de cada pantalla.
+
+   Parámetros:
+     desde, hasta  expresiones Alpine asignables (ej. 'filtros.fecha_desde').
+     al_cambiar    expresión Alpine que corre al cambiar cualquiera.
+
+   Uso:
+     {% from "components/filtro_rango.html" import filtro_rango %}
+     {{ filtro_rango('filtros.fecha_desde', 'filtros.fecha_hasta', 'cargar()') }}
+   =========================================================================== #}
+
+{% macro filtro_rango(desde, hasta, al_cambiar) %}
+<div class="flex flex-col gap-1">
+    <label for="f-fecha-desde" class="text-sm font-semibold text-texto-header">Desde</label>
+    <input id="f-fecha-desde" x-model="{{ desde }}" type="date"
+           :max="{{ hasta }}" @change="{{ al_cambiar }}"
+           class="campo-linea w-full sm:w-[10rem]">
+</div>
+<div class="flex flex-col gap-1">
+    <label for="f-fecha-hasta" class="text-sm font-semibold text-texto-header">Hasta</label>
+    <input id="f-fecha-hasta" x-model="{{ hasta }}" type="date"
+           :min="{{ desde }}" @change="{{ al_cambiar }}"
+           class="campo-linea w-full sm:w-[10rem]">
+</div>
+{% endmacro %}

@@ -1,0 +1,47 @@
+{# Productividad de vendedores: ventas, unidades, importe, señas y cambios por usuario. #}
+{% extends "pages/reportes/productividad/_base.html" %}
+{% import "pages/reportes/caja/_clases.html" as c %}
+
+{% block tabla %}
+<thead>
+    <tr>
+        <th class="{{ c.th }} pl-8">Usuario</th>
+        <th class="{{ c.th_monto }}">Ventas</th>
+        <th class="{{ c.th_monto }}">Unidades</th>
+        <th class="{{ c.th_monto }}">Importe</th>
+        <th class="{{ c.th_monto }}">Señas</th>
+        <th class="{{ c.th_monto }}">Importe señas</th>
+        <th class="{{ c.th_monto }} pr-8">Cambios</th>
+    </tr>
+</thead>
+<tbody>
+    <template x-for="f in datos.filas" :key="f.usuario_id">
+        <tr class="{{ c.fila }}">
+            <td class="{{ c.td }} pl-8 font-medium" x-text="f.usuario_nombre"></td>
+            <td class="{{ c.td_monto }}" :class="claseNumero(f.ventas)" x-text="f.ventas"></td>
+            <td class="{{ c.td_monto }}" :class="claseNumero(f.unidades)" x-text="f.unidades"></td>
+            <td class="{{ c.td_monto }}" :class="claseNumero(f.importe)" x-text="pesos(f.importe)"></td>
+            <td class="{{ c.td_monto }}" :class="claseNumero(f.senas)" x-text="f.senas"></td>
+            <td class="{{ c.td_monto }}" :class="claseNumero(f.importe_senas)"
+                x-text="pesos(f.importe_senas)"></td>
+            <td class="{{ c.td_monto }} pr-8" :class="claseNumero(f.cambios)" x-text="f.cambios"></td>
+        </tr>
+    </template>
+</tbody>
+<tfoot>
+    <tr x-show="datos.filas.length" class="{{ c.fila_subtotal }}">
+        <td class="{{ c.td }} pl-8">Total</td>
+        <td class="{{ c.td_monto }}" x-text="datos.totales.ventas"></td>
+        <td class="{{ c.td_monto }}" x-text="datos.totales.unidades"></td>
+        <td class="{{ c.td_monto }}" x-text="pesos(datos.totales.importe)"></td>
+        <td class="{{ c.td_monto }}" x-text="datos.totales.senas"></td>
+        <td class="{{ c.td_monto }}" x-text="pesos(datos.totales.importe_senas)"></td>
+        <td class="{{ c.td_monto }} pr-8" x-text="datos.totales.cambios"></td>
+    </tr>
+    <tr x-show="!datos.filas.length">
+        <td colspan="7" class="px-8 py-16 text-center text-texto-muted">
+            Sin ventas, señas ni cambios en esas fechas.
+        </td>
+    </tr>
+</tfoot>
+{% endblock %}

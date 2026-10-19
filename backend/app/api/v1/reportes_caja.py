@@ -15,30 +15,21 @@ aparte porque no tiene local y sí filtro de estado; Novedades, por el rango.
 from collections.abc import Callable
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.filtros import rango_de_fechas
 from app.core.permisos import Modulo, requiere_permiso
 from app.core.utils import ahora_db
 from app.reports import reportes_caja_excel as excel
+from app.reports.tabla_excel import respuesta_xlsx
 from app.schemas import reportes_caja as esquemas
 from app.schemas.operaciones_caja import RetiroMercaderiaResponse
 from app.services import reportes_caja as servicio
 from app.services import stock as servicio_stock
 
 router = APIRouter(prefix="/reportes/caja", tags=["reportes-caja"])
-
-_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-def _excel(contenido: bytes, archivo: str) -> Response:
-    return Response(
-        content=contenido,
-        media_type=_XLSX,
-        headers={"Content-Disposition": f'attachment; filename="{archivo}.xlsx"'},
-    )
-
 
 def _mercaderia_para_api(datos: dict) -> dict:
     """Los retiros salen del service como modelos: se pasan al schema de siempre."""
@@ -83,7 +74,7 @@ def _registrar(slug, funcion, esquema, a_excel, resumen, ajuste) -> None:
         _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
     ):
         datos = funcion(db, fecha or ahora_db().date(), punto_de_venta_id)
-        return _excel(a_excel(datos), slug)
+        return respuesta_xlsx(a_excel(datos), slug)
 
     nombre = slug.replace("-", "_")
     router.add_api_route(
@@ -103,31 +94,17 @@ for _reporte in _REPORTES:
 # --- Novedades: por rango de fechas, del inicio del mes a hoy por defecto ---
 
 
-def _rango(desde: date | None, hasta: date | None) -> tuple[date, date]:
-    """Completa lo que falte (inicio del mes / hoy) y controla el orden."""
-    hoy = ahora_db().date()
-    hasta = hasta or hoy
-    desde = desde or hasta.replace(day=1)
-    if desde > hasta:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="La fecha desde no puede ser posterior a la fecha hasta",
-        )
-    return desde, hasta
-
-
 @router.get(
     "/novedades", response_model=esquemas.ReporteNovedades,
     summary="Reporte: Novedades de caja por turno",
 )
 def reporte_novedades(
-    fecha_desde: date | None = Query(default=None, description="Vacío = inicio del mes"),
-    fecha_hasta: date | None = Query(default=None, description="Vacío = hoy"),
+    rango: tuple[date, date] = Depends(rango_de_fechas),
     punto_de_venta_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
     _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
 ):
-    desde, hasta = _rango(fecha_desde, fecha_hasta)
+    desde, hasta = rango
     datos = servicio.novedades(db, desde, hasta, punto_de_venta_id)
     return {**datos, "opciones_locales": servicio_stock.opciones_locales(db)}
 
@@ -137,14 +114,13 @@ def reporte_novedades(
     summary="Exportar a Excel: Novedades de caja por turno",
 )
 def reporte_novedades_exportar(
-    fecha_desde: date | None = Query(default=None),
-    fecha_hasta: date | None = Query(default=None),
+    rango: tuple[date, date] = Depends(rango_de_fechas),
     punto_de_venta_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
     _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
 ):
-    desde, hasta = _rango(fecha_desde, fecha_hasta)
-    return _excel(excel.xls_novedades(servicio.novedades(db, desde, hasta, punto_de_venta_id)),
+    desde, hasta = rango
+    return respuesta_xlsx(excel.xls_novedades(servicio.novedades(db, desde, hasta, punto_de_venta_id)),
                   "novedades")
 
 
@@ -171,4 +147,4 @@ def reporte_senas_exportar(
     db: Session = Depends(get_db),
     _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
 ):
-    return _excel(excel.xls_senas(servicio.senas(db, fecha or ahora_db().date(), estado)), "senas")
+    return respuesta_xlsx(excel.xls_senas(servicio.senas(db, fecha or ahora_db().date(), estado)), "senas")

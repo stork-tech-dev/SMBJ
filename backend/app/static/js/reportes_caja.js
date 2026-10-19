@@ -33,7 +33,7 @@ function reporteCaja(slug, {
             const hoy = this.hoy();
             return {
                 fecha: rango ? '' : hoy,
-                fecha_desde: rango ? hoy.slice(0, 8) + '01' : '',
+                fecha_desde: rango ? window.inicioMesISO() : '',
                 fecha_hasta: rango ? hoy : '',
                 punto_de_venta_id: '',
                 estado: '',

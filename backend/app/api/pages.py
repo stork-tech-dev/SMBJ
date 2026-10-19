@@ -248,6 +248,7 @@ RUTA_HUB_REPORTES = "/reportes"
 RUTA_REPORTES_PRODUCTO = "/reportes/productos"
 RUTA_REPORTES_CAJA = "/reportes/caja"
 RUTA_REPORTES_VENTAS = "/reportes/ventas"
+RUTA_REPORTES_PRODUCTIVIDAD = "/reportes/productividad"
 
 _CRITERIO_BAJO_MINIMO = (
     "Combinaciones de producto y ubicación cuyo stock actual es igual o "
@@ -340,6 +341,42 @@ SECCIONES_REPORTES_CAJA = [
 ]
 
 
+# Reportes de Productividad: cuánto hizo cada usuario, por rango de fechas
+# (del inicio del mes a hoy por defecto). Plantilla en
+# `pages/reportes/productividad/{plantilla}.html`, endpoint en
+# `/api/v1/reportes/productividad/{slug}`.
+_REPORTES_PRODUCTIVIDAD = [
+    ("centro-distribucion", "centro_distribucion", "Centro de Distribución",
+     "Productos cargados y remitos enviados por cada usuario del CD.",
+     "Por usuario: las variantes que dio de alta (un producto sin talles "
+     "cuenta 1, uno con 3 talles cuenta 3) y los remitos que mandó desde el "
+     "Centro de Distribución, con las unidades que llevaban. Los envíos "
+     "entre locales no cuentan."),
+    ("vendedores", "vendedores", "Vendedores",
+     "Ventas en unidades e importe, señas y cambios por vendedor.",
+     "Por usuario: ventas confirmadas (cantidad, unidades e importe), señas "
+     "(cantidad e importe) y cambios confirmados. No cuentan las ventas "
+     "anuladas ni las que quedaron en curso."),
+]
+
+REPORTES_PRODUCTIVIDAD = {
+    slug: {"plantilla": plantilla, "nombre": nombre, "criterio": criterio,
+           "con_local": slug == "vendedores"}
+    for slug, plantilla, nombre, _descripcion, criterio in _REPORTES_PRODUCTIVIDAD
+}
+
+SECCIONES_REPORTES_PRODUCTIVIDAD = [
+    {
+        "nombre": nombre,
+        "descripcion": descripcion,
+        "url": f"{RUTA_REPORTES_PRODUCTIVIDAD}/{slug}",
+        "modulo": Modulo.REPORTES,
+        "title": criterio,
+    }
+    for slug, _plantilla, nombre, descripcion, criterio in _REPORTES_PRODUCTIVIDAD
+]
+
+
 def _grupo_de_reportes(nombre: str, url: str, secciones: list[dict]) -> dict:
     """
     Tarjeta que agrupa otras: se ve si alguna de las suyas se ve (ver
@@ -359,6 +396,8 @@ SECCIONES_REPORTES = [
     _grupo_de_reportes("Reportes de Ventas", RUTA_REPORTES_VENTAS, SECCIONES_VENTAS),
     _grupo_de_reportes("Reportes de Producto", RUTA_REPORTES_PRODUCTO, SECCIONES_REPORTES_PRODUCTO),
     _grupo_de_reportes("Reportes de Caja", RUTA_REPORTES_CAJA, SECCIONES_REPORTES_CAJA),
+    _grupo_de_reportes("Reportes de Productividad", RUTA_REPORTES_PRODUCTIVIDAD,
+                       SECCIONES_REPORTES_PRODUCTIVIDAD),
 ]
 
 
@@ -897,6 +936,40 @@ async def reportes_de_caja(
     request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
 ):
     return _sub_hub_reportes(request, db, usuario, "Reportes de Caja", SECCIONES_REPORTES_CAJA)
+
+
+@router.get(RUTA_REPORTES_PRODUCTIVIDAD, response_class=HTMLResponse)
+async def reportes_de_productividad(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    return _sub_hub_reportes(
+        request, db, usuario, "Reportes de Productividad", SECCIONES_REPORTES_PRODUCTIVIDAD
+    )
+
+
+@router.get(RUTA_REPORTES_PRODUCTIVIDAD + "/{slug}", response_class=HTMLResponse)
+async def reporte_de_productividad(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    """Los Reportes de Productividad comparten molde (`.../productividad/_base.html`)."""
+    reporte = REPORTES_PRODUCTIVIDAD.get(slug)
+    if reporte is None:
+        raise HTTPException(status_code=404, detail="Reporte inexistente")
+    return templates.TemplateResponse(
+        request,
+        f"pages/reportes/productividad/{reporte['plantilla']}.html",
+        contexto_base(
+            request, db, usuario,
+            titulo=reporte["nombre"],
+            ruta_activa=RUTA_HUB_REPORTES,
+            slug=slug,
+            criterio=reporte["criterio"],
+            con_local=reporte["con_local"],
+        ),
+    )
 
 
 @router.get("/reportes/retiros-mercaderia")

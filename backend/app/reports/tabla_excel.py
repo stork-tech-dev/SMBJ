@@ -61,3 +61,17 @@ def generar_xls_tabla(
     wb.save(buffer)
     wb.close()
     return buffer.getvalue()
+
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def respuesta_xlsx(contenido: bytes, archivo: str):
+    """La respuesta HTTP que descarga *contenido* como `{archivo}.xlsx`."""
+    from fastapi import Response
+
+    return Response(
+        content=contenido,
+        media_type=XLSX,
+        headers={"Content-Disposition": f'attachment; filename="{archivo}.xlsx"'},
+    )

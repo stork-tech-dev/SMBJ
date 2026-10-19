@@ -89,6 +89,11 @@ window.hoyISO = function () {
     return `${d.getFullYear()}-${mes}-${dia}`;
 };
 
+/** Primer día del mes en curso, "YYYY-MM-01": el "desde" por defecto de los reportes por período. */
+window.inicioMesISO = function () {
+    return window.hoyISO().slice(0, 8) + '01';
+};
+
 /**
  * Una fecha sin hora de la API ("2026-11-28") como "28/11/2026".
  *

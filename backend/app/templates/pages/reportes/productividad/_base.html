@@ -1,0 +1,79 @@
+{# ===========================================================================
+   Molde de los Reportes de Productividad: encabezado con "Exportar a Excel",
+   criterio del reporte, filtros Desde/Hasta (y Local en Vendedores) y el
+   bloque `tabla`, que completa cada reporte sobre `datos` (la respuesta de
+   /api/v1/reportes/productividad/{slug}: estas páginas no consultan la
+   base, Principio 1).
+
+   La ruta pasa `titulo`, `slug`, `criterio` y `con_local`.
+   =========================================================================== #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/combobox.html" import combobox %}
+{% from "components/icons.html" import icono %}
+{% from "components/filtro_rango.html" import filtro_rango %}
+
+{% block contenido %}
+<div x-data="reporteProductividad('{{ slug }}', { conLocal: {{ 'true' if con_local else 'false' }} })"
+     x-init="iniciar()">
+
+    {% call encabezado(titulo, volver_url='/reportes/productividad',
+                       volver_texto='Reportes de Productividad') %}
+        <a :href="urlExportar()"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Exportar a Excel
+        </a>
+    {% endcall %}
+
+    <p class="mt-4 max-w-3xl text-sm text-texto-muted">{{ criterio }}</p>
+
+    {# ---------- Filtros: una fila por usuario → en tiempo real ---------- #}
+    <div class="flex flex-wrap items-end gap-4 mt-6">
+        {{ filtro_rango('filtros.fecha_desde', 'filtros.fecha_hasta', 'cargar()') }}
+
+        {% if con_local %}
+        <div class="w-full sm:w-[14rem]">
+            {{ combobox('f-punto-de-venta', 'puntosDeVenta', 'o.nombre',
+                        'filtros.punto_de_venta_id',
+                        etiqueta='Local', label_oculto=true,
+                        placeholder='Local',
+                        vacio='Todos los locales',
+                        al_elegir='cargar();',
+                        clases='h-control w-full pl-4 pr-10 text-sm font-semibold
+                                bg-surface text-texto border-2 border-borde rounded-input
+                                placeholder:text-texto-disabled placeholder:font-semibold
+                                focus:outline-none focus:border-primary') }}
+        </div>
+        {% endif %}
+
+        <button type="button" @click="limpiar()"
+                class="h-boton px-4 rounded-input text-sm text-texto-muted border border-borde
+                       hover:border-primary hover:text-primary">
+            Limpiar filtros
+        </button>
+    </div>
+
+    <p x-show="datos" x-cloak class="mt-4 text-sm text-texto-muted">
+        <span x-text="datos?.filas.length"></span>
+        <span x-text="datos?.filas.length === 1 ? 'usuario' : 'usuarios'"></span>
+    </p>
+
+    <div class="mt-2 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            <template x-if="datos">
+                <table class="w-full border-collapse text-base">
+                    {% block tabla %}{% endblock %}
+                </table>
+            </template>
+        </div>
+        <p x-show="cargando && !datos" class="px-8 py-16 text-center text-texto-muted">Cargando…</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/reportes_productividad.js') }}"></script>
+{% endblock %}

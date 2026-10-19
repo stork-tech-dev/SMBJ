@@ -1,0 +1,38 @@
+{# Productividad del Centro de Distribución: productos cargados y remitos por usuario. #}
+{% extends "pages/reportes/productividad/_base.html" %}
+{% import "pages/reportes/caja/_clases.html" as c %}
+
+{% block tabla %}
+<thead>
+    <tr>
+        <th class="{{ c.th }} pl-8">Usuario</th>
+        <th class="{{ c.th_monto }}">Productos</th>
+        <th class="{{ c.th_monto }}">Remitos</th>
+        <th class="{{ c.th_monto }} pr-8">Unidades remitidas</th>
+    </tr>
+</thead>
+<tbody>
+    <template x-for="f in datos.filas" :key="f.usuario_id">
+        <tr class="{{ c.fila }}">
+            <td class="{{ c.td }} pl-8 font-medium" x-text="f.usuario_nombre"></td>
+            <td class="{{ c.td_monto }}" :class="claseNumero(f.productos)" x-text="f.productos"></td>
+            <td class="{{ c.td_monto }}" :class="claseNumero(f.remitos)" x-text="f.remitos"></td>
+            <td class="{{ c.td_monto }} pr-8" :class="claseNumero(f.unidades_remitidas)"
+                x-text="f.unidades_remitidas"></td>
+        </tr>
+    </template>
+</tbody>
+<tfoot>
+    <tr x-show="datos.filas.length" class="{{ c.fila_subtotal }}">
+        <td class="{{ c.td }} pl-8">Total</td>
+        <td class="{{ c.td_monto }}" x-text="datos.totales.productos"></td>
+        <td class="{{ c.td_monto }}" x-text="datos.totales.remitos"></td>
+        <td class="{{ c.td_monto }} pr-8" x-text="datos.totales.unidades_remitidas"></td>
+    </tr>
+    <tr x-show="!datos.filas.length">
+        <td colspan="4" class="px-8 py-16 text-center text-texto-muted">
+            Nadie cargó productos ni mandó remitos desde el CD en esas fechas.
+        </td>
+    </tr>
+</tfoot>
+{% endblock %}
