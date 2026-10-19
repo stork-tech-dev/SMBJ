@@ -177,6 +177,34 @@ Los roles no se pueden borrar si tienen usuarios asignados. Se desactivan para q
 
 ---
 
+## Reportes de Productividad
+
+Muestran cuánto hizo cada usuario en un período. Están en **Reportes → Reportes de Productividad** y requieren permiso de **Reportes** para ver.
+
+Los dos se filtran por **Desde** y **Hasta** (las dos fechas incluidas). Al entrar, el rango va del **1° del mes en curso a hoy**; "Limpiar filtros" vuelve a ese rango. Aparece una fila por cada usuario que tuvo actividad, ordenados por nombre, con una fila de **Total** al final. **"Exportar a Excel"** baja lo mismo que se ve.
+
+### Centro de Distribución
+
+| Columna | Qué cuenta |
+|---|---|
+| Productos | Productos nuevos que dio de alta, contados como **unidades para vender**: un producto sin talles cuenta 1; uno con 3 talles cuenta 3 |
+| Remitos | Remitos que envió **desde el Centro de Distribución** (los envíos entre locales no cuentan) |
+| Unidades remitidas | Unidades que llevaban esos remitos |
+
+### Vendedores
+
+Además de las fechas, se puede filtrar por **local**.
+
+| Columna | Qué cuenta |
+|---|---|
+| Ventas | Ventas confirmadas (no cuentan las anuladas ni las que quedaron sin cobrar) |
+| Unidades | Productos vendidos en esas ventas |
+| Importe | Total de esas ventas |
+| Señas / Importe señas | Señas que registró y su monto |
+| Cambios | Cambios confirmados |
+
+---
+
 ## Preguntas frecuentes
 
 **¿Puedo asignar el mismo usuario a varios locales?**

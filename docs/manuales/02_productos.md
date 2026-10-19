@@ -140,6 +140,34 @@ Usá el filtro **"Stock 0"** para ver rápidamente todos los artículos sin stoc
 
 ---
 
+## Historial del Producto
+
+Muestra toda la vida de un producto en un solo informe. Está en **Reportes → Reportes de Producto → Historial del Producto** y requiere permiso de **Reportes** para ver.
+
+### Buscar el producto
+
+Escribí al menos 2 caracteres del **SKU**, de la **descripción** o del **código de etiqueta**. A medida que escribís aparecen los productos que coinciden, cada uno con su foto. Tocá el que quieras para ver su historial.
+
+El producto elegido queda en la dirección de la página: podés guardar el link o compartirlo para volver directo a ese producto.
+
+### Qué muestra
+
+Arriba, una ficha con el precio de venta, el stock actual y la cantidad de variantes. Debajo, cinco partes, cada una ordenada de lo más reciente a lo más viejo:
+
+- **Carga**: cuándo se dio de alta el producto y cada variante, y cada ingreso de mercadería (cantidad, dónde y quién).
+- **Movimientos de stock**: todos los movimientos, con tipo, variante, cantidad, origen → destino, quién lo hizo y su referencia (remito, venta o compra).
+- **Ventas**: un resumen por local (unidades e importe) y el detalle de cada venta. Solo cuentan las ventas confirmadas.
+- **Fallas**: los cambios por falla (con quién los autorizó) y las bajas de stock (con su motivo: rotura, robo, merma…).
+- **Modificaciones de precio**: los cambios de precio en dólares, de precio de venta o de descuento (antes → después y quién), y cada cambio del dólar del proveedor desde el alta del producto, aclarando si fue masivo o por importación de Excel.
+
+En los cambios de dólar se ve el dólar anterior y el nuevo, no el precio de venta que resultó: ese precio no queda guardado.
+
+### Descargar en PDF
+
+Con el producto elegido, tocá **"Descargar PDF"** para bajar el mismo informe con el logo de la empresa.
+
+---
+
 ## Preguntas frecuentes
 
 **¿Puedo cambiar el proveedor de un producto?**
@@ -153,3 +181,6 @@ Los productos no se borran, se desactivan. Esto preserva el historial de ventas.
 
 **¿Qué es el SKU?**
 Un código único que genera el sistema para identificar cada variante. Se usa en las etiquetas y en el punto de venta.
+
+**¿Por qué una venta no aparece en el Historial del Producto?**
+Solo se muestran las ventas confirmadas. Las anuladas o las que todavía están en curso no aparecen.
