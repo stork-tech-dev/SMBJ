@@ -3,18 +3,19 @@ Endpoints de Reportes de Caja (`/api/v1/reportes/caja/...`).
 
 Todos son reportes globales (sin aislamiento por dispositivo), piden
 REPORTES ver y filtran por `fecha` (un día; NULL = hoy) y, salvo Señas, por
-`punto_de_venta_id`. Cada uno tiene su `/exportar` a Excel con los mismos
-filtros.
+`punto_de_venta_id`. Novedades es la excepción: filtra por rango
+(`fecha_desde`/`fecha_hasta`, por defecto del inicio del mes a hoy). Cada
+uno tiene su `/exportar` a Excel con los mismos filtros.
 
-Seis de los siete comparten firma: se registran desde la tabla `_REPORTES`
-en lugar de escribir doce funciones casi iguales (Principio 2). Señas va
-aparte porque no tiene local y sí filtro de estado.
+Cinco de los siete comparten firma: se registran desde la tabla `_REPORTES`
+en lugar de escribir diez funciones casi iguales (Principio 2). Señas va
+aparte porque no tiene local y sí filtro de estado; Novedades, por el rango.
 """
 
 from collections.abc import Callable
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -48,8 +49,6 @@ def _mercaderia_para_api(datos: dict) -> dict:
 
 # slug, service, schema de respuesta, Excel, resumen para OpenAPI, ajuste de la respuesta
 _REPORTES: list[tuple[str, Callable, type, Callable, str, Callable | None]] = [
-    ("novedades", servicio.novedades, esquemas.ReporteNovedades,
-     excel.xls_novedades, "Novedades de caja por turno", None),
     ("arqueos", servicio.arqueos, esquemas.ReporteArqueos,
      excel.xls_arqueos, "Arqueos: sistema vs contado", None),
     ("movimientos", servicio.movimientos, esquemas.ReporteMovimientos,
@@ -99,6 +98,54 @@ def _registrar(slug, funcion, esquema, a_excel, resumen, ajuste) -> None:
 
 for _reporte in _REPORTES:
     _registrar(*_reporte)
+
+
+# --- Novedades: por rango de fechas, del inicio del mes a hoy por defecto ---
+
+
+def _rango(desde: date | None, hasta: date | None) -> tuple[date, date]:
+    """Completa lo que falte (inicio del mes / hoy) y controla el orden."""
+    hoy = ahora_db().date()
+    hasta = hasta or hoy
+    desde = desde or hasta.replace(day=1)
+    if desde > hasta:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La fecha desde no puede ser posterior a la fecha hasta",
+        )
+    return desde, hasta
+
+
+@router.get(
+    "/novedades", response_model=esquemas.ReporteNovedades,
+    summary="Reporte: Novedades de caja por turno",
+)
+def reporte_novedades(
+    fecha_desde: date | None = Query(default=None, description="Vacío = inicio del mes"),
+    fecha_hasta: date | None = Query(default=None, description="Vacío = hoy"),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    desde, hasta = _rango(fecha_desde, fecha_hasta)
+    datos = servicio.novedades(db, desde, hasta, punto_de_venta_id)
+    return {**datos, "opciones_locales": servicio_stock.opciones_locales(db)}
+
+
+@router.get(
+    "/novedades/exportar", response_class=Response,
+    summary="Exportar a Excel: Novedades de caja por turno",
+)
+def reporte_novedades_exportar(
+    fecha_desde: date | None = Query(default=None),
+    fecha_hasta: date | None = Query(default=None),
+    punto_de_venta_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.REPORTES, "ver")),
+):
+    desde, hasta = _rango(fecha_desde, fecha_hasta)
+    return _excel(excel.xls_novedades(servicio.novedades(db, desde, hasta, punto_de_venta_id)),
+                  "novedades")
 
 
 # --- Señas: sin local, con filtro de estado ---

@@ -42,19 +42,23 @@ class _Tabla:
 
 
 def xls_novedades(datos: dict) -> bytes:
+    # Con rango de fechas, cada fila lleva su día: la hora sola no alcanza.
     t = _Tabla()
     for turno in datos["turnos"]:
+        dia = turno["fecha_apertura"].strftime("%d/%m/%Y")
         for n in turno["novedades"]:
-            t.fila([_turno(turno), _hora(n["timestamp"]), n["concepto"],
+            t.fila([dia, _turno(turno), _hora(n["timestamp"]), n["concepto"],
                     n["tipo"].capitalize(), n["monto"], n["autorizador_nombre"], n["notas"] or ""])
-        t.fila([_turno(turno), "", "Subtotal (entradas − salidas)", "", turno["neto"], "", ""],
+        t.fila([dia, _turno(turno), "", "Subtotal (entradas − salidas)", "", turno["neto"], "", ""],
                negrita=True)
-    t.fila(["Total del día", "", "Entradas", "", datos["total_entradas"], "", ""], negrita=True)
-    t.fila(["Total del día", "", "Salidas", "", datos["total_salidas"], "", ""], negrita=True)
-    t.fila(["Total del día", "", "Neto", "", datos["neto"], "", ""], negrita=True)
+    periodo = (f"Total {datos['fecha_desde'].strftime('%d/%m/%Y')} al "
+               f"{datos['fecha_hasta'].strftime('%d/%m/%Y')}")
+    t.fila([periodo, "", "", "Entradas", "", datos["total_entradas"], "", ""], negrita=True)
+    t.fila([periodo, "", "", "Salidas", "", datos["total_salidas"], "", ""], negrita=True)
+    t.fila([periodo, "", "", "Neto", "", datos["neto"], "", ""], negrita=True)
     return t.xls("Novedades de caja",
-                 ["Turno", "Hora", "Concepto", "Tipo", "Monto", "Autorizó", "Notas"],
-                 montos=[4], anchos=[34, 8, 30, 10, 14, 22, 30])
+                 ["Fecha", "Turno", "Hora", "Concepto", "Tipo", "Monto", "Autorizó", "Notas"],
+                 montos=[5], anchos=[12, 34, 8, 30, 10, 14, 22, 30])
 
 
 def xls_arqueos(datos: dict) -> bytes:

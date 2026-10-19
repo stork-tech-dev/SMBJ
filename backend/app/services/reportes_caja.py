@@ -48,11 +48,21 @@ CERO = Decimal("0")
 
 def turnos_del_dia(db: Session, fecha: date, punto_de_venta_id: int | None) -> list[Turno]:
     """Turnos abiertos en *fecha* (de un local o de todos), por local y hora."""
+    return turnos_del_rango(db, fecha, fecha, punto_de_venta_id)
+
+
+def turnos_del_rango(
+    db: Session, desde: date, hasta: date, punto_de_venta_id: int | None
+) -> list[Turno]:
+    """
+    Turnos abiertos entre *desde* y *hasta*, los dos inclusive (de un local o
+    de todos), por local y por hora de apertura.
+    """
     consulta = (
         select(Turno)
         .join(PuntoDeVenta, PuntoDeVenta.id == Turno.punto_de_venta_id)
         .options(joinedload(Turno.punto_de_venta))
-        .where(func.date(Turno.fecha_apertura) == fecha)
+        .where(func.date(Turno.fecha_apertura).between(desde, hasta))
         .order_by(func.lower(PuntoDeVenta.nombre), Turno.fecha_apertura, Turno.id)
     )
     if punto_de_venta_id is not None:
@@ -81,12 +91,18 @@ def _de_los_turnos(columna, turnos: list[Turno]):
 # ---------------------------------------------------------------------------
 
 
-def novedades(db: Session, fecha: date, punto_de_venta_id: int | None = None) -> dict:
+def novedades(
+    db: Session, desde: date, hasta: date, punto_de_venta_id: int | None = None
+) -> dict:
     """
-    Novedades agrupadas por turno, con subtotal de entradas, salidas y neto
-    por turno y del día. Solo aparecen los turnos que tuvieron novedades.
+    Novedades de los turnos abiertos entre *desde* y *hasta* (inclusive),
+    agrupadas por turno, con subtotal de entradas, salidas y neto por turno y
+    del período. Solo aparecen los turnos que tuvieron novedades.
+
+    Es el único reporte de caja con rango y no de un día: las novedades
+    (gastos, faltantes) se revisan por mes, no turno por turno.
     """
-    turnos = turnos_del_dia(db, fecha, punto_de_venta_id)
+    turnos = turnos_del_rango(db, desde, hasta, punto_de_venta_id)
     filas = (
         db.execute(
             select(NovedadCaja)
@@ -138,6 +154,8 @@ def novedades(db: Session, fecha: date, punto_de_venta_id: int | None = None) ->
         })
 
     return {
+        "fecha_desde": desde,
+        "fecha_hasta": hasta,
         "turnos": grupos,
         "total_entradas": total_entradas,
         "total_salidas": total_salidas,

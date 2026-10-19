@@ -281,15 +281,17 @@ SECCIONES_REPORTES_PRODUCTO = [
     },
 ]
 
-# Reportes de Caja: todos de un día, filtrados por local (salvo Señas). Cada
+# Reportes de Caja: todos de un día, filtrados por local (salvo Señas), menos
+# Novedades, que va por rango (del inicio del mes a hoy por defecto). Cada
 # uno tiene su plantilla en `pages/reportes/caja/{plantilla}.html` y su
 # endpoint en `/api/v1/reportes/caja/{slug}`; `criterio` se muestra en la
 # página y como tooltip de la tarjeta.
 _REPORTES_CAJA = [
     ("novedades", "novedades", "Novedades de caja",
      "Lista de novedades por turno con concepto, monto y subtotales.",
-     "Las novedades de caja de los turnos abiertos ese día, agrupadas por "
-     "turno, con el subtotal de entradas, salidas y neto de cada uno y del día."),
+     "Las novedades de caja de los turnos abiertos entre las dos fechas "
+     "(por defecto, del inicio del mes a hoy), agrupadas por turno, con el "
+     "subtotal de entradas, salidas y neto de cada uno y del período."),
     ("arqueos", "arqueos", "Arqueos de caja",
      "Comparativa sistema vs contado. Efectivo, Débito+Crédito, Mercado Pago. "
      "Diferencias resaltadas.",
@@ -322,7 +324,7 @@ _REPORTES_CAJA = [
 
 REPORTES_CAJA = {
     slug: {"plantilla": plantilla, "nombre": nombre, "criterio": criterio,
-           "con_local": slug != "senas"}
+           "con_local": slug != "senas", "con_rango": slug == "novedades"}
     for slug, plantilla, nombre, _descripcion, criterio in _REPORTES_CAJA
 }
 
@@ -924,6 +926,7 @@ async def reporte_de_caja(
             slug=slug,
             criterio=reporte["criterio"],
             con_local=reporte["con_local"],
+            con_rango=reporte["con_rango"],
         ),
     )
 

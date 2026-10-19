@@ -50,6 +50,9 @@ class NovedadesTurno(_Turno):
 
 
 class ReporteNovedades(_ConLocales):
+    # El rango que se usó: si no se pidió, del primer día del mes a hoy.
+    fecha_desde: date
+    fecha_hasta: date
     turnos: list[NovedadesTurno]
     total_entradas: Decimal
     total_salidas: Decimal

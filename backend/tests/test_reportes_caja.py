@@ -106,7 +106,7 @@ def test_novedades_agrupa_por_turno_con_subtotales(db, autor, local, turno, auto
     _novedad(db, autor, local, gasto, "100", autorizador)
     _novedad(db, autor, local, ingreso, "50", autorizador)
 
-    datos = servicio.novedades(db, _hoy())
+    datos = servicio.novedades(db, _hoy(), _hoy())
 
     assert len(datos["turnos"]) == 1
     grupo = datos["turnos"][0]
@@ -130,9 +130,42 @@ def test_novedades_filtra_por_local_y_por_dia(
     _novedad(db, autor, local, concepto, "10", autorizador)
     _novedad(db, autor, otro_local, concepto, "20", autorizador)
 
-    assert servicio.novedades(db, _hoy())["total_salidas"] == Decimal("30")
-    assert servicio.novedades(db, _hoy(), otro_local.id)["total_salidas"] == Decimal("20")
-    assert servicio.novedades(db, _hoy() - timedelta(days=1))["turnos"] == []
+    hoy, ayer = _hoy(), _hoy() - timedelta(days=1)
+    assert servicio.novedades(db, hoy, hoy)["total_salidas"] == Decimal("30")
+    assert servicio.novedades(db, hoy, hoy, otro_local.id)["total_salidas"] == Decimal("20")
+    assert servicio.novedades(db, ayer, ayer)["turnos"] == []
+
+
+def test_novedades_suma_los_turnos_de_todo_el_rango(db, autor, local, turno, autorizador):
+    """Desde/hasta inclusive: un turno de hace 3 días entra en el rango del mes."""
+    concepto = servicio_novedades.crear_concepto(db, autor, "Gasto", "salida")
+    _novedad(db, autor, local, concepto, "40", autorizador)
+    turno.fecha_apertura = turno.fecha_apertura - timedelta(days=3)
+    db.flush()
+    hoy = _hoy()
+
+    assert servicio.novedades(db, hoy - timedelta(days=5), hoy)["total_salidas"] == Decimal("40")
+    assert servicio.novedades(db, hoy - timedelta(days=3), hoy - timedelta(days=3))["neto"] == Decimal("-40")
+    assert servicio.novedades(db, hoy - timedelta(days=2), hoy)["turnos"] == []
+
+
+def test_api_novedades_por_defecto_va_del_inicio_del_mes_a_hoy(client, db, autor, local, turno):
+    db.commit()
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+    hoy = _hoy()
+
+    datos = client.get("/api/v1/reportes/caja/novedades").json()
+    assert datos["fecha_desde"] == hoy.replace(day=1).isoformat()
+    assert datos["fecha_hasta"] == hoy.isoformat()
+
+    resp = client.get("/api/v1/reportes/caja/novedades", params={
+        "fecha_desde": hoy.isoformat(), "fecha_hasta": (hoy - timedelta(days=1)).isoformat(),
+    })
+    assert resp.status_code == 422
+
+    pagina = client.get("/reportes/caja/novedades").text
+    assert 'id="f-fecha-desde"' in pagina
+    assert 'id="f-fecha-hasta"' in pagina
 
 
 # ── Arqueos ─────────────────────────────────────────────────────────────────

@@ -44,14 +44,14 @@
 <tfoot>
     <tr x-show="datos.turnos.length" class="{{ c.fila_subtotal }}">
         <td colspan="5" class="{{ c.td }} pl-8">
-            Total del día
+            Total del período
             <span class="ml-2 text-sm font-normal text-texto-muted"
                   x-text="'Entradas ' + pesos(datos.total_entradas) + ' · Salidas ' + pesos(datos.total_salidas)"></span>
         </td>
         <td class="{{ c.td_monto }} pr-8" x-text="pesos(datos.neto)"></td>
     </tr>
     <tr x-show="!datos.turnos.length">
-        <td colspan="6" class="px-8 py-16 text-center text-texto-muted">Sin novedades ese día.</td>
+        <td colspan="6" class="px-8 py-16 text-center text-texto-muted">Sin novedades en esas fechas.</td>
     </tr>
 </tfoot>
 {% endblock %}
