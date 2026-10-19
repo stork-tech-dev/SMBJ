@@ -117,7 +117,11 @@ El sistema genera etiquetas para imprimir en impresora Zebra GC420t.
 3. Indicá la cantidad de etiquetas por variante.
 4. Hacé clic en **"Generar"**.
 
-El archivo ZPL se descarga listo para enviar a la impresora Zebra.
+Se descarga un PDF listo para imprimir en la Zebra.
+
+El código de barras ocupa todo el ancho de la etiqueta, con el número del código debajo. Ese tamaño es el que permite leerlo con la cámara del celular o con un lector.
+
+> **Etiquetas impresas antes del 16/10/2026:** tenían el código de barras cortado del lado derecho y **no se pueden leer** con ningún lector. Hay que reimprimirlas.
 
 ---
 
