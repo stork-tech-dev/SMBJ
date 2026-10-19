@@ -78,6 +78,12 @@ Requiere permiso de caja y un turno abierto en el local.
 
 Los usuarios **activos** que la Cuenta Maestra habilitó como **"Autorizador de cambios y novedades de caja"** desde Configuración → Usuarios. Es la misma lista que se usa para autorizar los cambios por falla. El paso a paso para habilitar a alguien está en el manual de Usuarios y Roles, en la sección *"Autorizador de cambios y novedades de caja"*.
 
+### Reporte de novedades
+
+En **Reportes → Reportes de Caja → Novedades de caja** se ven todas las novedades agrupadas por turno, con el subtotal de entradas, salidas y neto de cada turno y del período.
+
+Se filtra por **Desde** y **Hasta** (las dos fechas incluidas) y por local. Al entrar, el rango va del **1° del mes en curso a hoy**; "Limpiar filtros" vuelve a ese rango. Cada turno muestra su fecha y su horario. **"Exportar a Excel"** baja lo mismo que se ve, con una columna de fecha.
+
 ---
 
 ## Movimientos de caja (celular)

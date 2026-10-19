@@ -110,6 +110,22 @@ Si tenés permiso, en la pantalla de inicio aparece la tarjeta **"Anulaciones"**
 
 ---
 
+### Dejar una seña
+
+1. En la pantalla de inicio, tocá **"Señas"**.
+2. Buscá al cliente o cargalo como nuevo (nombre, y si querés DNI y teléfono).
+3. Indicá el monto, el medio de pago y, si hace falta, una nota (por ejemplo, qué producto reserva).
+4. Tocá **"Registrar seña"**.
+
+En la pantalla **"Seña registrada"** podés mandarle al cliente el **comprobante en PDF**, con el logo de la empresa, el monto, el vencimiento, el medio de pago y la nota:
+
+- **"Enviar comprobante al cliente"**: abre el menú de compartir del celular para mandarlo por WhatsApp, mail, etc. Aparece solo si el celular puede compartir archivos.
+- **"Descargar comprobante (PDF)"**: lo guarda en el celular.
+
+> Un cliente puede tener una sola seña vigente a la vez, y se necesita el turno abierto: la plata entra a la caja.
+
+---
+
 ## Vista desktop (supervisores y dueños)
 
 ### Listado de ventas
