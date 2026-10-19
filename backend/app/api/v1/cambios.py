@@ -39,6 +39,7 @@ from app.schemas.cambios import (
     VentaParaCambioResponse,
 )
 from app.schemas.comunes import RespuestaPaginada
+from app.schemas.medios_pago import MedioDisponible
 from app.services import cambios as servicio
 from app.services.roles import NoEncontrado, ReglaDeNegocio
 
@@ -313,6 +314,29 @@ def diferencia(
     calculo = servicio.calcular_diferencia(db, cambio)
     db.commit()  # persiste recálculo de precio_reconocido en ítems de promo
     return DiferenciaResponse(**calculo)
+
+
+@router.get(
+    "/{cambio_id}/medios-de-pago",
+    response_model=list[MedioDisponible],
+    summary="Medios para pagar la diferencia del cambio",
+)
+def medios_de_pago(
+    cambio_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "ver")),
+):
+    """
+    Los mismos que ofrece una venta (activos, sin la seña), con los planes
+    que habilita la diferencia. Con el permiso de Ventas, como el resto del
+    cambio: el catálogo de Configuración no lo ve una vendedora.
+    """
+    from app.api.v1.ventas import medios_disponibles_response
+    from app.services import medios_pago as servicio_medios
+
+    cambio = _obtener(db, cambio_id)
+    diferencia = max(Decimal(servicio.calcular_diferencia(db, cambio)["diferencia"]), Decimal("0"))
+    return medios_disponibles_response(servicio_medios.medios_para_cobrar(db, diferencia))
 
 
 @router.post(

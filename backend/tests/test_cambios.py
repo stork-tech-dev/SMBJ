@@ -170,3 +170,56 @@ def test_items_nuevos_muestra_la_diferencia_y_finalizar_cambio(client, db, autor
 
     confirmar = client.get("/cambios/nuevo/confirmar?id=1").text
     assert "pesos(diferencia.total_devuelto)" in confirmar
+
+
+def test_la_vendedora_ve_los_medios_para_pagar_la_diferencia_y_confirma(
+    client, db, autor, local, dispositivo, venta, crear_usuario, dar_permiso, roles,
+):
+    """
+    Bug real: Confirmar pedía los medios al catálogo de Configuración, que
+    la vendedora no puede ver — el combo quedaba vacío y el cambio con
+    diferencia a pagar no se podía terminar. Ahora los da el propio cambio,
+    con el permiso de Ventas: los activos, sin la seña.
+    """
+    from app.core.permisos import ROL_VENDEDOR, Modulo
+    from app.models.medio_pago import MedioDePago
+
+    inactivo = servicio_medios.crear_medio(db, autor, nombre="Cheque")
+    inactivo.activo = False
+
+    # Devuelve el aro ($500) y se lleva otro anillo ($1000): paga la diferencia.
+    items = {i["descripcion"]: i for i in servicio_cambios.items_del_ticket(db, venta.codigo_cambio)["items"]}
+    aro = next(v for k, v in items.items() if k.startswith("Aro"))
+    anillo = next(v for k, v in items.items() if k.startswith("Anillo"))
+    cambio, _ = servicio_cambios.iniciar_cambio(
+        db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
+        codigo_cambio=venta.codigo_cambio,
+    )
+    servicio_cambios.agregar_item_devuelto(db, cambio, aro["variante_id"], aro["venta_item_id"])
+    servicio_cambios.agregar_item_nuevo(db, cambio, anillo["variante_id"])
+
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    db.commit()
+    client.cookies.set("device_uuid", str(dispositivo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    # El catálogo de Configuración le sigue cerrado: no es el camino.
+    assert client.get("/api/v1/configuracion/medios-de-pago").status_code == 403
+
+    resp = client.get(f"/api/v1/cambios/{cambio.id}/medios-de-pago")
+    assert resp.status_code == 200, resp.text
+    nombres = {m["nombre"] for m in resp.json()}
+    assert "Efectivo" in nombres
+    assert "Cheque" not in nombres
+    sena = db.query(MedioDePago).filter(MedioDePago.es_sena.is_(True)).first()
+    assert sena is None or sena.nombre not in nombres
+
+    efectivo = next(m for m in resp.json() if m["nombre"] == "Efectivo")
+    resp = client.post(f"/api/v1/cambios/{cambio.id}/confirmar", json={
+        "medio_pago_diferencia_id": efectivo["id"],
+        "plan_cuotas_diferencia_id": None,
+        "notas": None,
+    })
+    assert resp.status_code == 200, resp.text
+

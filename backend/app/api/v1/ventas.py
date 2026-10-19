@@ -523,6 +523,16 @@ def detalle(
     return _respuesta(_venta(db, venta_id, scope))
 
 
+def medios_disponibles_response(medios_y_planes) -> list[MedioDisponible]:
+    """`(medio, planes)` del service → filas de la respuesta. Lo usa también Cambios."""
+    filas = []
+    for medio, planes in medios_y_planes:
+        fila = MedioDisponible.model_validate(medio)
+        fila.planes = [PlanCuotasResponse.model_validate(p) for p in planes]
+        filas.append(fila)
+    return filas
+
+
 @router.get(
     "/{venta_id}/medios-de-pago",
     response_model=list[MedioDisponible],
@@ -546,19 +556,9 @@ def medios_de_pago(
     a_cobrar = sum((Decimal(i.precio_final) for i in venta.items), Decimal("0"))
     habilita = servicio._habilita_cuotas_sin_interes(venta)
 
-    disponibles = []
-    for medio in servicio_medios.listar_medios(db, activo=True):
-        # La seña no es un medio a elegir: se aplica con `usar_sena` al
-        # registrar los pagos, y el sistema decide cuánto cubre.
-        if medio.es_sena:
-            continue
-
-        planes = servicio_medios.planes_disponibles(db, medio.id, a_cobrar, habilita)
-        fila = MedioDisponible.model_validate(medio)
-        fila.planes = [PlanCuotasResponse.model_validate(p) for p in planes]
-        disponibles.append(fila)
-
-    return disponibles
+    return medios_disponibles_response(
+        servicio_medios.medios_para_cobrar(db, a_cobrar, habilita)
+    )
 
 
 @router.get(

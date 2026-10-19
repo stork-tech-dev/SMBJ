@@ -8,7 +8,6 @@
 
 const URL_CAMBIOS    = '/api/v1/cambios';
 const URL_VARIANTES  = '/api/v1/productos/variantes';
-const URL_MEDIOS_CFG = '/api/v1/configuracion/medios-de-pago';
 const URL_AUTORIZADORES = '/api/v1/usuarios/autorizadores';
 
 
@@ -133,12 +132,6 @@ function nuevoCambio(codigoInicial = '') {
         },
 
         async init() {
-            // Cargar medios de pago para el paso de confirmación
-            try {
-                const resp = await fetch(URL_MEDIOS_CFG, { credentials: 'same-origin' });
-                if (resp.ok) this.medios = await resp.json();
-            } catch (_) { /* no bloquea */ }
-
             // Cargar autorizadores para el cambio por falla
             try {
                 const resp = await fetch(URL_AUTORIZADORES, { credentials: 'same-origin' });
@@ -295,6 +288,18 @@ function nuevoCambio(codigoInicial = '') {
                     throw new Error(err.detail || 'No se pudo calcular la diferencia');
                 }
                 this.diferencia = await resp.json();
+
+                // Los medios para pagar la diferencia los da el propio
+                // cambio (permiso de Ventas): el catálogo de Configuración
+                // no lo ve cualquiera, y el combo quedaba vacío sin avisar.
+                const respMedios = await fetch(`${URL_CAMBIOS}/${this.cambioId}/medios-de-pago`, {
+                    credentials: 'same-origin',
+                });
+                if (!respMedios.ok) {
+                    const err = await respMedios.json().catch(() => ({}));
+                    throw new Error(err.detail || 'No se pudieron cargar los medios de pago');
+                }
+                this.medios = await respMedios.json();
                 this.paso = 3;
             } catch (e) {
                 window.toast(e.message, 'error');

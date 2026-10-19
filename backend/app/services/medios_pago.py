@@ -102,6 +102,24 @@ def medios_para_cobro_directo(db: Session) -> list[MedioDePago]:
     return [m for m in listar_medios(db, activo=True) if not m.es_sena]
 
 
+def medios_para_cobrar(
+    db: Session, monto: Decimal, habilita_sin_interes: bool = False
+) -> list[tuple[MedioDePago, list[PlanCuotas]]]:
+    """
+    Lo que se le ofrece a la vendedora para cobrar ESE monto: los medios
+    activos, cada uno con los planes que el monto habilita.
+
+    La seña no está: no es un medio a elegir, se aplica aparte (`usar_sena`)
+    y el sistema decide cuánto cubre. Lo usan la venta y la diferencia de un
+    cambio — una sola regla para las dos pantallas de cobro (Principio 2).
+    """
+    return [
+        (medio, planes_disponibles(db, medio.id, monto, habilita_sin_interes))
+        for medio in listar_medios(db, activo=True)
+        if not medio.es_sena
+    ]
+
+
 # ============================================================================
 # ABM DE MEDIOS
 # ============================================================================

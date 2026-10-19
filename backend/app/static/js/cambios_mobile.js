@@ -15,7 +15,6 @@
 const URL_CAMBIOS = '/api/v1/cambios';
 const URL_VARIANTES = '/api/v1/productos/variantes';
 const URL_AUTORIZADORES = '/api/v1/usuarios/autorizadores';
-const URL_MEDIOS_CFG = '/api/v1/configuracion/medios-de-pago';
 
 // Resuelto en el momento de llamar: este script no lleva `defer` y corre
 // antes que app.js (mismo motivo que en ventas_mobile.js).
@@ -359,9 +358,12 @@ function cambioConfirmar() {
                 return;
             }
             try {
+                // Los medios los da el propio cambio (permiso de Ventas):
+                // el catálogo de Configuración no lo ve una vendedora, y
+                // el combo quedaba vacío sin avisar.
                 const [diferencia, medios] = await Promise.all([
                     pedir(`${URL_CAMBIOS}/${this.cambioId}/diferencia`),
-                    pedir(URL_MEDIOS_CFG).catch(() => []),
+                    pedir(`${URL_CAMBIOS}/${this.cambioId}/medios-de-pago`),
                 ]);
                 this.diferencia = diferencia;
                 this.medios = medios;
