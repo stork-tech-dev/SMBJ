@@ -5,6 +5,7 @@ Cualquier router que renderice HTML importa `templates` desde acá;
 nunca instancia Jinja2Templates por su cuenta.
 """
 
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
@@ -43,6 +44,26 @@ def estatico(path: str) -> str:
         return f"/static/{relativo}"
     return f"/static/{relativo}?v={version}"
 
+
+def pesos(valor) -> str:
+    """
+    `12345.5` → `$ 12.345,50`. Para los documentos que arma el servidor
+    (PDF): en pantalla el formato lo pone `window.pesos` del lado del
+    navegador, porque la API devuelve el número crudo (Principio 1).
+    """
+    numero = f"{Decimal(valor or 0):,.2f}"  # "12,345.50"
+    return "$ " + numero.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def fecha(valor, con_hora: bool = False) -> str:
+    """Fecha argentina de un documento: `dd/mm/aaaa` (y `hh:mm` si se pide)."""
+    if valor is None:
+        return ""
+    return valor.strftime("%d/%m/%Y %H:%M" if con_hora else "%d/%m/%Y")
+
+
+templates.env.filters["pesos"] = pesos
+templates.env.filters["fecha"] = fecha
 
 # Variables disponibles en todos los templates sin pasarlas en cada
 # render(): evita repetirlas endpoint por endpoint.

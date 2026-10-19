@@ -42,9 +42,27 @@
             </div>
         </dl>
         <div class="mt-8 grid gap-3">
-            <button type="button" @click="reiniciar()"
+            {# El comprobante para el cliente: compartir lo manda directo por
+               WhatsApp o mail cuando el celular lo permite; la descarga queda
+               siempre. #}
+            <button type="button" x-show="puedeCompartir" @click="compartirComprobante()"
+                    :disabled="compartiendo"
                     class="h-[3.25rem] rounded-input bg-primary text-white text-base font-medium
-                           hover:bg-primary-hover">
+                           hover:bg-primary-hover disabled:opacity-60"
+                    x-text="compartiendo ? 'Preparando comprobante…' : 'Enviar comprobante al cliente'"></button>
+            {# Sin "Enviar", descargar pasa a ser la acción principal: una sola
+               azul por pantalla, siempre la de mandarle el papel al cliente. #}
+            <a :href="urlComprobante" download
+               class="inline-flex items-center justify-center gap-2 rounded-input text-base"
+               :class="puedeCompartir
+                       ? 'h-boton border border-borde hover:border-primary hover:text-primary'
+                       : 'h-[3.25rem] bg-primary text-white font-medium hover:bg-primary-hover'">
+                {{ icono('descarga', clases='w-5 h-5') }}
+                Descargar comprobante (PDF)
+            </a>
+            <button type="button" @click="reiniciar()"
+                    class="h-boton rounded-input border border-borde text-base
+                           hover:border-primary hover:text-primary">
                 Registrar otra seña
             </button>
             <a href="/ventas"

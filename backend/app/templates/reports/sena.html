@@ -1,0 +1,90 @@
+{# ===========================================================================
+   Comprobante de seña: el papel que se le manda al cliente al dejarla.
+
+   Lo arma `reports/sena_pdf.py` en cada descarga. El estilo común (hoja,
+   encabezado, rótulos, notas) sale de `reports/estilos.html`; acá va solo
+   lo propio del comprobante. `data-empresa` elige la paleta y `marca()` el
+   logo, igual que en las pantallas.
+   =========================================================================== #}
+{% from "reports/estilos.html" import estilos_documento %}
+{% from "components/marca.html" import marca %}
+<!DOCTYPE html>
+<html lang="es" data-empresa="{{ letra_empresa }}">
+<head>
+    <meta charset="utf-8">
+    <title>Comprobante de seña #{{ sena.id }}</title>
+    {{ estilos_documento('Seña #' ~ sena.id) }}
+    <style>
+        /* El logo de Mallorca es monocromo (`currentColor`) y en el PDF sale
+           negro: el motor de SVG de WeasyPrint no hereda el `color` del HTML
+           ni resuelve `var()`, y escribir el azul a mano rompería la regla
+           de la paleta (`test_paleta.py`). En papel, negro es su versión
+           correcta. */
+        .logo { height: 14mm; margin-bottom: 3pt; }
+        .logo svg { height: 14mm; width: auto; }
+
+        /* El monto es lo que el cliente busca primero en el papel. */
+        .destacado {
+            margin: 6pt 0 12pt;
+            padding: 8pt 10pt;
+            border: 1pt solid var(--color-primary);
+            border-radius: 4pt;
+        }
+        .monto { font-size: 22pt; font-weight: bold; color: var(--color-primary); }
+
+        .leyenda { margin-top: 18pt; font-size: 8pt; color: var(--color-text-header); }
+    </style>
+</head>
+<body>
+
+    <div class="encabezado">
+        <div>
+            <div class="logo">{{ marca(letra_empresa, clases='') }}</div>
+            <div class="rotulo">Comprobante de seña</div>
+        </div>
+        <div>
+            <div class="numero">#{{ sena.id }}</div>
+            <div class="estado">{{ sena.created_at | fecha(con_hora=True) }}</div>
+        </div>
+    </div>
+
+    <div class="datos">
+        <div>
+            <div class="rotulo">Cliente</div>
+            <div class="valor">{{ sena.cliente.nombre }}</div>
+            {% if sena.cliente.dni %}<div>DNI {{ sena.cliente.dni }}</div>{% endif %}
+            {% if sena.cliente.telefono %}<div>Tel. {{ sena.cliente.telefono }}</div>{% endif %}
+        </div>
+        <div>
+            <div class="rotulo">Local</div>
+            <div class="valor">{{ sena.punto_de_venta.nombre if sena.punto_de_venta else '—' }}</div>
+        </div>
+    </div>
+
+    <div class="destacado">
+        <div class="datos" style="margin-bottom: 0">
+            <div>
+                <div class="rotulo">Monto de la seña</div>
+                <div class="monto">{{ sena.monto | pesos }}</div>
+            </div>
+            <div>
+                <div class="rotulo">Vence el</div>
+                <div class="valor">{{ sena.vence_el | fecha }}</div>
+                <div class="rotulo" style="margin-top: 6pt">Medio de pago</div>
+                <div class="valor">{{ sena.medio_de_pago.nombre if sena.medio_de_pago else '—' }}</div>
+            </div>
+        </div>
+    </div>
+
+    {% if sena.descripcion %}
+    <div class="rotulo">Nota</div>
+    <div class="notas" style="margin-top: 3pt">{{ sena.descripcion }}</div>
+    {% endif %}
+
+    <div class="leyenda">
+        Atendió: {{ sena.usuario.nombre }}<br>
+        Documento no válido como factura. Emitido el {{ emitido | fecha(con_hora=True) }}.
+    </div>
+
+</body>
+</html>

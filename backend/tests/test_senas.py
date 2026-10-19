@@ -34,6 +34,7 @@ from tests.test_ventas import (  # noqa: F401
     efectivo,
     local,
     medio_sena,
+    otro_local,
     venta,
 )
 
@@ -152,3 +153,66 @@ def test_el_home_ofrece_senas_y_la_pantalla_carga(client, db, autor, dispositivo
     pantalla = client.get("/senas").text
     assert "senaNueva()" in pantalla
     assert f"{config.dias_vigencia_sena} días" in pantalla
+
+
+# ── Comprobante en PDF ─────────────────────────────────────────────────────
+
+
+def test_el_comprobante_trae_los_datos_de_la_sena(db, cliente, dejar_sena):
+    """Lo que el cliente se lleva: quién, cuánto, hasta cuándo y la nota."""
+    from app.core.templates import templates
+    from app.core.utils import ahora_db
+
+    sena = dejar_sena(cliente, "12345.5")
+    sena.descripcion = "Anillo talle 14, lo retira el sábado"
+    db.flush()
+    db.refresh(sena)
+
+    html = templates.get_template("reports/sena.html").render(
+        sena=sena, letra_empresa="S", emitido=ahora_db()
+    )
+
+    assert "Comprobante de seña" in html
+    assert "Leandra Carballo" in html
+    assert "39059158" in html
+    assert "$ 12.345,50" in html
+    assert sena.vence_el.strftime("%d/%m/%Y") in html
+    assert "Anillo talle 14, lo retira el sábado" in html
+    assert "Efectivo" in html
+    assert "Patio Olmos" in html
+    assert "no válido como factura" in html
+
+
+def test_api_comprobante_devuelve_el_pdf(client, db, autor, dispositivo, cliente, dejar_sena):
+    sena = dejar_sena(cliente, "3000")
+    db.commit()
+    client.cookies.set("device_uuid", str(dispositivo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    r = client.get(f"/api/v1/senas/{sena.id}/comprobante")
+
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/pdf"
+    assert f'filename="sena-{sena.id}.pdf"' in r.headers["content-disposition"]
+    assert r.content.startswith(b"%PDF")
+
+    assert client.get("/api/v1/senas/999999/comprobante").status_code == 404
+
+
+def test_no_se_baja_el_comprobante_de_una_sena_de_otro_local(
+    client, db, cliente, dejar_sena, otro_local, crear_usuario, dar_permiso, roles,
+):
+    """Cambiar el id en la URL no alcanza para ver la seña de otro local."""
+    from app.core.permisos import ROL_VENDEDOR, Modulo
+    from app.models.dispositivo import Dispositivo
+
+    sena = dejar_sena(cliente, "3000")  # en "Patio Olmos"
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(punto_de_venta_id=otro_local.id, activo=True, descripcion="Celu 2")
+    db.add(equipo)
+    db.commit()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    assert client.get(f"/api/v1/senas/{sena.id}/comprobante").status_code == 403

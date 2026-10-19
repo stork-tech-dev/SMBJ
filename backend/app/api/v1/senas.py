@@ -14,7 +14,7 @@ lo explique.
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -86,6 +86,41 @@ def medios_de_pago(
     que no se lea como un id.
     """
     return servicio_medios.medios_para_cobro_directo(db)
+
+
+@router.get(
+    "/{sena_id}/comprobante",
+    summary="Comprobante de la seña en PDF",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+def comprobante(
+    sena_id: int,
+    db: Session = Depends(get_db),
+    scope: DeviceScope = Depends(get_device_scope),
+    _=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
+):
+    """
+    El papel para el cliente, con el logo de la empresa y los datos de la
+    seña. Mismo permiso que registrarla: quien la cargó puede mandarla. Y el
+    mismo aislamiento por local: nadie baja la seña de otro local cambiando
+    el id de la URL.
+    """
+    from app.reports.sena_pdf import generar_pdf_sena
+
+    try:
+        sena = servicio.obtener_sena(db, sena_id)
+    except NoEncontrado as exc:
+        raise _404(exc) from exc
+
+    if sena.punto_de_venta_id is not None:
+        scope.exigir(sena.punto_de_venta_id)
+
+    return Response(
+        content=generar_pdf_sena(db, sena),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="sena-{sena.id}.pdf"'},
+    )
 
 
 @router.get("/{sena_id}", response_model=SenaDetalle, summary="Detalle con sus usos")

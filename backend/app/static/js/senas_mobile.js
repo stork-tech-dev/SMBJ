@@ -104,6 +104,42 @@ function senaNueva() {
             }
         },
 
+        // ---- Comprobante en PDF para el cliente ---------------------------
+        compartiendo: false,
+
+        get urlComprobante() {
+            return this.hecha ? `${API_SENAS}/${this.hecha.id}/comprobante` : '#';
+        },
+
+        // Si el celular puede pasarle un archivo a otra app (WhatsApp, mail).
+        // Si no, queda solo la descarga.
+        get puedeCompartir() {
+            try {
+                const prueba = new File([''], 'x.pdf', { type: 'application/pdf' });
+                return Boolean(navigator.canShare?.({ files: [prueba] }));
+            } catch (e) {
+                return false;
+            }
+        },
+
+        async compartirComprobante() {
+            if (!this.hecha || this.compartiendo) return;
+            this.compartiendo = true;
+            try {
+                const resp = await fetch(this.urlComprobante, { credentials: 'same-origin' });
+                if (!resp.ok) throw new Error('No se pudo generar el comprobante');
+                const archivo = new File(
+                    [await resp.blob()], `sena-${this.hecha.id}.pdf`, { type: 'application/pdf' },
+                );
+                await navigator.share({ files: [archivo], title: 'Comprobante de seña' });
+            } catch (e) {
+                // Cerrar el menú de compartir no es un error.
+                if (e.name !== 'AbortError') window.toast(e.message, 'error');
+            } finally {
+                this.compartiendo = false;
+            }
+        },
+
         reiniciar() {
             this.hecha = null;
             this.quitarCliente();
