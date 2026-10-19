@@ -263,6 +263,14 @@ _CRITERIO_ANALISIS_VENTAS = (
 )
 
 
+_CRITERIO_HISTORIAL_PRODUCTO = (
+    "Toda la vida de un producto y sus variantes, de lo más reciente a lo más "
+    "viejo: cuándo y cuánto se cargó, cada movimiento de stock, las ventas "
+    "confirmadas por local, las fallas (cambios por falla y bajas) y los "
+    "cambios de precio, incluidos los del dólar de su proveedor."
+)
+
+
 # Reportes que agrupa la tarjeta "Reportes de Producto" (página
 # RUTA_REPORTES_PRODUCTO, que es otro hub con estas tarjetas).
 SECCIONES_REPORTES_PRODUCTO = [
@@ -279,6 +287,13 @@ SECCIONES_REPORTES_PRODUCTO = [
         "url": "/reportes/analisis-ventas",
         "modulo": Modulo.REPORTES,
         "title": _CRITERIO_ANALISIS_VENTAS,
+    },
+    {
+        "nombre": "Historial del Producto",
+        "descripcion": "Carga, movimientos de stock, ventas, fallas y cambios de precio de un producto",
+        "url": "/reportes/historial-producto",
+        "modulo": Modulo.REPORTES,
+        "title": _CRITERIO_HISTORIAL_PRODUCTO,
     },
 ]
 
@@ -1020,6 +1035,34 @@ async def reporte_stock_bajo_minimo(
             request, db, usuario,
             titulo="Productos bajo stock mínimo",
             ruta_activa=RUTA_HUB_REPORTES,
+        ),
+    )
+
+
+@router.get("/reportes/historial-producto", response_class=HTMLResponse)
+async def reporte_historial_producto(
+    request: Request,
+    producto_id: int | None = None,
+    db: Session = Depends(get_db),
+    usuario=Depends(requiere_sesion),
+):
+    """
+    Historial de un producto. `?producto_id=` lo abre con ese producto ya
+    elegido (volver a la página o compartir el link). Los datos salen de
+    /api/v1/reportes/historial-producto: esta página no consulta la base.
+    """
+    from app.reports.historial_producto_pdf import NOMBRES
+
+    return templates.TemplateResponse(
+        request,
+        "pages/reportes/historial_producto.html",
+        contexto_base(
+            request, db, usuario,
+            titulo="Historial del Producto",
+            ruta_activa=RUTA_HUB_REPORTES,
+            criterio=_CRITERIO_HISTORIAL_PRODUCTO,
+            producto_id=producto_id,
+            nombres=NOMBRES,
         ),
     )
 

@@ -1,0 +1,256 @@
+{# Reporte: Historial del Producto. Los datos salen de
+   /api/v1/reportes/historial-producto: esta página no consulta la base
+   (Principio 1). Mismo contenido que el PDF (reports/historial_producto.html). #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/icons.html" import icono %}
+{% from "components/miniatura.html" import miniatura %}
+{% import "pages/reportes/caja/_clases.html" as c %}
+
+{# Título de cada parte con su cantidad de registros, y la tarjeta que la
+   envuelve: las cinco partes se ven iguales (Principio 2). #}
+{% macro parte(titulo, cantidad) %}
+<section class="mt-8">
+    <h2 class="flex items-baseline gap-2 text-lg font-semibold text-texto">
+        {{ titulo }}
+        <span class="text-sm font-normal text-texto-muted" x-text="{{ cantidad }}"></span>
+    </h2>
+    <div class="mt-2 bg-surface rounded-[20px] tarjeta overflow-hidden">
+        <div class="overflow-x-auto">
+            {{ caller() }}
+        </div>
+    </div>
+</section>
+{% endmacro %}
+
+{% macro sin_registros(columnas, condicion) %}
+<tr x-show="{{ condicion }}">
+    <td colspan="{{ columnas }}" class="px-8 py-10 text-center text-texto-muted">Sin registros.</td>
+</tr>
+{% endmacro %}
+
+{% block contenido %}
+{# Comillas simples: el JSON trae dobles (y `tojson` escapa las simples). #}
+<div x-data='historialProducto({{ producto_id | tojson }}, {{ nombres | tojson }})' x-init="iniciar()">
+
+    {% call encabezado('Historial del Producto', volver_url='/reportes/productos',
+                       volver_texto='Reportes de Producto') %}
+        <a x-show="datos" x-cloak :href="urlPdf"
+           class="h-control px-4 rounded-input text-sm font-semibold text-primary bg-primary/10
+                  hover:bg-primary/15 inline-flex items-center gap-2">
+            {{ icono('descarga', clases='w-4 h-4') }}
+            Descargar PDF
+        </a>
+    {% endcall %}
+
+    <p class="mt-4 max-w-3xl text-sm text-texto-muted">{{ criterio }}</p>
+
+    {# ---------- Buscador ---------- #}
+    <div class="relative mt-6 w-full sm:max-w-[32rem]">
+        <label for="f-producto" class="sr-only">Buscar producto</label>
+        <input id="f-producto" type="search" x-model="busqueda" autocomplete="off"
+               @input.debounce.300ms="buscar()"
+               placeholder="SKU, descripción o código de etiqueta"
+               class="h-control w-full pl-4 pr-4 text-sm bg-surface text-texto border-2
+                      border-borde rounded-input placeholder:text-texto-disabled
+                      focus:outline-none focus:border-primary">
+        <ul x-show="resultados.length" x-cloak @click.outside="resultados = []"
+            class="absolute z-10 mt-1 w-full max-h-72 overflow-y-auto bg-surface border
+                   border-borde rounded-input shadow-lg">
+            <template x-for="p in resultados" :key="p.id">
+                <li>
+                    <button type="button" @click="elegir(p)"
+                            class="w-full text-left px-4 py-3 min-h-toque hover:bg-surface-alt
+                                   flex items-center gap-3">
+                        {{ miniatura('p.foto_url', tamano='w-10 h-10') }}
+                        <span class="min-w-0">
+                            <span class="block text-base" x-text="p.descripcion"></span>
+                            <span class="block text-xs text-texto-muted"
+                                  x-text="'SKU ' + p.sku + (p.activo ? '' : ' · inactivo')"></span>
+                        </span>
+                    </button>
+                </li>
+            </template>
+        </ul>
+        <p x-show="sinResultados" x-cloak class="mt-2 text-sm text-texto-muted">
+            No hay productos con ese texto.
+        </p>
+    </div>
+
+    <p x-show="!productoId" class="mt-16 text-center text-texto-muted">
+        Buscá un producto para ver su historial.
+    </p>
+    <p x-show="cargando && !datos" x-cloak class="mt-16 text-center text-texto-muted">Cargando…</p>
+
+    <template x-if="datos">
+        <div>
+            {# ---------- Ficha ---------- #}
+            <div class="mt-6 p-5 sm:p-6 bg-surface rounded-[20px] tarjeta grid gap-4
+                        grid-cols-2 sm:grid-cols-4">
+                <div class="col-span-2">
+                    <p class="text-xs uppercase tracking-wide text-texto-header">Producto</p>
+                    <p class="text-lg font-semibold" x-text="datos.ficha.descripcion"></p>
+                    <p class="text-sm text-texto-muted"
+                       x-text="'SKU ' + datos.ficha.sku + ' · ' + datos.ficha.categoria + ' · ' + datos.ficha.proveedor"></p>
+                </div>
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-texto-header">Precio de venta</p>
+                    <p class="text-lg font-semibold tabular-nums" x-text="pesos(datos.ficha.precio_venta)"></p>
+                    <p class="text-sm text-texto-muted" x-text="'USD ' + Number(datos.ficha.precio_usd)"></p>
+                </div>
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-texto-header">Stock actual</p>
+                    <p class="text-lg font-semibold tabular-nums" x-text="datos.ficha.stock_total"></p>
+                    <p class="text-sm text-texto-muted"
+                       x-text="datos.ficha.variantes.length + (datos.ficha.variantes.length === 1 ? ' variante' : ' variantes')"></p>
+                </div>
+            </div>
+
+            {# ---------- 1. Carga ---------- #}
+            {% call parte('Carga', "datos.carga.length + ' registros'") %}
+            <table class="w-full border-collapse text-base">
+                <thead><tr>
+                    <th class="{{ c.th }} pl-8">Fecha</th><th class="{{ c.th }}">Qué</th>
+                    <th class="{{ c.th }}">Variante</th><th class="{{ c.th_monto }}">Cantidad</th>
+                    <th class="{{ c.th }}">Dónde</th><th class="{{ c.th }} pr-8">Quién</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="(f, i) in datos.carga" :key="i">
+                        <tr class="{{ c.fila }}">
+                            <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="fechaHora(f.fecha)"></td>
+                            <td class="{{ c.td }}" x-text="f.tipo === 'alta' ? 'Alta' : 'Ingreso'"></td>
+                            <td class="{{ c.td }} font-mono text-sm" x-text="f.variante || '—'"></td>
+                            <td class="{{ c.td_monto }}" x-text="f.cantidad ?? '—'"></td>
+                            <td class="{{ c.td }}" x-text="f.punto_de_venta || '—'"></td>
+                            <td class="{{ c.td }} pr-8" x-text="f.usuario || '—'"></td>
+                        </tr>
+                    </template>
+                    {{ sin_registros(6, '!datos.carga.length') }}
+                </tbody>
+            </table>
+            {% endcall %}
+
+            {# ---------- 2. Movimientos ---------- #}
+            {% call parte('Movimientos de stock', "datos.movimientos.length + ' movimientos'") %}
+            <table class="w-full border-collapse text-base">
+                <thead><tr>
+                    <th class="{{ c.th }} pl-8">Fecha</th><th class="{{ c.th }}">Tipo</th>
+                    <th class="{{ c.th }}">Variante</th><th class="{{ c.th_monto }}">Cantidad</th>
+                    <th class="{{ c.th }}">Origen → destino</th><th class="{{ c.th }}">Quién</th>
+                    <th class="{{ c.th }} pr-8">Referencia</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="(m, i) in datos.movimientos" :key="i">
+                        <tr class="{{ c.fila }}">
+                            <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="fechaHora(m.fecha)"></td>
+                            <td class="{{ c.td }} whitespace-nowrap" x-text="tipoMovimiento(m.tipo)"></td>
+                            <td class="{{ c.td }} font-mono text-sm" x-text="m.variante"></td>
+                            <td class="{{ c.td_monto }}" x-text="m.cantidad"></td>
+                            <td class="{{ c.td }} whitespace-nowrap"
+                                x-text="(m.origen || '—') + ' → ' + (m.destino || '—')"></td>
+                            <td class="{{ c.td }}" x-text="m.usuario"></td>
+                            <td class="{{ c.td }} pr-8 text-sm text-texto-muted" x-text="m.referencia || ''"></td>
+                        </tr>
+                    </template>
+                    {{ sin_registros(7, '!datos.movimientos.length') }}
+                </tbody>
+            </table>
+            {% endcall %}
+
+            {# ---------- 3. Ventas ---------- #}
+            {% call parte('Ventas', "datos.ventas.unidades + ' unidades · ' + pesos(datos.ventas.importe)") %}
+            <table class="w-full border-collapse text-base">
+                <thead><tr>
+                    <th class="{{ c.th }} pl-8">Local</th><th class="{{ c.th_monto }}">Unidades</th>
+                    <th class="{{ c.th_monto }} pr-8">Importe</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="l in datos.ventas.por_local" :key="l.punto_de_venta">
+                        <tr class="{{ c.fila }}">
+                            <td class="{{ c.td }} pl-8 font-medium" x-text="l.punto_de_venta"></td>
+                            <td class="{{ c.td_monto }}" x-text="l.unidades"></td>
+                            <td class="{{ c.td_monto }} pr-8" x-text="pesos(l.importe)"></td>
+                        </tr>
+                    </template>
+                    {{ sin_registros(3, '!datos.ventas.por_local.length') }}
+                </tbody>
+            </table>
+            <table x-show="datos.ventas.detalle.length" class="w-full border-collapse text-base border-t-2 border-borde">
+                <thead><tr>
+                    <th class="{{ c.th }} pl-8">Fecha</th><th class="{{ c.th }}">Venta</th>
+                    <th class="{{ c.th }}">Local</th><th class="{{ c.th }}">Variante</th>
+                    <th class="{{ c.th_monto }} pr-8">Precio</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="(v, i) in datos.ventas.detalle" :key="i">
+                        <tr class="{{ c.fila }}">
+                            <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="fechaHora(v.fecha)"></td>
+                            <td class="{{ c.td }}" x-text="v.numero"></td>
+                            <td class="{{ c.td }}" x-text="v.punto_de_venta"></td>
+                            <td class="{{ c.td }} font-mono text-sm" x-text="v.variante"></td>
+                            <td class="{{ c.td_monto }} pr-8" x-text="pesos(v.precio)"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            {% endcall %}
+
+            {# ---------- 4. Fallas ---------- #}
+            {% call parte('Fallas', "datos.fallas.length + ' registros'") %}
+            <table class="w-full border-collapse text-base">
+                <thead><tr>
+                    <th class="{{ c.th }} pl-8">Fecha</th><th class="{{ c.th }}">Tipo</th>
+                    <th class="{{ c.th }}">Variante</th><th class="{{ c.th_monto }}">Cantidad</th>
+                    <th class="{{ c.th }}">Local</th><th class="{{ c.th }}">Motivo / autorizó</th>
+                    <th class="{{ c.th }} pr-8">Quién</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="(f, i) in datos.fallas" :key="i">
+                        <tr class="{{ c.fila }}">
+                            <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="fechaHora(f.fecha)"></td>
+                            <td class="{{ c.td }} text-danger font-medium"
+                                x-text="f.tipo === 'cambio_falla' ? 'Cambio por falla' : 'Baja'"></td>
+                            <td class="{{ c.td }} font-mono text-sm" x-text="f.variante"></td>
+                            <td class="{{ c.td_monto }}" x-text="f.cantidad"></td>
+                            <td class="{{ c.td }}" x-text="f.punto_de_venta || '—'"></td>
+                            <td class="{{ c.td }}" x-text="f.detalle || '—'"></td>
+                            <td class="{{ c.td }} pr-8" x-text="f.usuario"></td>
+                        </tr>
+                    </template>
+                    {{ sin_registros(7, '!datos.fallas.length') }}
+                </tbody>
+            </table>
+            {% endcall %}
+
+            {# ---------- 5. Precios ---------- #}
+            {% call parte('Modificaciones de precio', "datos.precios.length + ' cambios'") %}
+            <table class="w-full border-collapse text-base">
+                <thead><tr>
+                    <th class="{{ c.th }} pl-8">Fecha</th><th class="{{ c.th }}">Qué cambió</th>
+                    <th class="{{ c.th }}">Variante</th><th class="{{ c.th_monto }}">Antes</th>
+                    <th class="{{ c.th_monto }}">Después</th><th class="{{ c.th }} pr-8">Quién</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="(p, i) in datos.precios" :key="i">
+                        <tr class="{{ c.fila }}">
+                            <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="fechaHora(p.fecha)"></td>
+                            <td class="{{ c.td }}" x-text="campoPrecio(p)"></td>
+                            <td class="{{ c.td }} font-mono text-sm" x-text="p.variante || '—'"></td>
+                            <td class="{{ c.td_monto }} text-texto-muted" x-text="valorPrecio(p, p.anterior)"></td>
+                            <td class="{{ c.td_monto }} font-semibold" x-text="valorPrecio(p, p.nuevo)"></td>
+                            <td class="{{ c.td }} pr-8" x-text="p.usuario || '—'"></td>
+                        </tr>
+                    </template>
+                    {{ sin_registros(6, '!datos.precios.length') }}
+                </tbody>
+            </table>
+            {% endcall %}
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/reportes_historial_producto.js') }}"></script>
+{% endblock %}

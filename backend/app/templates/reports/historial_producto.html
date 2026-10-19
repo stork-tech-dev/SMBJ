@@ -1,0 +1,161 @@
+{# ===========================================================================
+   Historial del Producto en PDF: ficha y las cinco partes (carga,
+   movimientos, ventas, fallas, precios), cada una de lo más reciente a lo
+   más viejo.
+
+   Lo arma `reports/historial_producto_pdf.py` sobre el dict de
+   `services/reportes_producto.py` (`h`). El estilo común sale de
+   `reports/estilos.html`; `data-empresa` elige la paleta y `marca()` el logo.
+   =========================================================================== #}
+{% from "reports/estilos.html" import estilos_documento %}
+{% from "components/marca.html" import marca %}
+{% macro vacio(columnas) %}
+<tr><td colspan="{{ columnas }}" class="sin-datos">Sin registros.</td></tr>
+{% endmacro %}
+<!DOCTYPE html>
+<html lang="es" data-empresa="{{ letra_empresa }}">
+<head>
+    <meta charset="utf-8">
+    <title>Historial {{ h.ficha.sku }}</title>
+    {{ estilos_documento('Historial ' ~ h.ficha.sku) }}
+    <style>
+        .logo svg { height: 12mm; width: auto; }
+        h2 {
+            font-size: 11pt;
+            color: var(--color-primary);
+            margin: 14pt 0 2pt;
+            page-break-after: avoid;
+        }
+        table { font-size: 8.5pt; }
+        .sin-datos { color: var(--color-text-header); font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <div class="encabezado">
+        <div>
+            <div class="logo">{{ marca(letra_empresa, clases='') }}</div>
+            <div class="rotulo">Historial del producto</div>
+        </div>
+        <div>
+            <div class="numero">{{ h.ficha.sku }}</div>
+            <div class="estado">Emitido el {{ emitido | fecha(con_hora=True) }}</div>
+        </div>
+    </div>
+
+    <div class="datos">
+        <div>
+            <div class="rotulo">Producto</div>
+            <div class="valor">{{ h.ficha.descripcion }}</div>
+            <div>{{ h.ficha.categoria }} · {{ h.ficha.proveedor }}</div>
+        </div>
+        <div>
+            <div class="rotulo">Precio de venta</div>
+            <div class="valor">{{ h.ficha.precio_venta | pesos }}</div>
+            <div>USD {{ h.ficha.precio_usd }}</div>
+        </div>
+        <div>
+            <div class="rotulo">Stock actual</div>
+            <div class="valor">{{ h.ficha.stock_total }}</div>
+            <div>Alta: {{ h.ficha.created_at | fecha }}</div>
+        </div>
+    </div>
+
+    <h2>Carga</h2>
+    <table>
+        <thead><tr><th>Fecha</th><th>Qué</th><th>Variante</th><th class="num">Cantidad</th><th>Dónde</th><th>Quién</th></tr></thead>
+        <tbody>
+        {% for f in h.carga %}
+            <tr>
+                <td>{{ f.fecha | fecha(con_hora=True) }}</td>
+                <td>{{ 'Alta' if f.tipo == 'alta' else 'Ingreso' }}</td>
+                <td class="codigo">{{ f.variante or '—' }}</td>
+                <td class="num">{{ f.cantidad if f.cantidad is not none else '—' }}</td>
+                <td>{{ f.punto_de_venta or '—' }}</td>
+                <td>{{ f.usuario or '—' }}</td>
+            </tr>
+        {% else %}{{ vacio(6) }}{% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Movimientos de stock</h2>
+    <table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Variante</th><th class="num">Cant.</th><th>Origen → destino</th><th>Quién</th><th>Referencia</th></tr></thead>
+        <tbody>
+        {% for m in h.movimientos %}
+            <tr>
+                <td>{{ m.fecha | fecha(con_hora=True) }}</td>
+                <td>{{ tipos_movimiento.get(m.tipo, m.tipo) }}</td>
+                <td class="codigo">{{ m.variante }}</td>
+                <td class="num">{{ m.cantidad }}</td>
+                <td>{{ m.origen or '—' }} → {{ m.destino or '—' }}</td>
+                <td>{{ m.usuario }}</td>
+                <td>{{ m.referencia or '' }}</td>
+            </tr>
+        {% else %}{{ vacio(7) }}{% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Ventas — {{ h.ventas.unidades }} unidades, {{ h.ventas.importe | pesos }}</h2>
+    <table>
+        <thead><tr><th>Local</th><th class="num">Unidades</th><th class="num">Importe</th></tr></thead>
+        <tbody>
+        {% for l in h.ventas.por_local %}
+            <tr><td>{{ l.punto_de_venta }}</td><td class="num">{{ l.unidades }}</td><td class="num">{{ l.importe | pesos }}</td></tr>
+        {% else %}{{ vacio(3) }}{% endfor %}
+        </tbody>
+    </table>
+    {% if h.ventas.detalle %}
+    <table>
+        <thead><tr><th>Fecha</th><th>Venta</th><th>Local</th><th>Variante</th><th class="num">Precio</th></tr></thead>
+        <tbody>
+        {% for v in h.ventas.detalle %}
+            <tr>
+                <td>{{ v.fecha | fecha(con_hora=True) }}</td>
+                <td>{{ v.numero }}</td>
+                <td>{{ v.punto_de_venta }}</td>
+                <td class="codigo">{{ v.variante }}</td>
+                <td class="num">{{ v.precio | pesos }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <h2>Fallas</h2>
+    <table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Variante</th><th class="num">Cant.</th><th>Local</th><th>Motivo / autorizó</th><th>Quién</th></tr></thead>
+        <tbody>
+        {% for f in h.fallas %}
+            <tr>
+                <td>{{ f.fecha | fecha(con_hora=True) }}</td>
+                <td>{{ 'Cambio por falla' if f.tipo == 'cambio_falla' else 'Baja' }}</td>
+                <td class="codigo">{{ f.variante }}</td>
+                <td class="num">{{ f.cantidad }}</td>
+                <td>{{ f.punto_de_venta or '—' }}</td>
+                <td>{{ f.detalle or '—' }}</td>
+                <td>{{ f.usuario }}</td>
+            </tr>
+        {% else %}{{ vacio(7) }}{% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Modificaciones de precio</h2>
+    <table>
+        <thead><tr><th>Fecha</th><th>Qué cambió</th><th>Variante</th><th class="num">Antes</th><th class="num">Después</th><th>Quién</th></tr></thead>
+        <tbody>
+        {% for p in h.precios %}
+            <tr>
+                <td>{{ p.fecha | fecha(con_hora=True) }}</td>
+                <td>{{ campos_precio.get(p.campo, p.campo) }}{% if origenes_dolar.get(p.origen) %} ({{ origenes_dolar[p.origen] }}){% endif %}</td>
+                <td class="codigo">{{ p.variante or '—' }}</td>
+                <td class="num">{{ p.anterior if p.anterior is not none else '—' }}</td>
+                <td class="num">{{ p.nuevo if p.nuevo is not none else '—' }}</td>
+                <td>{{ p.usuario or '—' }}</td>
+            </tr>
+        {% else %}{{ vacio(6) }}{% endfor %}
+        </tbody>
+    </table>
+
+</body>
+</html>

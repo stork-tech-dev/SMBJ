@@ -28,6 +28,7 @@ from app.api.v1 import (
     puntos_de_venta,
     remitos,
     reportes_caja,
+    reportes_producto,
     reportes_productividad,
     roles,
     senas,
@@ -68,6 +69,7 @@ api_router.include_router(operaciones_caja.mercaderia_router)
 api_router.include_router(operaciones_caja.joyero_router)
 api_router.include_router(operaciones_caja.movimientos_router)
 api_router.include_router(reportes_caja.router)
+api_router.include_router(reportes_producto.router)
 api_router.include_router(reportes_productividad.router)
 
 __all__ = ["api_router"]
