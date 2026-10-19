@@ -95,9 +95,13 @@ def generar_codigo_cambio(db: Session) -> str:
     Es aleatorio y no correlativo a propósito: un código secuencial dejaría
     adivinar el de la venta siguiente, y con él se puede pedir un cambio.
 
+    Es el único generador: lo usan la venta, el cambio (para lo que se lleva
+    el cliente) y el retiro de mercadería, así todos los códigos tienen el
+    mismo largo y el mismo alfabeto.
+
     Reintenta ante una colisión en vez de confiar en que no va a pasar. Con
-    32^8 combinaciones es improbable, pero "improbable" no es "imposible" y
-    el UNIQUE de la base cortaría la confirmación de una venta real.
+    32^4 (~1 millón) combinaciones es poco probable, pero "poco probable" no
+    es "imposible" y el UNIQUE de la base cortaría la confirmación.
     """
     for _ in range(10):
         codigo = "".join(secrets.choice(_ALFABETO_CAMBIO) for _ in range(LARGO_CODIGO_CAMBIO))

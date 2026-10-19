@@ -225,7 +225,8 @@ class Venta(Base):
     )
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
 
-    # 8 caracteres alfanuméricos, generados al CONFIRMAR. NULL mientras la
+    # 4 caracteres alfanuméricos (los emitidos antes de oct-2026 tienen 8 y
+    # siguen valiendo: la columna admite los dos), generados al CONFIRMAR. NULL mientras la
     # venta está en curso: un carrito abierto no tiene con qué cambiarse
     # nada, y darle código antes gastaría uno por cada venta abandonada.
     codigo_cambio: Mapped[str | None] = mapped_column(

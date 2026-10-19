@@ -12,7 +12,6 @@ Reglas globales:
 - Todo el efecto (stock, puntos, nuevo código) va en una sola transacción.
 """
 
-import secrets
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_FLOOR
 
@@ -39,9 +38,7 @@ from app.services import clientes as servicio_clientes
 from app.services import configuracion as servicio_configuracion
 from app.services import stock as servicio_stock
 from app.services.roles import NoEncontrado, ReglaDeNegocio
-from app.services.ventas import codigo_cambio_en_uso, generar_codigo_cambio
-
-_ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin 0/O ni 1/I/L
+from app.services.ventas import generar_codigo_cambio
 
 
 # ── Utilidades ──────────────────────────────────────────────────────────────
@@ -164,17 +161,6 @@ def _mismo_material(mat_a: Categoria | None, mat_b: Categoria | None) -> bool:
     if mat_a is None or mat_b is None:
         return False
     return mat_a.id == mat_b.id
-
-
-def _generar_codigo_cambio_nuevo(db: Session) -> str:
-    """Código único de 8 chars para los productos nuevos del cambio."""
-    for _ in range(10):
-        codigo = "".join(secrets.choice(_ALFABETO) for _ in range(8))
-        if not codigo_cambio_en_uso(db, codigo):
-            return codigo
-    raise ReglaDeNegocio(
-        "No se pudo generar un código de cambio único: reintentá la operación"
-    )
 
 
 # ── Valuación del ítem devuelto ─────────────────────────────────────────────
@@ -838,7 +824,9 @@ def confirmar_cambio(
             )
 
     # ── Generar nuevo código de cambio para los ítems nuevos ────────────────
-    codigo_nuevo = _generar_codigo_cambio_nuevo(db)
+    # El mismo generador que la venta y el retiro de mercadería: un solo
+    # largo, un solo alfabeto y la unicidad contra los tres orígenes.
+    codigo_nuevo = generar_codigo_cambio(db)
 
     # ── Actualizar contador de cambios previos en la venta origen ───────────
     previos = db.execute(

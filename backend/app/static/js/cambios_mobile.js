@@ -16,6 +16,14 @@ const URL_CAMBIOS = '/api/v1/cambios';
 const URL_VARIANTES = '/api/v1/productos/variantes';
 const URL_AUTORIZADORES = '/api/v1/usuarios/autorizadores';
 
+// Largo del código de cambio: el mismo que genera el backend
+// (`LARGO_CODIGO_CAMBIO` en services/ventas.py). Los emitidos antes de
+// acortarlo tienen 8 y siguen valiendo.
+const LARGO_CODIGO_CAMBIO = 4;
+const LARGO_CODIGO_CAMBIO_VIEJO = 8;
+// Pausa de tipeo antes de buscar solo el ticket.
+const ESPERA_BUSQUEDA_MS = 500;
+
 // Resuelto en el momento de llamar: este script no lleva `defer` y corre
 // antes que app.js (mismo motivo que en ventas_mobile.js).
 const pedir = (url, opciones) => window.pedir(url, opciones);
@@ -54,7 +62,7 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
             try {
                 this.autorizadores = await pedir(URL_AUTORIZADORES);
             } catch (_) { /* no bloquea: el selector queda vacío */ }
-            if (this.form.codigo_cambio.trim().length === 8) this.buscarTicket();
+            if (this.codigoCompleto) this.buscarTicket();
         },
 
         get puedeContinuar() {
@@ -76,15 +84,29 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
                 : [...this.elegidos, clave];
         },
 
-        // Otro código: lo elegido ya no corresponde. Con los 8 caracteres
-        // busca solo, sin tener que tocar la lupa.
+        // Si el código ya tiene el largo de uno completo: 4 caracteres, u 8
+        // los de antes de que se acortaran (siguen siendo válidos).
+        get codigoCompleto() {
+            const largo = this.form.codigo_cambio.trim().length;
+            return largo === LARGO_CODIGO_CAMBIO || largo === LARGO_CODIGO_CAMBIO_VIEJO;
+        },
+
+        // Otro código: lo elegido ya no corresponde. Completo, busca solo
+        // sin tener que tocar la lupa, pero recién cuando se deja de
+        // escribir: así uno viejo de 8 no se busca (y falla) a los 4.
+        esperaBusqueda: null,
+
         codigoCambiado() {
             this.ticket = null;
             this.elegidos = [];
-            if (this.form.codigo_cambio.trim().length === 8) this.buscarTicket();
+            clearTimeout(this.esperaBusqueda);
+            if (this.codigoCompleto) {
+                this.esperaBusqueda = setTimeout(() => this.buscarTicket(), ESPERA_BUSQUEDA_MS);
+            }
         },
 
         async buscarTicket() {
+            clearTimeout(this.esperaBusqueda);
             const codigo = this.form.codigo_cambio.trim().toUpperCase();
             if (!codigo) return;
             this.buscando = true;

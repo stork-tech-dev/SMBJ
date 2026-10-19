@@ -166,7 +166,7 @@ Permite que un cliente devuelva uno o varios productos y se lleve otros distinto
 | Cambio por falla | El producto está fallado y no hay ticket a mano | Elegir un **autorizador** de la lista |
 | Gift card física | El cliente canjea una gift card de cartón/plástico | El código de cambio del ticket |
 
-> **Importante:** El código de cambio es el que el sistema generó al confirmar la venta original (8 caracteres, se lo llevó el cliente impreso en el ticket). Vence a los 30 días — si pasó ese plazo, el sistema avisa pero **no bloquea**: se puede seguir igual.
+> **Importante:** El código de cambio es el que el sistema generó al confirmar la venta original (4 caracteres, anotado en el ticket que se llevó el cliente; los de antes de octubre de 2026 tienen 8 y siguen sirviendo). Vence a los 30 días — si pasó ese plazo, el sistema avisa pero **no bloquea**: se puede seguir igual.
 
 ### Paso a paso
 

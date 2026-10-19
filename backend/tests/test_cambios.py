@@ -223,3 +223,28 @@ def test_la_vendedora_ve_los_medios_para_pagar_la_diferencia_y_confirma(
     })
     assert resp.status_code == 200, resp.text
 
+
+def test_el_codigo_nuevo_de_un_cambio_tiene_4_caracteres_como_el_de_la_venta(
+    db, autor, local, venta,
+):
+    """
+    Los códigos de cambio pasaron a 4 caracteres, pero el cambio seguía
+    dando uno de 8 con su propio generador. Ahora sale del mismo que las
+    ventas: mismo largo, mismo alfabeto, misma unicidad.
+    """
+    item = servicio_cambios.items_del_ticket(db, venta.codigo_cambio)["items"][0]
+    cambio = _cambio_con(db, autor, local, venta, item)
+
+    servicio_cambios.confirmar_cambio(db, autor, cambio)
+
+    nuevo = cambio.codigo_cambio_nuevo
+    assert len(nuevo) == servicio_ventas.LARGO_CODIGO_CAMBIO == 4
+    assert set(nuevo) <= set(servicio_ventas._ALFABETO_CAMBIO)
+
+
+def test_un_codigo_viejo_de_8_caracteres_se_sigue_encontrando(db, venta):
+    """Las ventas anteriores al cambio a 4 caracteres tienen códigos de 8."""
+    venta.codigo_cambio = "ABCD2345"
+    db.flush()
+
+    assert servicio_cambios.items_del_ticket(db, "ABCD2345")["items"]

@@ -29,7 +29,7 @@
         <label for="codigo-cambio" class="text-sm font-semibold text-texto-header">Código de cambio del ticket</label>
         <div class="flex gap-2">
             <input id="codigo-cambio" x-model="form.codigo_cambio" type="search" inputmode="text"
-                   placeholder="ABCD1234" maxlength="8" enterkeyhint="search"
+                   placeholder="AB23" maxlength="8" enterkeyhint="search"
                    class="campo-linea uppercase flex-1"
                    @input="codigoCambiado()" @keydown.enter.prevent="buscarTicket()">
             <button type="button" @click="buscarTicket()" :disabled="buscando" aria-label="Buscar ticket"
@@ -39,7 +39,7 @@
             </button>
         </div>
         <p class="text-xs text-texto-muted">
-            El código de 8 caracteres impreso en el ticket de la compra original.
+            El código de 4 caracteres anotado en el ticket de la compra original.
         </p>
     </div>
 
