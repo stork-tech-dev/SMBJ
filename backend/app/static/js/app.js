@@ -577,19 +577,19 @@ window.webcamCapture = function () {
 };
 
 /* --------------------------------------------------------------------------
-   Lector de código de barras con la cámara
+   Lector del código de las etiquetas con la cámara
    --------------------------------------------------------------------------
 
-   Lee el Code128 de las etiquetas (ver `barcode_svg_para_etiqueta` en
+   Lee el DataMatrix de las etiquetas (ver `barcode_svg_para_etiqueta` en
    services/productos.py) y devuelve el texto. null si cancelan. Se rechaza
    si no hay cámara, no hay https o niegan el permiso — quien llama lo
    muestra con un toast.
 
-   Motor: `BarcodeDetector` nativo cuando el navegador lo trae con Code128
-   (Chrome Android); si no (Safari, Firefox), ZXing desde el CDN, cargado
-   recién la primera vez que se abre el lector — no pesa en cada pantalla.
-   Los dos leen el mismo recorte del cuadro: la franja del recuadro guía,
-   que es donde la vendedora apunta y donde está el código.
+   Motor: `BarcodeDetector` nativo cuando el navegador lo trae con
+   DataMatrix (Chrome Android); si no (Safari, Firefox), ZXing desde el
+   CDN, cargado recién la primera vez que se abre el lector — no pesa en
+   cada pantalla. Los dos leen el mismo recorte del cuadro: el cuadrado del
+   recuadro guía, que es donde la vendedora apunta y donde está el código.
 
    Uso (ver components/boton_escanear.html):
      const codigo = await window.escanearCodigo();
@@ -620,8 +620,8 @@ async function prepararDetector() {
     if ('BarcodeDetector' in window) {
         try {
             const formatos = await window.BarcodeDetector.getSupportedFormats();
-            if (formatos.includes('code_128')) {
-                const detector = new window.BarcodeDetector({ formats: ['code_128'] });
+            if (formatos.includes('data_matrix')) {
+                const detector = new window.BarcodeDetector({ formats: ['data_matrix'] });
                 return async (canvas) => {
                     const hallados = await detector.detect(canvas);
                     return hallados.length ? hallados[0].rawValue : null;
@@ -632,7 +632,7 @@ async function prepararDetector() {
         }
     }
     const ZXing = await cargarZXing();
-    const lector = new ZXing.Code128Reader();
+    const lector = new ZXing.DataMatrixReader();
     return async (canvas) => {
         try {
             const imagen = new ZXing.BinaryBitmap(
@@ -665,15 +665,18 @@ window.escanearCodigo = function () {
             alFallar: (e) => terminar(() => reject(e)),
         });
 
-        // Recuadro guía: ancho y bajo, como el código de la etiqueta.
+        // Recuadro guía: cuadrado y centrado, como el DataMatrix. El video
+        // se ve en 4:3 apaisado, así que el lado lo da el alto (60%).
         const guia = document.createElement('div');
-        guia.className = 'pointer-events-none absolute left-[10%] right-[10%] top-[35%] bottom-[35%] '
-            + 'rounded-input border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]';
+        guia.className = 'pointer-events-none absolute top-[20%] bottom-[20%] left-1/2 -translate-x-1/2 '
+            + 'aspect-square rounded-input border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]';
         marco.appendChild(guia);
 
         const ayuda = document.createElement('p');
         ayuda.className = 'px-6 pt-4 text-center text-base text-texto';
-        ayuda.textContent = 'Apuntá al código de barras de la etiqueta';
+        // Que quede centrado importa: el detector de ZXing arranca del medio del recorte, y si
+        // cae sobre el número de al lado no encuentra el código.
+        ayuda.textContent = 'Centrá el cuadradito de la etiqueta en el recuadro';
         card.insertBefore(ayuda, card.lastChild);
 
         const canvas = document.createElement('canvas');
@@ -687,13 +690,17 @@ window.escanearCodigo = function () {
                     // ~8 lecturas por segundo: más no lee mejor y gasta batería.
                     if (ahora - ultimo >= 125 && video.videoWidth) {
                         ultimo = ahora;
-                        // Recorte de la franja del recuadro guía (80% x 30%).
+                        // Recorte cuadrado y centrado, un poco más grande
+                        // que el recuadro guía: el video puede venir en otra
+                        // proporción que la que se ve (`object-cover`), y
+                        // que sobre margen no le molesta al lector.
                         const ancho = video.videoWidth;
                         const alto = video.videoHeight;
-                        const sx = ancho * 0.1;
-                        const sy = alto * 0.35;
-                        canvas.width = ancho * 0.8;
-                        canvas.height = alto * 0.3;
+                        const lado = Math.min(ancho, alto) * 0.7;
+                        const sx = (ancho - lado) / 2;
+                        const sy = (alto - lado) / 2;
+                        canvas.width = lado;
+                        canvas.height = lado;
                         ctx.drawImage(video, sx, sy, canvas.width, canvas.height,
                                       0, 0, canvas.width, canvas.height);
                         // Un cuadro que falla no corta la lectura: sin

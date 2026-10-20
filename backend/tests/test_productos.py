@@ -442,56 +442,79 @@ def test_el_barcode_devuelve_un_svg(client, db, producto, login):
 
 
 def _geometria_svg(svg):
-    """Ancho declarado (viewBox, en mm) y bordes [x, x+ancho] de cada barra."""
+    """Lado declarado (viewBox, en mm) y módulos negros como (x, y, lado)."""
     import re
 
     vb = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
-    barras = [
-        (float(x), float(x) + float(w))
-        for x, w in re.findall(r'<rect x="([\d.]+)(?:mm)?" y="[\d.]+(?:mm)?" width="([\d.]+)(?:mm)?"', svg)
+    modulos = [
+        (float(x), float(y), float(lado))
+        for x, y, lado in re.findall(r"M([\d.]+) ([\d.]+)h([\d.]+)", svg)
     ]
-    return vb, barras
+    return vb, modulos
 
 
 @pytest.mark.parametrize("codigo", ["MAA0027", "MAA014B8"])
-def test_el_codigo_de_la_etiqueta_entra_entero_sin_recortes(codigo):
+def test_el_codigo_de_la_etiqueta_es_cuadrado_y_entra_en_el_alto(codigo):
     """
-    Bug real: el SVG se forzaba a 16mm sin viewBox, y eso RECORTA el dibujo
-    en vez de achicarlo — la etiqueta salía con el final del código cortado
-    y ningún lector podía leerla. Ahora cada barra tiene que quedar dentro
-    del ancho declarado, y el todo dentro del ancho útil de la etiqueta.
+    El SVG declara su tamaño real con `viewBox` (sin él el motor de PDF
+    puede recortar el dibujo) y el cuadrado entra en el alto útil de la
+    etiqueta, con todos los módulos adentro.
     """
-    svg = servicio.svg_etiqueta(codigo)
-    vb, barras = _geometria_svg(svg)
+    vb, modulos = _geometria_svg(servicio.svg_etiqueta(codigo))
 
     assert vb is not None, "sin viewBox el motor de PDF puede recortar"
-    ancho = float(vb.group(1))
-    assert barras
-    assert max(fin for _, fin in barras) <= ancho + 1e-6
-    assert ancho <= servicio.ANCHO_UTIL_ETIQUETA_MM
+    ancho, alto = float(vb.group(1)), float(vb.group(2))
+    assert ancho == alto
+    assert alto <= servicio.ALTO_UTIL_ETIQUETA_MM
+    assert modulos
+    assert max(x + lado for x, _, lado in modulos) <= ancho + 1e-6
+    assert max(y + lado for _, y, lado in modulos) <= alto + 1e-6
 
 
-def test_las_barras_caen_en_puntos_enteros_de_la_zebra():
+def test_los_modulos_caen_en_puntos_enteros_de_la_zebra():
     """
-    Cada barra mide un número entero de puntos de la impresora (0,125mm):
-    si no, al imprimir se deforma la proporción entre finas y gruesas.
-    Los códigos actuales (hasta 8 caracteres) salen con módulo de 2 puntos.
+    Cada módulo mide un número entero de puntos de la impresora (0,125mm):
+    si no, al imprimir la grilla queda despareja. Los códigos actuales
+    (hasta 8 caracteres) salen con el tope de puntos por módulo.
     """
-    _, barras = _geometria_svg(servicio.svg_etiqueta("MAA014B8"))
-    anchos = {round(fin - inicio, 6) for inicio, fin in barras}
+    _, modulos = _geometria_svg(servicio.svg_etiqueta("MAA014B8"))
+    lados = {lado for _, _, lado in modulos}
 
-    for a in anchos:
-        assert abs(a / servicio.PUNTO_ZEBRA_MM - round(a / servicio.PUNTO_ZEBRA_MM)) < 1e-6
-    assert min(anchos) == pytest.approx(2 * servicio.PUNTO_ZEBRA_MM)
+    assert lados == {servicio.MAX_PUNTOS_POR_MODULO * servicio.PUNTO_ZEBRA_MM}
+    for x, y, _ in modulos:
+        for v in (x, y):
+            assert abs(v / servicio.PUNTO_ZEBRA_MM - round(v / servicio.PUNTO_ZEBRA_MM)) < 1e-6
 
 
-def test_un_codigo_largo_baja_a_un_punto_y_sigue_entrando():
-    svg = servicio.svg_etiqueta("MAA0123456XYZW9")
-    vb, barras = _geometria_svg(svg)
-    anchos = {round(fin - inicio, 6) for inicio, fin in barras}
+def test_el_dibujo_es_la_grilla_del_datamatrix_bien_orientada():
+    """
+    Lo dibujado es exactamente la grilla de la librería, sin espejar ni
+    rotar: la columna izquierda y la fila de abajo son el patrón fijo de
+    DataMatrix (todo negro), que es lo que el lector usa para orientarse.
+    """
+    from ppf.datamatrix import DataMatrix
 
-    assert min(anchos) == pytest.approx(servicio.PUNTO_ZEBRA_MM)
-    assert float(vb.group(1)) <= servicio.ANCHO_UTIL_ETIQUETA_MM
+    codigo = "MAA005M9"
+    grilla = DataMatrix(codigo).matrix
+    _, modulos = _geometria_svg(servicio.svg_etiqueta(codigo))
+    lado = modulos[0][2]
+
+    dibujados = {(round(x / lado), round(y / lado)) for x, y, _ in modulos}
+    esperados = {(x, y) for y, fila in enumerate(grilla) for x, negro in enumerate(fila) if negro}
+    assert dibujados == esperados
+
+    n = len(grilla)
+    assert {(0, y) for y in range(n)} <= dibujados
+    assert {(x, n - 1) for x in range(n)} <= dibujados
+
+
+def test_un_codigo_largo_baja_de_puntos_y_sigue_entrando():
+    svg = servicio.svg_etiqueta("MAA0123456XYZW9ABCDEFGHIJKLMNOP")
+    vb, modulos = _geometria_svg(svg)
+
+    tope = servicio.MAX_PUNTOS_POR_MODULO * servicio.PUNTO_ZEBRA_MM
+    assert max(lado for _, _, lado in modulos) < tope
+    assert float(vb.group(2)) <= servicio.ALTO_UTIL_ETIQUETA_MM
 
 
 def test_sin_permiso_de_productos_no_se_listan(client, crear_usuario, login):

@@ -204,8 +204,8 @@ class Variante(Base):
     )
 
     # Dígito módulo 11 sobre `codigo_completo`, para detectar errores de
-    # tipeo manual. NO es el checksum de Code128: ese es módulo 103, lo
-    # calcula el encoder al generar la imagen y no se persiste.
+    # tipeo manual. NO es la corrección de errores del DataMatrix: esa la
+    # calcula la librería al generar la imagen y no se persiste.
     verificador: Mapped[str] = mapped_column(String(1), nullable=False)
 
     # Precio propio de la variante. NULL = usa el del producto.
@@ -286,7 +286,7 @@ class Variante(Base):
 
     @property
     def codigo_con_verificador(self) -> str:
-        """Lo que se imprime en la etiqueta y se codifica en Code128."""
+        """Lo que se imprime en la etiqueta y se codifica en el DataMatrix."""
         return f"{self.codigo_completo}{self.verificador}"
 
     # --- Lo propio manda sobre lo del producto ------------------------------

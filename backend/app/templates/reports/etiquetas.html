@@ -1,5 +1,5 @@
 {# ===========================================================================
-   Etiquetas de código de barras para la impresora Zebra GC420t.
+   Etiquetas con código DataMatrix para la impresora Zebra GC420t.
 
    No extiende base.html: es un documento PDF autónomo, como el remito.
    WeasyPrint lo convierte desde `reports/etiquetas_pdf.py`.
@@ -9,8 +9,8 @@
        Plancha: 105mm × 10mm (33 + 3 + 33 + 3 + 33)
      - Con colita:  66mm × 11mm, cola izquierda (33mm) + impresión derecha (33mm)
 
-   Contenido: código de barras Code128 + número del código debajo, a lo
-   ancho de la etiqueta y centrado. El SVG trae su tamaño real (ver
+   Contenido: el DataMatrix a la izquierda y el número del código a su
+   derecha, centrados en el alto. El SVG trae su tamaño real (ver
    `svg_etiqueta` en services/productos.py): no se le fuerza tamaño acá,
    porque achicarlo o recortarlo deja un código que nadie puede leer.
    =========================================================================== #}
@@ -44,19 +44,10 @@
             margin-left: 3mm;
         }
 
-        .etiqueta-rect svg {
-            display: block;
-            margin: 0 auto;
-        }
-
-        .etiqueta-rect .codigo {
-            font-family: monospace;
-            font-size: 7pt;
-            font-weight: bold;
-            line-height: 1;
-            margin-top: 0.3mm;
-            width: 100%;
-            text-align: center;
+        /* DataMatrix a la izquierda, número a la derecha (ver `.contenido`). */
+        .etiqueta-rect {
+            display: flex;
+            align-items: center;
         }
 
         /* --- Con colita: 66mm × 11mm, cola izq + impresión der --- */
@@ -81,23 +72,31 @@
             padding: 0.8mm 1mm;
         }
 
-        .colita-contenido {
+        .colita-impresion {
+            display: flex;
+            align-items: center;
+        }
+
+        /* --- Contenido común: DataMatrix + número, en fila --- */
+        .contenido {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5mm;
             width: 100%;
-            padding-top: 1.5mm;
         }
 
-        .colita-contenido svg {
+        .contenido svg {
             display: block;
-            margin: 0 auto;
+            flex: none;
         }
 
-        .colita-contenido .codigo {
+        .contenido .codigo {
             font-family: monospace;
-            font-size: 7pt;
+            font-size: 10pt;
             font-weight: bold;
             line-height: 1;
-            margin-top: 0.3mm;
-            text-align: center;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -108,8 +107,10 @@
     <div class="fila-rect">
         {% for et in fila %}
         <div class="etiqueta-rect">
-            {{ et.svg | safe }}
-            <div class="codigo">{{ et.codigo }}</div>
+            <div class="contenido">
+                {{ et.svg | safe }}
+                <div class="codigo">{{ et.codigo }}</div>
+            </div>
         </div>
         {% endfor %}
     </div>
@@ -119,7 +120,7 @@
     <div class="etiqueta-colita">
         <div class="colita-cola"></div>
         <div class="colita-impresion">
-            <div class="colita-contenido">
+            <div class="contenido">
                 {{ et.svg | safe }}
                 <div class="codigo">{{ et.codigo }}</div>
             </div>

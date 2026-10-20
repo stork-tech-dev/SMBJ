@@ -1,5 +1,5 @@
 """
-PDF de etiquetas de código de barras para la impresora Zebra GC420t.
+PDF de etiquetas (código DataMatrix) para la impresora Zebra GC420t.
 
 Genera un documento con las etiquetas listas para imprimir. No se guarda en
 disco: las etiquetas son efímeras y se pueden regenerar en cualquier momento.

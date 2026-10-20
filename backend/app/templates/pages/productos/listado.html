@@ -453,9 +453,9 @@
                                 </span>
                             </div>
 
-                            {# El SVG lo genera el backend: el checksum módulo
-                               103 de Code128 lo agrega la librería al codificar. #}
-                            <img class="mt-3 max-w-full" alt=""
+                            {# El DataMatrix lo genera el backend: es el mismo
+                               dibujo que sale en la etiqueta impresa. #}
+                            <img class="mt-3 w-16 h-16" alt=""
                                  :src="'/api/v1/productos/variantes/' + v.id + '/barcode'">
 
                             {# --- Imprimir etiquetas --- #}

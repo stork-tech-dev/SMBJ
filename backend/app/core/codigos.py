@@ -8,11 +8,12 @@ Hay DOS verificadores en juego y conviene no confundirlos:
 
 - El **módulo 11** de acá viaja en la línea legible del código
   (`SAB123R7`) y protege el TIPEO MANUAL.
-- El **módulo 103** de Code128 (ISO/IEC 15417) va codificado en el patrón
-  de barras, lo calcula el encoder al generar la imagen y protege la
-  LECTURA: si no coincide, el lector no emite nada. No se persiste.
+- La **corrección de errores Reed-Solomon** de DataMatrix (ISO/IEC 16022)
+  va dentro del dibujo de la etiqueta, la calcula la librería al generarlo
+  y protege la LECTURA: reconstruye módulos dañados y, si no puede, el
+  lector no emite nada. No se persiste.
 
-Los dos son ponderados por posición, que es lo que permite detectar
+El módulo 11 es ponderado por posición, que es lo que permite detectar
 transposiciones (`AB123` vs `AB213`), el error humano más frecuente.
 """
 

@@ -389,7 +389,7 @@ def editar_variante(
 @router.get(
     "/variantes/{variante_id}/barcode",
     response_class=Response,
-    summary="Code128 de la variante, en SVG",
+    summary="DataMatrix de la variante, en SVG",
 )
 def barcode(
     variante_id: int,
@@ -399,9 +399,9 @@ def barcode(
     """
     Devuelve la imagen lista para imprimir.
 
-    El checksum módulo 103 de Code128 lo agrega la librería al codificar;
-    lo que se le pasa es `codigo_completo + verificador`, así que el dígito
-    módulo 11 también viaja dentro del código de barras.
+    Es el mismo DataMatrix de la etiqueta impresa. Lo que se codifica es
+    `codigo_completo + verificador`, así que el dígito módulo 11 también
+    viaja dentro del código.
     """
     try:
         svg = servicio.barcode_svg(db, variante_id)

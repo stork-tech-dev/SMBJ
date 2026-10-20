@@ -1034,77 +1034,61 @@ def cambiar_estado_producto(
 
 
 # ============================================================================
-# CÓDIGO DE BARRAS
+# CÓDIGO DE LA ETIQUETA (DataMatrix)
 # ============================================================================
 
 
-# La Zebra GC420t imprime a 203 dpi: 1 punto = 0,125 mm. Cada barra tiene
-# que medir un número ENTERO de puntos; si no, al imprimir unas se
-# redondean para arriba y otras para abajo, y se deforma la proporción
-# entre barras finas y gruesas, que es justamente lo que lee el lector.
+# La Zebra GC420t imprime a 203 dpi: 1 punto = 0,125 mm. Cada módulo (el
+# cuadradito del DataMatrix) tiene que medir un número ENTERO de puntos; si
+# no, al imprimir unos se redondean para arriba y otros para abajo, y la
+# grilla queda despareja, que es justamente lo que lee el lector.
 PUNTO_ZEBRA_MM = 0.125
-# Ancho de la etiqueta (33 mm) menos el padding de los costados.
-ANCHO_UTIL_ETIQUETA_MM = 31.0
-# Tope del módulo: con 2 puntos (0,25 mm) la cámara del celular ya lee
-# cómodo; más ancho solo agranda un código corto sin ganar nada.
-MAX_PUNTOS_POR_MODULO = 2
-ALTO_BARRAS_ETIQUETA_MM = 5.0
+# Alto de la etiqueta (10 mm) menos el padding de arriba y abajo: el
+# DataMatrix es cuadrado, así que su lado lo limita el alto, no el ancho.
+ALTO_UTIL_ETIQUETA_MM = 8.4
+# Tope del módulo: con 4 puntos (0,5 mm) un código de 8 caracteres mide
+# 7 mm y la cámara del celular lo lee cómodo; más grande no lee mejor.
+MAX_PUNTOS_POR_MODULO = 4
 
 
 def svg_etiqueta(codigo: str) -> str:
     """
-    Code128 de `codigo` para la etiqueta: lo más ancho que entre en el ancho
-    útil, con módulo de puntos enteros de la Zebra, sin texto (lo pone la
-    plantilla con tipografía controlada) y sin zona blanca propia (la dan
-    el padding de la etiqueta y la separación entre etiquetas).
+    DataMatrix (ISO/IEC 16022) de `codigo`: un cuadrado lo más grande que
+    entre en el alto útil de la etiqueta, con módulo de puntos enteros de la
+    Zebra, sin texto (lo pone la plantilla con tipografía controlada) y sin
+    zona blanca propia (la da el padding de la etiqueta).
 
-    Antes el SVG se forzaba a `width="16mm"` sin `viewBox`: eso no achica el
-    dibujo, lo RECORTA — la etiqueta salía sin el final del código y ningún
-    lector podía leerla. Ahora el SVG declara su tamaño real con un
-    `viewBox` en milímetros (1 unidad = 1 mm), así ningún motor lo recorta
-    ni lo reescala.
+    De la librería se usa solo la grilla (`matrix`); el SVG se arma acá
+    porque el suyo dibuja en px, con trazos y sin `viewBox`. Este declara su
+    tamaño real con un `viewBox` en milímetros (1 unidad = 1 mm), así ningún
+    motor lo recorta ni lo reescala, y cada módulo negro es un cuadrado
+    relleno cuyos bordes caen justo en los puntos de la impresora.
     """
-    import io
     import math
-    import re
 
-    from barcode import Code128
-    from barcode.writer import SVGWriter
+    from ppf.datamatrix import DataMatrix
 
-    modulos = len(Code128(codigo).build()[0])
-    puntos = math.floor(ANCHO_UTIL_ETIQUETA_MM / (modulos * PUNTO_ZEBRA_MM))
+    grilla = DataMatrix(codigo).matrix
+    filas, columnas = len(grilla), len(grilla[0])
+
+    puntos = math.floor(ALTO_UTIL_ETIQUETA_MM / (max(filas, columnas) * PUNTO_ZEBRA_MM))
     puntos = max(1, min(MAX_PUNTOS_POR_MODULO, puntos))
-    modulo_mm = puntos * PUNTO_ZEBRA_MM
+    modulo = puntos * PUNTO_ZEBRA_MM
 
-    buffer = io.BytesIO()
-    Code128(codigo, writer=SVGWriter()).write(
-        buffer,
-        options={
-            "module_width": modulo_mm,
-            "module_height": ALTO_BARRAS_ETIQUETA_MM,
-            "write_text": False,
-            "quiet_zone": 0,
-            "margin_top": 0,
-            "margin_bottom": 0,
-        },
+    # Un solo <path>: un subtrazado cuadrado por módulo negro.
+    trazos = "".join(
+        f"M{x * modulo:g} {y * modulo:g}h{modulo:g}v{modulo:g}h-{modulo:g}z"
+        for y, fila in enumerate(grilla)
+        for x, negro in enumerate(fila)
+        if negro
     )
-    svg = buffer.getvalue().decode("utf-8")
-    # Para incrustar directo en el HTML: sin declaración XML ni DOCTYPE.
-    svg = svg.replace('<?xml version="1.0" encoding="UTF-8"?>\n', "")
-    svg = re.sub(r"<!DOCTYPE[^>]+>", "", svg)
-
-    ancho = modulos * modulo_mm
-    alto = ALTO_BARRAS_ETIQUETA_MM
-    # Las barras pasan de "mm" a unidades del viewBox (que son mm): con
-    # unidades mm adentro de un viewBox, el motor las convertiría a px.
-    svg = re.sub(r'(\s(?:x|y|width|height))="([\d.]+)mm"', r'\1="\2"', svg)
-    svg = re.sub(
-        r'<svg ([^>]*?)width="[^"]*" height="[^"]*"',
-        rf'<svg \1width="{ancho:.3f}mm" height="{alto:.3f}mm" viewBox="0 0 {ancho:.3f} {alto:.3f}"',
-        svg,
-        count=1,
+    ancho = columnas * modulo
+    alto = filas * modulo
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{ancho:g}mm" height="{alto:g}mm" '
+        f'viewBox="0 0 {ancho:g} {alto:g}" shape-rendering="crispEdges">'
+        f'<path d="{trazos}" fill="#000"/></svg>'
     )
-    return svg
 
 
 def barcode_svg_para_etiqueta(db: Session, variante_id: int) -> tuple[str, str]:
@@ -1115,19 +1099,11 @@ def barcode_svg_para_etiqueta(db: Session, variante_id: int) -> tuple[str, str]:
 
 def barcode_svg(db: Session, variante_id: int) -> str:
     """
-    Code128 de la variante, en SVG.
+    DataMatrix de la variante, en SVG: el mismo dibujo que la etiqueta
+    impresa (Principio 2), para la vista previa del listado.
 
     Se codifica `codigo_completo + verificador`: el módulo 11 viaja dentro
-    del código de barras, así que un escaneo también lo trae. El checksum
-    módulo 103 de Code128 lo agrega la librería sola; nunca se persiste.
+    del código, así que un escaneo también lo trae. La corrección de errores
+    Reed-Solomon de DataMatrix la agrega la librería sola; nunca se persiste.
     """
-    import io
-
-    from barcode import Code128
-    from barcode.writer import SVGWriter
-
-    variante = obtener_variante(db, variante_id)
-
-    buffer = io.BytesIO()
-    Code128(variante.codigo_con_verificador, writer=SVGWriter()).write(buffer)
-    return buffer.getvalue().decode("utf-8")
+    return svg_etiqueta(obtener_variante(db, variante_id).codigo_con_verificador)
