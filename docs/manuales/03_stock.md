@@ -27,7 +27,7 @@ Hacé clic en **"Exportar XLS"** para descargar el listado en Excel.
 
 ### Desde el celular del local
 
-En el celular, tocá **"Consultar stock"** en la pantalla de inicio (o **"Stock"** en la barra inferior). Buscá por código, SKU o descripción, o tocá el **ícono de la cámara** para leer el código de barras de la etiqueta.
+En el celular, tocá **"Consultar stock"** en la pantalla de inicio (o **"Stock"** en la barra inferior). Buscá por código, SKU o descripción, o tocá el **ícono de la cámara** para leer el código cuadrado de la etiqueta (centralo dentro del recuadro).
 
 Cada producto se muestra así:
 

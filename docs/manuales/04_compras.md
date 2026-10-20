@@ -44,7 +44,7 @@ La tabla muestra todas las órdenes de compra con su estado actual.
 
 ### Agregar ítems
 
-1. En el campo **"Código"**, escaneá el código de barras o escribí el SKU del artículo.
+1. En el campo **"Código"**, escaneá el código de la etiqueta o escribí el SKU del artículo.
 2. El sistema busca la variante y la agrega a la lista.
 3. Ajustá la **cantidad** pedida.
 4. El **precio USD** se pre-carga con el precio actual del producto; modificalo si el proveedor ofrece un precio distinto para esta compra.

@@ -60,7 +60,7 @@ El cierre del turno incluye el arqueo de caja (ver módulo Caja).
 
 #### Agregar productos
 
-- **Por código de barras**: tocá el **ícono de la cámara** al lado del campo y apuntá al código de barras de la etiqueta, dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo. También podés tipear el código o usar un lector.
+- **Con la cámara**: tocá el **ícono de la cámara** al lado del campo y centrá el código cuadrado de la etiqueta dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo. También podés tipear el código o usar un lector.
 - **Por búsqueda**: escribí el nombre o parte del código y seleccioná de la lista.
 - Si el código corresponde a una única variante, se agrega sola. Si hay ambigüedad, el sistema pide que elijas.
 

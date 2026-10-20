@@ -2,7 +2,7 @@
 
 ## ¿Para qué sirve este módulo?
 
-El módulo de Productos es el catálogo del sistema. Desde acá se dan de alta los artículos, se administran sus variantes (talle, color, etc.), se cargan fotos y se generan etiquetas con código de barras.
+El módulo de Productos es el catálogo del sistema. Desde acá se dan de alta los artículos, se administran sus variantes (talle, color, etc.), se cargan fotos y se generan las etiquetas con su código.
 
 ---
 
@@ -106,7 +106,7 @@ Hacé clic en el ícono de papelera 🗑️ de la foto. Se pide confirmación.
 
 ---
 
-## Etiquetas con código de barras
+## Etiquetas
 
 El sistema genera etiquetas para imprimir en impresora Zebra GC420t.
 
@@ -119,9 +119,11 @@ El sistema genera etiquetas para imprimir en impresora Zebra GC420t.
 
 Se descarga un PDF listo para imprimir en la Zebra.
 
-El código de barras ocupa todo el ancho de la etiqueta, con el número del código debajo. Ese tamaño es el que permite leerlo con la cámara del celular o con un lector.
+Cada etiqueta lleva un **código cuadrado (DataMatrix)** a la izquierda y el número del código a la derecha, en letra grande para poder leerlo y tipearlo. El código cuadrado es el que se lee con la cámara del celular: aunque la etiqueta esté algo gastada o arrugada, se sigue leyendo.
 
-> **Etiquetas impresas antes del 16/10/2026:** tenían el código de barras cortado del lado derecho y **no se pueden leer** con ningún lector. Hay que reimprimirlas.
+En la ficha de cada variante se ve el mismo código cuadrado que sale impreso.
+
+> **Etiquetas viejas, con código de barras (rayas):** desde el 20/10/2026 la cámara del celular **ya no las lee**. Hay que reimprimirlas para que salgan con el código cuadrado. Mientras tanto, el número se puede tipear a mano.
 
 ---
 
