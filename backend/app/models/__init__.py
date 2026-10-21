@@ -18,6 +18,13 @@ from app.models.categoria import NIVEL_MAXIMO, Categoria
 from app.models.cliente import Cliente, ClientePromocion, PuntoCliente, TipoPunto
 from app.models.configuracion import ConfiguracionSistema
 from app.models.dispositivo import Dispositivo
+from app.models.etiqueta import (
+    EtiquetaDiseno,
+    EtiquetaDisenoVersion,
+    EtiquetaFormato,
+    EtiquetaImpresora,
+    GiroFormato,
+)
 from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.motivo_baja import MotivoBaja
 from app.models.operaciones_caja import (
@@ -106,6 +113,11 @@ __all__ = [
     "PuntoDeVenta",
     "TipoPuntoVenta",
     "Dispositivo",
+    "EtiquetaDiseno",
+    "EtiquetaDisenoVersion",
+    "EtiquetaFormato",
+    "EtiquetaImpresora",
+    "GiroFormato",
     "Stock",
     "MovimientoStock",
     "TipoMovimiento",

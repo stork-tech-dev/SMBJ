@@ -37,7 +37,8 @@ def test_solo_la_cuenta_maestra_lee_y_edita(client, db, autor, config, crear_usu
     _login(client, "dueno1")
     assert client.get("/api/v1/ajustes").status_code == 403
     assert client.patch("/api/v1/ajustes", json={"dias_plazo_cambio": 10}).status_code == 403
-    assert client.get("/ajustes", follow_redirects=False).status_code == 303
+    for ruta in ("/ajustes", "/ajustes/parametros", "/ajustes/impresoras"):
+        assert client.get(ruta, follow_redirects=False).status_code == 303
     assert 'href="/ajustes"' not in client.get("/").text
 
     _login(client, "admin")
@@ -45,8 +46,17 @@ def test_solo_la_cuenta_maestra_lee_y_edita(client, db, autor, config, crear_usu
     assert datos["paso_descuento"] == 5
     assert datos["porcentajes_descuento"] == [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
     assert "letra_empresa" not in datos and "metodo_descuento" not in datos
-    assert "ajustesSistema()" in client.get("/ajustes").text
+    assert "ajustesSistema()" in client.get("/ajustes/parametros").text
     assert 'href="/ajustes"' in client.get("/").text
+
+
+def test_ajustes_es_un_hub_con_parametros_e_impresoras(client, db, autor, config):
+    db.commit()
+    _login(client, "admin")
+
+    hub = client.get("/ajustes").text
+    assert 'href="/ajustes/parametros"' in hub and 'href="/ajustes/impresoras"' in hub
+    assert client.get("/ajustes/impresoras").status_code == 200
 
 
 def test_patch_aplica_solo_lo_que_cambia_y_audita(client, db, autor, config):

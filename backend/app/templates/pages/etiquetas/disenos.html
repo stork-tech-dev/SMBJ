@@ -1,0 +1,173 @@
+{# Diseños de etiqueta: lista, editar con vista previa en vivo, versiones,
+   duplicar, archivar y bajar/subir el archivo. Exclusiva de la Cuenta
+   Maestra.
+
+   El formulario se arma con `grupos` (de `campos_de_diseno()` en
+   `app/schemas/etiquetas.py`): el título, la ayuda y los límites de cada
+   campo están escritos una sola vez, en el esquema. La vista previa la
+   arma el servidor con los parámetros SIN guardar, con el mismo motor que
+   imprime. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+
+{% set _input = 'w-full h-control px-3 text-base bg-surface border border-borde rounded-input
+                 text-texto focus:outline-none focus:border-primary' %}
+{% set _secundario = 'h-boton px-4 rounded-input border border-borde text-base whitespace-nowrap
+                      inline-flex items-center hover:border-primary hover:text-primary disabled:opacity-50' %}
+{% set _primario = 'h-boton px-5 rounded-input bg-primary text-white text-base font-medium whitespace-nowrap
+                    hover:bg-primary-hover disabled:opacity-60' %}
+
+{% block contenido %}
+{% call encabezado('Diseños de etiqueta', volver_url='/etiquetas', volver_texto='Imprimir etiquetas') %}
+    <label class="{{ _secundario }} cursor-pointer">
+        Subir archivo
+        <input type="file" accept="application/json,.json" class="sr-only" x-data
+               @change="$dispatch('subir-diseno', $event.target.files[0]); $event.target.value = ''">
+    </label>
+{% endcall %}
+
+<div x-data="disenosEtiqueta()" x-init="iniciar()" @subir-diseno.window="subir($event.detail)"
+     class="mt-6 grid gap-6 lg:grid-cols-[18rem_1fr] items-start">
+
+    {# --- Lista --- #}
+    <aside class="p-4 rounded-input bg-surface tarjeta">
+        <div class="flex gap-2" role="group" aria-label="Mostrar">
+            <button type="button" class="flex-1 h-boton rounded-pill border text-sm"
+                    :class="!archivados ? 'bg-primary text-white border-primary' : 'border-borde'"
+                    @click="verArchivados(false)">Activos</button>
+            <button type="button" class="flex-1 h-boton rounded-pill border text-sm"
+                    :class="archivados ? 'bg-primary text-white border-primary' : 'border-borde'"
+                    @click="verArchivados(true)">Archivados</button>
+        </div>
+        <ul class="mt-4 space-y-1">
+            <template x-for="d in disenos" :key="d.id">
+                <li>
+                    <button type="button" @click="elegir(d)"
+                            class="w-full text-left px-3 py-2 rounded-input min-h-toque"
+                            :class="edicion?.id === d.id ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-surface-alt'">
+                        <span x-text="d.nombre"></span>
+                        <span class="block text-sm text-texto-muted" x-text="'Versión ' + d.version"></span>
+                    </button>
+                </li>
+            </template>
+            <li x-show="!disenos.length" class="px-3 py-2 text-texto-muted"
+                x-text="archivados ? 'No hay diseños archivados.' : 'No hay diseños.'"></li>
+        </ul>
+    </aside>
+
+    {# --- Edición --- #}
+    <div class="space-y-6 min-w-0">
+        <p x-show="!edicion" class="text-texto-muted">Elegí un diseño de la lista.</p>
+
+        <template x-if="edicion">
+            <div class="space-y-6">
+                <section class="p-5 sm:p-6 rounded-input bg-surface tarjeta">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <label class="flex-1 sm:min-w-[14rem] flex flex-col gap-1">
+                            <span class="text-base font-medium">Nombre</span>
+                            <input class="{{ _input }}" x-model="edicion.nombre" maxlength="80">
+                        </label>
+                        <span class="text-sm text-texto-muted pb-2"
+                              x-text="'Versión ' + edicion.version + (edicion.archivado ? ' · archivado' : '')"></span>
+                    </div>
+
+                    {% for grupo in grupos %}
+                    <fieldset class="mt-6">
+                        <legend class="text-lg font-semibold text-texto">{{ grupo.titulo }}</legend>
+                        <div class="mt-3 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                            {% for c in grupo.campos %}
+                            <label class="flex flex-col gap-1">
+                                <span class="text-base font-medium">{{ c.titulo }}</span>
+                                {% if c.opciones %}
+                                    <select class="{{ _input }}" x-model="edicion.parametros.{{ c.ruta }}">
+                                        {% for o in c.opciones %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+                                    </select>
+                                {% else %}
+                                    <input type="number" class="{{ _input }}" x-model.number="edicion.parametros.{{ c.ruta }}"
+                                           step="{{ '1' if c.entero else '0.05' }}"
+                                           {% if c.minimo is not none %}min="{{ c.minimo }}"{% endif %}
+                                           {% if c.maximo is not none %}max="{{ c.maximo }}"{% endif %}>
+                                {% endif %}
+                                <span class="text-sm text-texto-muted">{{ c.ayuda }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+                    {% endfor %}
+
+                    <div class="mt-6 flex flex-wrap items-center gap-3">
+                        <button type="button" class="{{ _primario }}" :disabled="!hayCambios() || guardando"
+                                @click="guardar()" x-text="guardando ? 'Guardando…' : 'Guardar'"></button>
+                        <button type="button" class="{{ _secundario }}" x-show="hayCambios()" x-cloak
+                                @click="descartar()">Descartar cambios</button>
+                        <button type="button" class="{{ _secundario }}" @click="duplicar()">Duplicar</button>
+                        <a class="{{ _secundario }}" :href="'/api/v1/etiquetas/disenos/' + edicion.id + '/archivo'">
+                            Bajar archivo
+                        </a>
+                        <button type="button" class="ml-auto text-base hover:opacity-70"
+                                :class="edicion.archivado ? 'text-success' : 'text-danger'"
+                                @click="pedirArchivar()" x-text="edicion.archivado ? 'Desarchivar' : 'Archivar'"></button>
+                    </div>
+                </section>
+
+                {# --- Vista previa (sin guardar) --- #}
+                <section class="p-5 sm:p-6 rounded-input bg-surface tarjeta">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h2 class="text-lg font-semibold text-texto">Vista previa</h2>
+                        <button type="button" class="{{ _secundario }}" @click="verZpl = !verZpl"
+                                x-text="verZpl ? 'Ocultar ZPL' : 'Ver ZPL'"></button>
+                    </div>
+                    <p class="mt-1 text-sm text-texto-muted">
+                        Con lo que está en pantalla, aunque no esté guardado. Los cuadraditos son reales: se
+                        pueden leer con el celular.
+                    </p>
+                    <template x-for="r in previa" :key="r.formato_id">
+                        <div class="mt-5">
+                            <h3 class="text-base font-semibold" x-text="r.formato_nombre"></h3>
+                            <div class="mt-2 space-y-2">
+                                <template x-for="svg in r.vista_previa"><div x-html="svg"></div></template>
+                            </div>
+                            <ul class="mt-2 space-y-1">
+                                <template x-for="a in r.avisos">
+                                    <li class="text-sm" :class="a.nivel === 'error' ? 'text-danger' : 'text-primary'"
+                                        x-text="(a.nivel === 'error' ? '✖ ' : '⚠ ') + a.texto"></li>
+                                </template>
+                            </ul>
+                            <pre x-show="verZpl" x-cloak class="mt-2 p-3 rounded-input bg-surface-alt text-sm overflow-auto max-h-64"
+                                 x-text="r.zpl.join('\n')"></pre>
+                        </div>
+                    </template>
+                    <p x-show="errorPrevia" x-cloak class="mt-4 text-danger" x-text="errorPrevia"></p>
+                </section>
+
+                {# --- Versiones --- #}
+                <section class="p-5 sm:p-6 rounded-input bg-surface tarjeta">
+                    <h2 class="text-lg font-semibold text-texto">Versiones</h2>
+                    <ul class="mt-3 divide-y divide-borde">
+                        <template x-for="v in versiones" :key="v.version">
+                            <li class="py-3 flex flex-wrap items-center justify-between gap-3">
+                                <span>
+                                    <span class="font-medium" x-text="'Versión ' + v.version"></span>
+                                    <span class="text-sm text-texto-muted"
+                                          x-text="' · ' + fecha(v.creado_en) + ' · ' + (v.usuario || 'sistema')"></span>
+                                </span>
+                                <button type="button" class="{{ _secundario }} text-sm" x-show="v.version !== edicion.version"
+                                        @click="pedirRestaurar(v)">Volver a esta</button>
+                                <span x-show="v.version === edicion.version" class="text-sm text-success">Actual</span>
+                            </li>
+                        </template>
+                    </ul>
+                </section>
+            </div>
+        </template>
+    </div>
+
+    {{ modal_confirmacion(tono='primario') }}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/etiquetas_disenos.js') }}"></script>
+{% endblock %}

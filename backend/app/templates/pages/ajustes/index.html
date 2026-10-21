@@ -1,4 +1,4 @@
-{# Ajustes: parámetros globales del negocio, exclusivos de la Cuenta Maestra.
+{# Ajustes → Parámetros generales: parámetros globales del negocio, exclusivos de la Cuenta Maestra.
 
    Cada valor cambia reglas de todo el sistema (precios, descuentos, puntos,
    plazos), así que guardar pide DOS confirmaciones: primero se revisa qué
@@ -32,7 +32,7 @@
 {% endmacro %}
 
 {% block contenido %}
-{% call encabezado('Ajustes') %}{% endcall %}
+{% call encabezado('Parámetros generales', volver_url='/ajustes', volver_texto='Ajustes') %}{% endcall %}
 
 <div x-data="ajustesSistema()" x-init="cargar()" class="mt-4 max-w-5xl">
     <p class="text-base text-texto-muted">

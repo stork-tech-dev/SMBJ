@@ -1053,10 +1053,9 @@ MAX_PUNTOS_POR_MODULO = 4
 
 def svg_etiqueta(codigo: str) -> str:
     """
-    DataMatrix (ISO/IEC 16022) de `codigo`: un cuadrado lo más grande que
-    entre en el alto útil de la etiqueta, con módulo de puntos enteros de la
-    Zebra, sin texto (lo pone la plantilla con tipografía controlada) y sin
-    zona blanca propia (la da el padding de la etiqueta).
+    DataMatrix (ISO/IEC 16022) de `codigo`, para la vista previa: un
+    cuadrado lo más grande que entre en el alto útil de la etiqueta, con
+    módulo de puntos enteros de la Zebra, sin texto ni zona blanca propia.
 
     De la librería se usa solo la grilla (`matrix`); el SVG se arma acá
     porque el suyo dibuja en px, con trazos y sin `viewBox`. Este declara su
@@ -1091,16 +1090,12 @@ def svg_etiqueta(codigo: str) -> str:
     )
 
 
-def barcode_svg_para_etiqueta(db: Session, variante_id: int) -> tuple[str, str]:
-    """SVG (ver `svg_etiqueta`) + texto del código, para el PDF de etiquetas."""
-    codigo = obtener_variante(db, variante_id).codigo_con_verificador
-    return svg_etiqueta(codigo), codigo
-
-
 def barcode_svg(db: Session, variante_id: int) -> str:
     """
-    DataMatrix de la variante, en SVG: el mismo dibujo que la etiqueta
-    impresa (Principio 2), para la vista previa del listado.
+    DataMatrix de la variante, en SVG, para la vista previa del listado.
+    La etiqueta impresa la dibuja la Zebra con el ZPL del módulo de
+    etiquetas (siempre 14×14): el dibujo puede no ser idéntico, pero
+    codifica lo mismo.
 
     Se codifica `codigo_completo + verificador`: el módulo 11 viaja dentro
     del código, así que un escaneo también lo trae. La corrección de errores

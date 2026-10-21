@@ -1,0 +1,12 @@
+{# Hub de Ajustes: parámetros generales e impresoras de etiquetas. Exclusivo
+   de la Cuenta Maestra (lo resuelve la ruta en `api/pages.py`). #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/hub.html" import hub %}
+
+{% block contenido %}
+{% call encabezado('Ajustes') %}{% endcall %}
+
+{{ hub(secciones) }}
+{% endblock %}

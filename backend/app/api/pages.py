@@ -102,6 +102,26 @@ MENU_SIDEBAR_PIE = [
      "solo_maestra": True},
 ]
 
+# Tarjetas del hub de Ajustes. Todas de la Cuenta Maestra, como el ítem del
+# sidebar: son parámetros que cambian el comportamiento de todo el sistema.
+RUTA_HUB_AJUSTES = "/ajustes"
+AJUSTES_SECCIONES = [
+    {
+        "nombre": "Parámetros generales",
+        "descripcion": "Precios, descuentos, señas, puntos y plazos de cambio",
+        "url": "/ajustes/parametros",
+        "modulo": None,
+        "solo_maestra": True,
+    },
+    {
+        "nombre": "Impresoras",
+        "descripcion": "Impresoras de etiquetas Zebra: qué rollo imprime cada una y sus ajustes",
+        "url": "/ajustes/impresoras",
+        "modulo": None,
+        "solo_maestra": True,
+    },
+]
+
 # Secciones que se muestran como tarjetas dentro de la página de
 # Configuraciones (diseño "Configuraciones CM"). Agregar una sección nueva
 # es una línea acá; cada una se muestra solo si el usuario tiene su permiso.
@@ -814,20 +834,83 @@ def _registrar_pendientes() -> None:
 _registrar_pendientes()
 
 
-@router.get("/ajustes", response_class=HTMLResponse)
-async def ajustes(
-    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
-):
+def _pagina_de_maestra(request: Request, db: Session, usuario, plantilla: str, titulo: str, ruta_activa: str, **extra):
     """
-    Parámetros globales del negocio. Exclusiva de la Cuenta Maestra: a
-    cualquier otro rol lo manda al inicio (la API igual le responde 403).
+    Página exclusiva de la Cuenta Maestra: a cualquier otro rol lo manda al
+    inicio (la API igual le responde 403, que es la barrera real).
     """
     if not _es_maestra(usuario):
         return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(
+        request, plantilla,
+        contexto_base(request, db, usuario, titulo=titulo, ruta_activa=ruta_activa, **extra),
+    )
+
+
+@router.get(RUTA_HUB_AJUSTES, response_class=HTMLResponse)
+async def ajustes(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """Hub de Ajustes: parámetros generales e impresoras de etiquetas."""
+    return _pagina_de_maestra(
+        request, db, usuario, "pages/ajustes/hub.html", "Ajustes", RUTA_HUB_AJUSTES,
+        secciones=AJUSTES_SECCIONES,
+    )
+
+
+@router.get("/ajustes/parametros", response_class=HTMLResponse)
+async def ajustes_parametros(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """Parámetros globales del negocio (precios, descuentos, señas, puntos, plazos)."""
+    return _pagina_de_maestra(
+        request, db, usuario, "pages/ajustes/index.html", "Parámetros generales", RUTA_HUB_AJUSTES
+    )
+
+
+@router.get("/ajustes/impresoras", response_class=HTMLResponse)
+async def ajustes_impresoras(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """Fichas de las impresoras Zebra y qué rollo imprime cada una."""
+    return _pagina_de_maestra(
+        request, db, usuario, "pages/ajustes/impresoras.html", "Impresoras", RUTA_HUB_AJUSTES
+    )
+
+
+# ============================================================================
+# ETIQUETAS
+# ============================================================================
+
+
+@router.get("/etiquetas", response_class=HTMLResponse)
+async def etiquetas(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """
+    Imprimir etiquetas. Se llega desde un producto (`?variante_id=&copias=`)
+    o desde una compra cerrada (`?compra_id=`); los datos los pide la
+    pantalla a /api/v1/etiquetas, que valida el permiso.
+    """
+    return templates.TemplateResponse(
         request,
-        "pages/ajustes/index.html",
-        contexto_base(request, db, usuario, titulo="Ajustes", ruta_activa="/ajustes"),
+        "pages/etiquetas/imprimir.html",
+        contexto_base(request, db, usuario, titulo="Imprimir etiquetas", ruta_activa="/productos"),
+    )
+
+
+@router.get("/etiquetas/disenos", response_class=HTMLResponse)
+async def etiquetas_disenos(
+    request: Request, db: Session = Depends(get_db), usuario=Depends(requiere_sesion)
+):
+    """Diseños de etiqueta: editar, versiones, bajar y subir. Solo la Cuenta Maestra."""
+    from app.schemas.etiquetas import campos_de_diseno
+
+    return _pagina_de_maestra(
+        request, db, usuario, "pages/etiquetas/disenos.html", "Diseños de etiqueta", "/productos",
+        # El formulario se arma desde el esquema: títulos, ayudas y rangos
+        # están escritos una sola vez, en `ParametrosDiseno`.
+        grupos=campos_de_diseno(),
     )
 
 

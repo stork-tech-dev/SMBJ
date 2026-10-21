@@ -580,8 +580,8 @@ window.webcamCapture = function () {
    Lector del código de las etiquetas con la cámara
    --------------------------------------------------------------------------
 
-   Lee el DataMatrix de las etiquetas (ver `barcode_svg_para_etiqueta` en
-   services/productos.py) y devuelve el texto. null si cancelan. Se rechaza
+   Lee el DataMatrix de las etiquetas (lo imprime la Zebra con el ZPL de
+   `app/core/etiquetas/motor.py`) y devuelve el texto. null si cancelan. Se rechaza
    si no hay cámara, no hay https o niegan el permiso — quien llama lo
    muestra con un toast.
 

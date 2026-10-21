@@ -1,0 +1,186 @@
+{# Ajustes → Impresoras: las Zebra de etiquetas y qué rollo imprime cada una.
+
+   Basada en la pantalla "Impresoras" del prototipo del cliente. Los ajustes
+   de cada ficha (corrimiento, oscuridad, velocidad) van dentro de cada ZPL
+   que arma el servidor; acá solo se cargan. Browser Print se consulta desde
+   el navegador (`static/js/browserprint.js`) para mostrar qué impresoras ve
+   esta PC. Exclusiva de la Cuenta Maestra. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/badge.html" import badge %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+
+{% set _input = 'w-full h-control px-3 text-base bg-surface border border-borde rounded-input
+                 text-texto focus:outline-none focus:border-primary' %}
+{% set _secundario = 'h-boton px-4 rounded-input border border-borde text-base
+                      hover:border-primary hover:text-primary disabled:opacity-50' %}
+{% set _primario = 'h-boton px-5 rounded-input bg-primary text-white text-base font-medium
+                    hover:bg-primary-hover disabled:opacity-60' %}
+
+{% block contenido %}
+{% call encabezado('Impresoras', volver_url='/ajustes', volver_texto='Ajustes') %}
+    <button type="button" class="{{ _secundario }}" x-data @click="$dispatch('buscar-browser-print')">
+        Volver a buscar en Browser Print
+    </button>
+{% endcall %}
+
+<div x-data="impresorasEtiquetas()" x-init="iniciar()" @buscar-browser-print.window="buscarBrowserPrint()"
+     class="mt-4 max-w-6xl space-y-6">
+
+    <p class="text-base" :class="bpOk ? 'text-success' : 'text-danger'" x-text="bpTexto"></p>
+
+    {# Impresoras que ve Browser Print y no tienen ficha: nuevas o con otro nombre. #}
+    <section x-show="sinFicha().length" x-cloak class="p-6 rounded-input bg-surface tarjeta border border-primary/40">
+        <h2 class="text-lg font-semibold text-texto">Browser Print ve impresoras que no están cargadas</h2>
+        <p class="mt-1 text-sm text-texto-muted">
+            Puede ser una impresora nueva o una que cambió de nombre. Si cambió de nombre, no agregues
+            otra: elegí el nombre nuevo en su ficha ("Nombre en Browser Print") y guardá.
+        </p>
+        <ul class="mt-4 space-y-2">
+            <template x-for="n in sinFicha()" :key="n">
+                <li class="flex flex-wrap items-center gap-3">
+                    <code class="px-2 py-1 rounded-input bg-surface-alt text-sm break-all" x-text="n"></code>
+                    <button type="button" class="{{ _primario }}" @click="agregar(n, nombreSugerido(n))">
+                        Agregar como impresora nueva
+                    </button>
+                </li>
+            </template>
+        </ul>
+    </section>
+
+    {# Agregar a mano: por si en este momento no está conectada. #}
+    <section class="p-6 rounded-input bg-surface tarjeta">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-lg font-semibold text-texto">Agregar una impresora a mano</h2>
+            <button type="button" class="{{ _secundario }}" @click="aMano.ver = !aMano.ver"
+                    x-text="aMano.ver ? 'Cerrar' : '+ Agregar'"></button>
+        </div>
+        <form x-show="aMano.ver" x-cloak @submit.prevent="agregar(aMano.bp, aMano.nombre)"
+              class="mt-4 grid gap-4 lg:grid-cols-[1fr_1.5fr_auto] lg:items-end">
+            <label class="flex flex-col gap-1">
+                <span class="text-base font-medium">Nombre para mostrar</span>
+                <input class="{{ _input }}" x-model="aMano.nombre" placeholder="Ej.: Zebra del depósito">
+            </label>
+            <label class="flex flex-col gap-1">
+                <span class="text-base font-medium">Nombre en Browser Print</span>
+                <input class="{{ _input }} font-mono text-sm" x-model="aMano.bp" required
+                       placeholder="Ej.: \\PCDEPOSITO\ZDesigner ZD421">
+            </label>
+            <button type="submit" class="{{ _primario }}">Agregar</button>
+        </form>
+    </section>
+
+    {# Qué impresora imprime cada rollo. #}
+    <section class="p-6 rounded-input bg-surface tarjeta">
+        <h2 class="text-lg font-semibold text-texto">Qué impresora imprime cada tipo de etiqueta</h2>
+        <p class="mt-1 text-sm text-texto-muted">
+            Al imprimir no se elige impresora: sale sola según el tipo de etiqueta. Así no se manda
+            una colita a la impresora que tiene el rollo de la múltiple.
+        </p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2 max-w-3xl">
+            <template x-for="f in formatos" :key="f.id">
+                <label class="flex flex-col gap-1">
+                    <span class="text-base font-medium" x-text="f.nombre"></span>
+                    <select class="{{ _input }}" x-model.number="asignacion[f.id]">
+                        <option :value="0" :selected="!asignacion[f.id]">— Sin impresora (no se puede imprimir) —</option>
+                        <template x-for="i in impresoras" :key="i.id">
+                            <option :value="i.id" :selected="asignacion[f.id] === i.id" x-text="i.nombre"></option>
+                        </template>
+                    </select>
+                </label>
+            </template>
+        </div>
+        <p x-show="repetidas()" x-cloak class="mt-3 text-sm text-danger" x-text="repetidas()"></p>
+        <div class="mt-4">
+            <button type="button" class="{{ _primario }}" :disabled="!asignacionCambio()"
+                    @click="guardarAsignacion()">Guardar</button>
+        </div>
+    </section>
+
+    {# Fichas #}
+    <section>
+        <h2 class="text-lg font-semibold text-texto">Fichas de impresoras</h2>
+        <p class="mt-1 text-sm text-texto-muted">
+            Se cargan una vez y se cambian acá. Si una etiqueta sale corrida o clara, se corrige en la
+            ficha, no en Browser Print.
+        </p>
+        <p x-show="!impresoras.length" x-cloak class="mt-4 text-texto-muted">
+            Todavía no hay impresoras cargadas.
+        </p>
+        <div class="mt-4 grid gap-6 lg:grid-cols-2">
+            <template x-for="f in impresoras" :key="f.id">
+                <article class="p-6 rounded-input bg-surface tarjeta space-y-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <label class="flex-1 sm:min-w-[12rem] flex flex-col gap-1">
+                            <span class="text-sm text-texto-muted">Nombre</span>
+                            <input class="{{ _input }} font-semibold" x-model="f.nombre">
+                        </label>
+                        <span x-show="bpOk" x-cloak>
+                            <span x-show="visibles.includes(f.browser_print)">{{ badge('La ve Browser Print', 'exito') }}</span>
+                            <span x-show="!visibles.includes(f.browser_print)">{{ badge('Browser Print no la ve', 'error') }}</span>
+                        </span>
+                    </div>
+                    <p class="text-base">Imprime: <strong x-text="imprime(f.id) || 'ningún tipo de etiqueta'"></strong></p>
+
+                    <label class="flex flex-col gap-1">
+                        <span class="text-base font-medium">Nombre en Browser Print</span>
+                        <select class="{{ _input }} font-mono text-sm" x-model="f.browser_print">
+                            <template x-for="n in opcionesBrowserPrint(f)" :key="n">
+                                <option :value="n" :selected="n === f.browser_print" x-text="n"></option>
+                            </template>
+                        </select>
+                    </label>
+
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <label class="flex flex-col gap-1">
+                            <span class="text-base font-medium">Corrimiento horizontal (mm)</span>
+                            <input type="number" step="0.25" min="-10" max="10" class="{{ _input }}"
+                                   x-model.number="f.corrimiento_x_mm">
+                        </label>
+                        <label class="flex flex-col gap-1">
+                            <span class="text-base font-medium">Corrimiento vertical (mm)</span>
+                            <input type="number" step="0.25" min="-10" max="10" class="{{ _input }}"
+                                   x-model.number="f.corrimiento_y_mm">
+                        </label>
+                    </div>
+                    <label class="flex flex-col gap-1">
+                        <span class="text-base font-medium">
+                            Oscuridad: <strong x-text="f.oscuridad"></strong>
+                            <span class="text-sm text-texto-muted">(0 a 30; 14 = la del sistema anterior)</span>
+                        </span>
+                        <input type="range" min="0" max="30" class="w-full accent-primary" x-model.number="f.oscuridad">
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="text-base font-medium">
+                            Velocidad: <strong x-text="f.velocidad"></strong>
+                            <span class="text-sm text-texto-muted">(2 = la más lenta y nítida)</span>
+                        </span>
+                        <input type="range" min="2" max="6" class="w-full accent-primary" x-model.number="f.velocidad">
+                    </label>
+                    <p class="text-sm text-texto-muted">Resolución: <span x-text="f.dpi"></span> dpi.</p>
+
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button type="button" class="{{ _primario }}" @click="guardarFicha(f)">Guardar</button>
+                        <button type="button" class="{{ _secundario }}" :disabled="!imprime(f.id) || f._ocupada"
+                                @click="prueba(f)">Etiqueta de prueba</button>
+                        <button type="button" class="{{ _secundario }}" :disabled="f._ocupada"
+                                @click="calibrar(f)">Calibrar rollo</button>
+                        <button type="button" class="ml-auto text-base text-danger hover:opacity-70"
+                                @click="pedirQuitar(f)">Quitar</button>
+                    </div>
+                    <div x-show="f._previa" x-cloak class="p-2 rounded-input border border-dashed border-borde"
+                         x-html="f._previa"></div>
+                </article>
+            </template>
+        </div>
+    </section>
+
+    {{ modal_confirmacion() }}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/browserprint.js') }}"></script>
+<script src="{{ estatico('/js/etiquetas_impresoras.js') }}"></script>
+{% endblock %}
