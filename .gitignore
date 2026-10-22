@@ -38,3 +38,6 @@ prompts/
 
 /docs/superpowers
 /docs/compilar_manuales.py
+
+# Grafo de conocimiento del código (/graphify): se regenera, no se versiona.
+/graphify-out/
