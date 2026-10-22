@@ -2,7 +2,7 @@
 
 ## ¿Para qué sirve este módulo?
 
-El módulo de Productos es el catálogo del sistema. Desde acá se dan de alta los artículos, se administran sus variantes (talle, color, etc.), se cargan fotos y se generan las etiquetas con su código.
+El módulo de Productos es el catálogo del sistema. Desde acá se dan de alta los artículos, se administran sus variantes (talle, color, etc.), se cargan fotos y se imprimen las etiquetas.
 
 ---
 
@@ -108,22 +108,52 @@ Hacé clic en el ícono de papelera 🗑️ de la foto. Se pide confirmación.
 
 ## Etiquetas
 
-El sistema genera etiquetas para imprimir en impresora Zebra GC420t.
+Las etiquetas se imprimen en las impresoras **Zebra** desde la pantalla **Imprimir etiquetas**. El sistema arma cada etiqueta y se la manda a la impresora que tiene puesto ese rollo, a través del programa **Zebra Browser Print** instalado en la PC (ver el manual de **Ajustes**).
 
-### Imprimir etiquetas de un producto
+### Llegar a la pantalla de impresión
 
-1. Abrí la ficha del producto o seleccioná variantes en el listado.
-2. Hacé clic en **"Imprimir etiquetas"**.
-3. Indicá la cantidad de etiquetas por variante.
-4. Hacé clic en **"Generar"**.
+- **Desde un producto:** abrí la variante en el listado y hacé clic en **"Imprimir etiqueta"**, a la derecha del código cuadrado. Llega con esa variante cargada y tantas copias como su stock.
+- **Desde una compra:** en una compra cerrada, **"Imprimir etiquetas"** (ver el manual de Compras).
+- **Desde la misma pantalla:** escribí en el buscador al menos 2 caracteres del código, el SKU o la descripción y elegí de la lista (cada opción con su foto), o escaneá el código con el lector: con **Enter** se agrega solo.
 
-Se descarga un PDF listo para imprimir en la Zebra.
+Si agregás un producto que ya está en la lista, se le suma una copia.
 
-Cada etiqueta lleva un **código cuadrado (DataMatrix)** a la izquierda y el número del código a la derecha, en letra grande para poder leerlo y tipearlo. El código cuadrado es el que se lee con la cámara del celular: aunque la etiqueta esté algo gastada o arrugada, se sigue leyendo.
+### Qué imprimir
 
-En la ficha de cada variante se ve el mismo código cuadrado que sale impreso.
+Cada renglón tiene el código, el producto, la cantidad de **copias** y un tilde para **escribir un texto** en la etiqueta. Con **"+ Solo texto"** se agregan etiquetas sin código, para carteles como "LIQUIDACION 50%".
+
+La forma de la etiqueta sale sola:
+
+| Opción | Cuándo | Cómo sale |
+|---|---|---|
+| 1 | Sin texto | Código cuadrado y el número al costado |
+| 2 | Con texto | Código cuadrado, el texto y el número abajo |
+| 3 | Sin código | Solo el texto |
+
+### Tipo de etiqueta e impresora
+
+Arriba de la pantalla hay dos bloques, que se abren con la flecha de la derecha:
+
+- **Tipo de etiqueta:** elegí el rollo (**Múltiple 32×10**, tres por fila, o **Colita 66×11**). Abierto, muestra el tilde **"Algunos productos llevan otra etiqueta"** (para cambiar el tipo renglón por renglón) y el **diseño**.
+- **A qué impresora va:** cada tipo de etiqueta va solo a su impresora, y se ve si está **Lista** o **No responde**. Abierto, muestra cuántas etiquetas van, cómo salen (vista previa) y, para la Cuenta Maestra, **Etiqueta de prueba** y **Calibrar rollo**.
+
+### Antes de imprimir
+
+El bloque **"Antes de imprimir"** avisa si un texto no entra en la etiqueta (no deja imprimir), si se achicó o quedó en dos renglones (para revisarlo en la vista previa), si a la última fila de la múltiple le quedan etiquetas en blanco y si la impresora no responde.
+
+Hacé clic en **"Imprimir N etiquetas"**. Si la impresora no recibió la orden, el sistema lo avisa y **esas etiquetas no se dan por impresas**: revisá y volvé a mandarlas.
+
+### Cómo es la etiqueta
+
+Cada etiqueta lleva un **código cuadrado (DataMatrix)** y el número del código en letra grande para poder leerlo y tipearlo. El código cuadrado es el que se lee con la cámara del celular: aunque la etiqueta esté algo gastada o arrugada, se sigue leyendo.
 
 > **Etiquetas viejas, con código de barras (rayas):** desde el 20/10/2026 la cámara del celular **ya no las lee**. Hay que reimprimirlas para que salgan con el código cuadrado. Mientras tanto, el número se puede tipear a mano.
+
+### Diseños de etiqueta
+
+La Cuenta Maestra puede ajustar los diseños desde **Imprimir etiquetas → Tipo de etiqueta → "Editar diseños"**: tamaño del código cuadrado, letras, márgenes y distancia al doblez de la colita, cada uno con su explicación. Mientras cambiás un valor se ve cómo salen las tres opciones en los dos rollos, sin guardar.
+
+Cada vez que se guarda queda una **versión** nueva, con quién y cuándo; con **"Volver a esta"** se recupera una anterior. También se puede **duplicar** un diseño, **archivarlo** (deja de ofrecerse al imprimir, pero no se pierde) y **bajarlo o subirlo como archivo**.
 
 ---
 

@@ -103,6 +103,17 @@ Cuando un proveedor cambia sus precios, el sistema puede actualizar los precios 
 
 ---
 
+## Imprimir etiquetas de una compra
+
+Hay dos formas de imprimir las etiquetas de todo lo que entró en una compra:
+
+- **Desde el listado:** el botón con la **impresora** (a la derecha de "Items", con la leyenda "Imprimir Etiquetas") en la fila de la compra.
+- **Desde el detalle:** en una compra cerrada, el botón **"Imprimir etiquetas"**.
+
+Las dos llevan a la pantalla **Imprimir etiquetas** con todos los productos de la compra cargados, una copia por unidad comprada (la cantidad se puede cambiar). El resto se explica en el manual de Productos, sección **Etiquetas**.
+
+---
+
 ## Exportar una compra
 
 Desde el detalle de la compra, hacé clic en **"Exportar PDF"** o **"Exportar XLS"** para descargar el detalle completo.

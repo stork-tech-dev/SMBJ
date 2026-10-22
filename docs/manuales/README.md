@@ -13,6 +13,7 @@ Documentación de usuario del sistema, organizada por módulo.
 | `05_caja.md` | Turnos y arqueo de caja |
 | `06_usuarios_roles.md` | Usuarios y roles |
 | `07_configuracion.md` | Medios de pago, cuotas, descuentos, promociones |
+| `08_ajustes.md` | Parámetros generales e impresoras de etiquetas |
 
 ## Compilar los PDFs
 
