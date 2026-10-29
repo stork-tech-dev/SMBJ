@@ -53,30 +53,33 @@ El cierre del turno incluye el arqueo de caja (ver módulo Caja).
 
 ### Nueva venta
 
-1. Tocá **"Nueva venta"** en la pantalla de inicio. Si está apagado, primero iniciá el turno (o sumate al del día).
-2. Aparece la pantalla para escanear o buscar productos.
+1. Tocá **"Nueva venta"** en la pantalla de inicio (o el botón del carrito en la barra de abajo). Si está apagado, primero iniciá el turno (o sumate al del día).
+2. Se abre la pantalla de la **venta**: arriba, el campo para escanear o escribir el código; abajo, **"En el carrito"**, con lo que ya agregaste, el total y el botón **"Cerrar Venta"**. Todo se hace desde esta misma pantalla.
 
-> **La venta se crea recién con el primer producto.** Si entrás a "Nueva venta" y volvés sin agregar nada, no queda ninguna venta guardada y en el inicio no aparece el aviso de "venta sin concluir". Si escaneás un código que no existe, tampoco se crea la venta.
+> **La venta se crea recién con el primer producto.** Si entrás y volvés sin agregar nada, no queda ninguna venta guardada y en el inicio no aparece el aviso de "venta sin concluir". Si escaneás un código que no existe, tampoco se crea la venta.
+
+Si en el inicio aparece **"Tenés una venta sin concluir"**, tocalo: te lleva a esta misma pantalla, con los productos que ya tenía.
 
 #### Agregar productos
 
-- **Con la cámara**: tocá el **ícono de la cámara** al lado del campo y centrá el código cuadrado de la etiqueta dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo. También podés tipear el código o usar un lector.
-- **Por búsqueda**: escribí el nombre o parte del código y seleccioná de la lista.
-- Si el código corresponde a una única variante, se agrega sola. Si hay ambigüedad, el sistema pide que elijas.
+- Escaneá la etiqueta con el lector o escribí el código y tocá la lupa.
+- **Con la cámara**: tocá el **ícono de la cámara** al lado del campo y centrá el código cuadrado de la etiqueta dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo.
+- Aparece el producto con su foto, precio y stock en el local. Revisalo y tocá **"Agregar al carrito"**: se suma a la lista de abajo y el campo queda listo para el siguiente.
+- Si no hay stock en el local, aparece un aviso en rojo y no se puede agregar: puede ser un error de código.
 
-#### Modificar cantidades
+#### Quitar productos
 
-- Tocá el producto en el carrito para cambiar la cantidad.
-- Deslizá a la derecha para eliminarlo.
-- Si quitás el **último** producto, la venta se descarta sola (una venta sin productos no existe) y volvés a la pantalla de inicio con el aviso *"Venta descartada: no quedaban productos"*.
+- Cada unidad es un renglón propio: dos productos iguales son dos renglones.
+- Tocá el **ícono de la papelera** del renglón para quitarlo.
+- Si quitás el **último** producto, la venta se descarta sola (una venta sin productos no existe) con el aviso *"Venta descartada: no quedaban productos"*, y la pantalla queda lista para empezar otra.
 
 #### Aplicar descuento
 
 Si tenés permiso:
 
-1. Tocá el ícono de descuento.
-2. Ingresá el porcentaje o monto de descuento.
-3. Confirmá.
+1. Tocá el **%** del renglón.
+2. Elegí el **motivo** (es obligatorio). Si el motivo tiene un porcentaje fijo, se aplica ese; si no, elegilo de la lista.
+3. Tocá **"Aplicar"**.
 
 #### Cobrar
 
@@ -91,7 +94,7 @@ Si tenés permiso:
 
 #### Cancelar una venta en curso
 
-Tocá la flecha de retorno. Si la venta ya tiene productos, queda guardada como "en curso" por si querés retomar (es la alerta roja del inicio). Para descartarla definitivamente, usá el botón de eliminar del carrito o quitá todos sus productos. Si todavía no agregaste ningún producto, no hay nada que cancelar: la venta no llegó a crearse.
+Tocá la flecha de retorno. Si la venta ya tiene productos, queda guardada como "en curso" por si querés retomar (es la alerta roja del inicio). Para descartarla definitivamente, tocá **"Descartar la venta"** al pie del carrito o quitá todos sus productos. Si todavía no agregaste ningún producto, no hay nada que cancelar: la venta no llegó a crearse.
 
 ---
 
