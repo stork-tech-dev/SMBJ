@@ -1,0 +1,43 @@
+{# ===========================================================================
+   Macros: ingresos por medio de pago (`IngresoPorMedio` de la API), cada
+   medio con su color fijo (`serie`, ver `colorMedio` en reportes_caja.js).
+
+   - barra_medios: una barra con la proporción de cada medio. Decorativa
+     (`aria-hidden`): lo que se lee es la lista.
+   - filas_medios: un renglón por medio (punto de color, nombre y monto),
+     para ir dentro de un `<dl>` junto con otros totales.
+
+   Parámetros:
+     lista   expresión Alpine con la lista (ej. "t.ingresos_por_medio").
+     clases  clases extra del contenedor (márgenes).
+
+   Uso:
+     {% from "components/ingresos_por_medio.html" import barra_medios, filas_medios %}
+     {{ barra_medios('t.ingresos_por_medio', clases='mt-3') }}
+     <dl>{{ filas_medios('t.ingresos_por_medio') }}</dl>
+
+   Lo usan Movimientos de caja del celular (totales de cada turno) y el
+   reporte de escritorio (total del día).
+   =========================================================================== #}
+
+{% macro barra_medios(lista, clases='') %}
+<div x-show="{{ lista }}.length" aria-hidden="true"
+     class="{{ clases }} flex h-3 gap-[2px] overflow-hidden rounded-full">
+    <template x-for="f in {{ lista }}" :key="f.medio_de_pago_id">
+        <span :class="colorMedio(f.serie)"
+              :style="'width: ' + partePorcentual(f, {{ lista }}) + '%'"></span>
+    </template>
+</div>
+{% endmacro %}
+
+{% macro filas_medios(lista) %}
+<template x-for="f in {{ lista }}" :key="f.medio_de_pago_id">
+    <div class="flex items-center justify-between gap-3">
+        <dt class="flex items-center gap-2 min-w-0 text-texto-muted">
+            <span class="w-2.5 h-2.5 shrink-0 rounded-full" :class="colorMedio(f.serie)"></span>
+            <span class="truncate" x-text="f.medio_de_pago"></span>
+        </dt>
+        <dd class="tabular-nums" x-text="pesos(f.total)"></dd>
+    </div>
+</template>
+{% endmacro %}

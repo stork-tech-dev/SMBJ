@@ -86,6 +86,12 @@ def xls_arqueos(datos: dict) -> bytes:
 
 def xls_movimientos(datos: dict) -> bytes:
     t = _Tabla()
+    # Arriba, el total del día por medio de pago (todos los turnos).
+    for f in datos.get("ingresos_por_medio_dia", []):
+        t.fila(["Total del día", "", f["medio_de_pago"], "", f["total"], ""], negrita=True)
+    if datos.get("ingresos_por_medio_dia"):
+        t.fila(["Total del día", "", "Ingresos del día", "", datos["ingresos_dia"], ""],
+               negrita=True)
     for turno in datos["turnos"]:
         for m in turno["movimientos"]:
             # Pago con seña: no suma (la plata entró cuando se dejó la seña).

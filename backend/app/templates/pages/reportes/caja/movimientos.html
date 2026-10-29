@@ -1,6 +1,32 @@
-{# Reporte de Caja: movimientos cronológicos de cada turno. #}
+{# Reporte de Caja: movimientos cronológicos de cada turno.
+
+   Arriba, el total del día por medio de pago (todos los turnos juntos). En
+   la tabla cada turno arranca colapsado: su encabezado y sus totales; los
+   movimientos se abren con la flecha. #}
 {% extends "pages/reportes/caja/_base.html" %}
 {% import "pages/reportes/caja/_clases.html" as c %}
+{% from "components/icons.html" import icono %}
+{% from "components/ingresos_por_medio.html" import barra_medios, filas_medios %}
+
+{% block antes_de_tabla %}
+<section x-show="datos && datos.ingresos_por_medio_dia.length" x-cloak
+         class="mt-6 max-w-xl p-6 bg-surface rounded-[20px] tarjeta">
+    <h2 class="text-lg font-semibold text-texto">Total del día por medio de pago</h2>
+    <p class="text-sm text-texto-muted">Todos los turnos, sin los saldos iniciales.</p>
+    <template x-if="datos">
+        <div>
+            {{ barra_medios('datos.ingresos_por_medio_dia', clases='mt-4') }}
+            <dl class="mt-4 space-y-1 text-base">
+                {{ filas_medios('datos.ingresos_por_medio_dia') }}
+                <div class="flex justify-between gap-3 pt-2 mt-2 border-t border-borde font-semibold">
+                    <dt>Ingresos del día</dt>
+                    <dd class="tabular-nums" x-text="pesos(datos.ingresos_dia)"></dd>
+                </div>
+            </dl>
+        </div>
+    </template>
+</section>
+{% endblock %}
 
 {% block tabla %}
 <thead>
@@ -13,12 +39,24 @@
     </tr>
 </thead>
 <template x-for="t in datos.turnos" :key="t.turno_id">
-    <tbody>
+    <tbody x-data="{ abierto: false }">
         <tr class="border-t border-borde">
-            <td colspan="5" class="px-8 pt-5 pb-2 text-sm font-semibold text-welcome" x-text="rangoTurno(t)"></td>
+            <td colspan="5" class="pl-6 pr-8 pt-4 pb-2">
+                <button type="button" @click="abierto = !abierto"
+                        :aria-expanded="abierto ? 'true' : 'false'"
+                        class="inline-flex items-center gap-2 min-h-toque text-sm font-semibold
+                               text-welcome hover:text-primary">
+                    <span class="transition-transform" :class="abierto ? 'rotate-180' : ''">
+                        {{ icono('chevron', clases='w-5 h-5') }}
+                    </span>
+                    <span x-text="rangoTurno(t)"></span>
+                    <span class="font-normal text-texto-muted"
+                          x-text="'· ' + t.movimientos.length + (t.movimientos.length === 1 ? ' movimiento' : ' movimientos')"></span>
+                </button>
+            </td>
         </tr>
         <template x-for="(m, i) in t.movimientos" :key="i">
-            <tr class="{{ c.fila }}">
+            <tr x-show="abierto" class="{{ c.fila }}">
                 <td class="{{ c.td }} pl-8 whitespace-nowrap" x-text="hora(m.timestamp)"></td>
                 <td class="{{ c.td }}" x-text="m.detalle"></td>
                 <td class="{{ c.td }} text-sm" x-text="m.medio_de_pago || '—'"></td>

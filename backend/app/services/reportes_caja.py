@@ -327,7 +327,8 @@ SERIES_MEDIOS = 6
 
 def _ingresos_por_medio(db: Session, lista: list[dict]) -> list[dict]:
     """
-    Suma de los ingresos del turno por medio de pago, de mayor a menor.
+    Suma de los ingresos por medio de pago, de mayor a menor: de un turno, o
+    del día con los movimientos de todos sus turnos.
 
     Sin el saldo inicial (la pantalla lo muestra aparte) y sin los importes
     informativos, que ya tienen `ingreso` en cero: así saldo inicial + la
@@ -443,7 +444,14 @@ def movimientos(
             "efectivo_esperado": servicio_arqueo.efectivo_esperado(turno.id, db),
         })
 
-    return {"turnos": grupos}
+    # Lo que entró en el día por cada medio, sumando todos los turnos: la
+    # misma cuenta que la de cada turno, sobre todos sus movimientos juntos.
+    ingresos_dia = _ingresos_por_medio(db, [m for g in grupos for m in g["movimientos"]])
+    return {
+        "turnos": grupos,
+        "ingresos_por_medio_dia": ingresos_dia,
+        "ingresos_dia": sum((f["total"] for f in ingresos_dia), CERO),
+    }
 
 
 # ---------------------------------------------------------------------------

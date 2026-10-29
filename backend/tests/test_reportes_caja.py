@@ -221,6 +221,47 @@ def test_movimientos_en_orden_y_cuadran_con_el_arqueo(
     assert grupo["efectivo_esperado"] == servicio_arqueo.efectivo_esperado(turno.id, db)
 
 
+def test_movimientos_totaliza_el_dia_por_medio_sumando_los_turnos(
+    db, autor, local, otro_local, turno,
+):
+    """
+    El totalizador del día suma los ingresos de todos los turnos por medio
+    de pago, sin los saldos iniciales.
+    """
+    servicio_turnos.abrir_turno(
+        punto_de_venta_id=otro_local.id, usuario_id=autor.id,
+        efectivo_apertura=5000, notas=None, db=db,
+    )
+    efectivo, credito = _medio(db, "Efectivo"), _medio(db, "Tarjeta de Crédito")
+    servicio_joyero.registrar_cobro(
+        db, autor, punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
+        monto_efectivo=Decimal("500"), monto_otros=Decimal("600"),
+    )
+    servicio_joyero.registrar_cobro(
+        db, autor, punto_de_venta_id=otro_local.id, medio_de_pago_id=efectivo.id,
+        monto_efectivo=Decimal("200"), monto_otros=Decimal("300"),
+    )
+    servicio_joyero.registrar_cobro(
+        db, autor, punto_de_venta_id=otro_local.id, medio_de_pago_id=credito.id,
+        monto_efectivo=Decimal("0"), monto_otros=Decimal("400"),
+    )
+
+    datos = servicio.movimientos(db, _hoy())
+    por_medio = {f["medio_de_pago"]: f for f in datos["ingresos_por_medio_dia"]}
+
+    assert len(datos["turnos"]) == 2
+    assert por_medio["Efectivo"]["total"] == Decimal("700")
+    assert por_medio["Efectivo"]["medio_de_pago_id"] == efectivo.id
+    assert por_medio["Tarjeta de Crédito"]["total"] == Decimal("400")
+    # Es la suma de los desgloses de cada turno, sin los saldos iniciales.
+    assert datos["ingresos_dia"] == Decimal("1100") == sum(
+        g["ingresos_sin_saldo_inicial"] for g in datos["turnos"]
+    )
+    # Con un local elegido, solo ese.
+    solo = servicio.movimientos(db, _hoy(), otro_local.id)
+    assert solo["ingresos_dia"] == Decimal("600")
+
+
 # ── Retiros de efectivo y cobros de joyero ──────────────────────────────────
 
 

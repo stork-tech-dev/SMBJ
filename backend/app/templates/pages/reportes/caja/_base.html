@@ -67,6 +67,9 @@
         </button>
     </div>
 
+    {# Lo que un reporte muestra arriba de su tabla (un totalizador). #}
+    {% block antes_de_tabla %}{% endblock %}
+
     <div class="mt-6 bg-surface rounded-[20px] tarjeta overflow-hidden">
         <div class="overflow-x-auto">
             <template x-if="datos">
