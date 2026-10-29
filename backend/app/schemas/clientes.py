@@ -8,26 +8,39 @@ formato es del frontend (Principio 1).
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-class ClienteCrear(BaseModel):
+class ClienteAltaRapida(BaseModel):
     """
-    Alta de cliente. Solo el nombre es obligatorio.
+    Lo que se pide para dar de alta un cliente en el momento, desde el
+    mostrador: al dejar una seña o al cobrar una venta. Apellido, nombre y
+    email son obligatorios en toda alta; el resto es opcional.
 
-    El DNI no lo es a propósito: en el mostrador se carga a alguien con el
-    nombre y el teléfono, y exigir el documento haría que la vendedora
-    invente uno o directamente no cargue al cliente.
+    Una sola definición para los dos lugares: si cambia lo que se exige,
+    cambia en los dos.
     """
 
+    apellido: str = Field(min_length=1, max_length=100)
     nombre: str = Field(min_length=1, max_length=150)
+    email: EmailStr
+    fecha_nacimiento: date | None = None
     dni: str | None = Field(default=None, max_length=15)
+    telefono: str | None = Field(default=None, max_length=30)
+
+
+class ClienteCrear(ClienteAltaRapida):
+    """
+    Alta de cliente desde /clientes: lo de la alta rápida más el domicilio.
+
+    El DNI no es obligatorio a propósito: en el mostrador se carga a alguien
+    sin documento a mano, y exigirlo haría que la vendedora invente uno o
+    directamente no cargue al cliente.
+    """
+
     domicilio: str | None = Field(default=None, max_length=200)
     codigo_postal: str | None = Field(default=None, max_length=10)
     localidad: str | None = Field(default=None, max_length=100)
-    telefono: str | None = Field(default=None, max_length=30)
-    email: str | None = Field(default=None, max_length=150)
-    fecha_nacimiento: date | None = None
 
 
 class ClienteEditar(BaseModel):
@@ -41,6 +54,9 @@ class ClienteEditar(BaseModel):
     """
 
     nombre: str | None = Field(default=None, min_length=1, max_length=150)
+    # Ni el apellido ni el email se exigen al editar: los clientes cargados
+    # antes de que fueran obligatorios no los tienen.
+    apellido: str | None = Field(default=None, max_length=100)
     dni: str | None = Field(default=None, max_length=15)
     domicilio: str | None = Field(default=None, max_length=200)
     codigo_postal: str | None = Field(default=None, max_length=10)
@@ -64,6 +80,10 @@ class ClienteResumen(BaseModel):
 
     id: int
     nombre: str
+    apellido: str | None = None
+    # "Apellido, Nombre" (`Cliente.nombre_completo`): cómo se lo nombra en
+    # todas las pantallas.
+    nombre_completo: str
     dni: str | None
     activo: bool
 

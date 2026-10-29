@@ -58,6 +58,9 @@ class Cliente(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
     nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    # NULLABLE solo por los clientes cargados antes de que existiera: toda
+    # alta nueva lo exige (`crear_cliente`).
+    apellido: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Campo de negocio único con su propio índice (Principio 4). Es
     # NULLABLE porque hay clientes que se cargan solo con nombre y teléfono
@@ -86,8 +89,19 @@ class Cliente(Base):
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
 
+    @property
+    def nombre_completo(self) -> str:
+        """
+        Cómo se nombra al cliente en todo el sistema: "Apellido, Nombre".
+        Los cargados antes del apellido quedan con el nombre solo.
+
+        Es la única definición del formato: la usan los mensajes, los
+        reportes y la API (`ClienteResumen.nombre_completo`).
+        """
+        return f"{self.apellido}, {self.nombre}" if self.apellido else self.nombre
+
     def __repr__(self) -> str:  # pragma: no cover - solo debug
-        return f"<Cliente {self.id} {self.nombre}>"
+        return f"<Cliente {self.id} {self.nombre_completo}>"
 
 
 class PuntoCliente(Base):

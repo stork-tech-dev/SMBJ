@@ -178,7 +178,9 @@ def venta(db, autor, dispositivo, asegurar_turno):
 
 @pytest.fixture
 def cliente(db, autor):
-    return servicio_clientes.crear_cliente(db, autor, nombre="Leandra Carballo", dni="39059158")
+    return servicio_clientes.crear_cliente(
+        db, autor, apellido="Carballo", nombre="Leandra", email="leandra@prueba.com", dni="39059158"
+    )
 
 
 def _cobrar_todo(db, autor, venta, medio):

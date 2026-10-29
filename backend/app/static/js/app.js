@@ -207,6 +207,61 @@ window.buscadorClientes = function () {
     };
 };
 
+/**
+ * Alta rápida de cliente en el mostrador (macro
+ * `components/cliente_alta_rapida.html`): lo usan el alta de señas y el
+ * cobro de la venta, que lo mandan como `cliente_nuevo` (`ClienteAltaRapida`
+ * en la API). Se incluye con `...altaRapidaCliente()`, junto a
+ * `...buscadorClientes()`: aprovecha lo que ya se tipeó en el buscador.
+ */
+const _clienteNuevoVacio = () => ({
+    apellido: '', nombre: '', email: '', fecha_nacimiento: '', dni: '', telefono: '',
+});
+
+window.altaRapidaCliente = function () {
+    return {
+        creandoCliente: false,
+        nuevo: _clienteNuevoVacio(),
+
+        /* Lo escrito en el buscador suele ser el DNI o el apellido: se
+           aprovecha para no tipearlo dos veces. */
+        abrirAltaCliente() {
+            const texto = (this.clienteBusqueda || '').trim();
+            this.nuevo = _clienteNuevoVacio();
+            if (/^\d+$/.test(texto)) this.nuevo.dni = texto;
+            else this.nuevo.apellido = texto;
+            this.limpiarBusquedaCliente?.();
+            this.creandoCliente = true;
+        },
+
+        cancelarAltaCliente() {
+            this.creandoCliente = false;
+            this.nuevo = _clienteNuevoVacio();
+        },
+
+        /* Los obligatorios (apellido, nombre y un email con forma de email).
+           El backend valida igual; esto solo habilita el botón. */
+        nuevoCompleto() {
+            const n = this.nuevo;
+            return n.apellido.trim() !== '' && n.nombre.trim() !== ''
+                && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(n.email.trim());
+        },
+
+        /* El cuerpo `cliente_nuevo` de la API: los opcionales vacíos van en null. */
+        clienteNuevoParaApi() {
+            const n = this.nuevo;
+            return {
+                apellido: n.apellido.trim(),
+                nombre: n.nombre.trim(),
+                email: n.email.trim(),
+                fecha_nacimiento: n.fecha_nacimiento || null,
+                dni: n.dni.trim() || null,
+                telefono: n.telefono.trim() || null,
+            };
+        },
+    };
+};
+
 window.toast = function (mensaje, tipo = 'info', duracion = 4000) {
     window.dispatchEvent(
         new CustomEvent('toast', { detail: { mensaje, tipo, duracion } })

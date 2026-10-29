@@ -16,6 +16,7 @@
 
 {% from "components/icons.html" import icono %}
 {% from "components/buscador_cliente.html" import buscador_cliente %}
+{% from "components/cliente_alta_rapida.html" import cliente_alta_rapida %}
 {% from "components/switch_si_no.html" import switch_si_no %}
 {% from "components/beneficio_cumpleanos.html" import beneficio_cumpleanos %}
 
@@ -78,12 +79,39 @@
 
                 <template x-if="!venta.cliente">
                     <div class="mt-2">
-                        {{ buscador_cliente('buscar-cliente', 'asociarCliente(c.id)') }}
+                        <div x-show="!creandoCliente">
+                            {{ buscador_cliente('buscar-cliente', 'asociarCliente(c.id)') }}
 
-                        <p class="mt-2 text-xs text-texto-disabled">
-                            La venta se puede cerrar sin cliente. Se carga solo si suma puntos,
-                            usa una seña o tiene una promoción asignada.
-                        </p>
+                            {# Si no está cargado, se da de alta acá mismo y queda
+                               asociado: no hace falta salir del cobro. #}
+                            <button type="button" @click="abrirAltaCliente()"
+                                    class="mt-3 w-full h-boton rounded-input border border-borde text-sm
+                                           text-texto-muted hover:border-primary hover:text-primary">
+                                + Cliente nuevo
+                            </button>
+
+                            <p class="mt-2 text-xs text-texto-disabled">
+                                La venta se puede cerrar sin cliente. Se carga solo si suma puntos,
+                                usa una seña o tiene una promoción asignada.
+                            </p>
+                        </div>
+
+                        <div x-show="creandoCliente" x-cloak>
+                            {% call cliente_alta_rapida('venta') %}
+                            <div class="grid grid-cols-2 gap-3">
+                                <button type="button" @click="cancelarAltaCliente()"
+                                        class="h-boton rounded-input border border-borde text-sm
+                                               hover:border-primary hover:text-primary">
+                                    Cancelar
+                                </button>
+                                <button type="button" @click="crearYAsociarCliente()"
+                                        :disabled="!nuevoCompleto() || guardandoCliente"
+                                        class="h-boton rounded-input bg-primary text-white text-sm
+                                               font-medium hover:bg-primary-hover disabled:opacity-60"
+                                        x-text="guardandoCliente ? 'Guardando…' : 'Guardar y asociar'"></button>
+                            </div>
+                            {% endcall %}
+                        </div>
                     </div>
                 </template>
 
@@ -91,7 +119,7 @@
                     <div class="mt-2 flex items-center justify-between gap-3 px-4 py-3
                                 rounded-input bg-surface-alt">
                         <div class="min-w-0">
-                            <p class="text-base font-medium truncate" x-text="venta.cliente.nombre"></p>
+                            <p class="text-base font-medium truncate" x-text="venta.cliente.nombre_completo"></p>
                             <p class="text-xs text-texto-muted"
                                x-text="(venta.cliente.dni || 'Sin DNI')
                                        + (venta.categoria_cliente ? ' · Categoría ' + venta.categoria_cliente : '')"></p>

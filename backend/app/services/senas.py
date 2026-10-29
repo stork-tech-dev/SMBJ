@@ -189,12 +189,12 @@ def registrar_sena(
         cliente = servicio_clientes.obtener_cliente(db, cliente_id)
         if not cliente.activo:
             raise ReglaDeNegocio(
-                f"{cliente.nombre} está dado de baja: no se le puede registrar una seña"
+                f"{cliente.nombre_completo} está dado de baja: no se le puede registrar una seña"
             )
         vigente = senas_disponibles(db, cliente.id)
         if vigente:
             raise ReglaDeNegocio(
-                f"{cliente.nombre} ya tiene una seña de ${vigente[0].saldo} que vence el "
+                f"{cliente.nombre_completo} ya tiene una seña de ${vigente[0].saldo} que vence el "
                 f"{vigente[0].vence_el:%d/%m/%Y}: tiene que usarla antes de dejar otra"
             )
 

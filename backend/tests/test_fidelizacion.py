@@ -219,5 +219,6 @@ def test_categorias_solo_cuenta_maestra_y_auditadas(client, db, autor, crear_usu
 def test_fecha_de_nacimiento_futura_se_rechaza(db, autor):
     with pytest.raises(ReglaDeNegocio, match="futura"):
         servicio_clientes.crear_cliente(
-            db, autor, nombre="X", fecha_nacimiento=date(2999, 1, 1)
+            db, autor, apellido="Prueba", nombre="X", email="x@prueba.com",
+            fecha_nacimiento=date(2999, 1, 1),
         )

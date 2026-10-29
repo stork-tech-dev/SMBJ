@@ -769,7 +769,8 @@ def asociar_cliente(
     autor=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
 ):
     """
-    El cliente es opcional: `cliente_id` en NULL lo desasocia.
+    El cliente es opcional: `cliente_id` en NULL lo desasocia. Con
+    `cliente_nuevo` se da de alta en el momento y queda asociado.
 
     Vuelve a calcular la venta porque el cliente puede traer promociones
     propias: la misma bolsa de productos puede valer distinto según quién
@@ -778,7 +779,8 @@ def asociar_cliente(
     venta = _venta(db, venta_id, scope)
     try:
         servicio.asociar_cliente(
-            db, autor, venta, datos.cliente_id, ip_origen=ip_de_request(request)
+            db, autor, venta, datos.cliente_id, ip_origen=ip_de_request(request),
+            cliente_nuevo=datos.cliente_nuevo.model_dump() if datos.cliente_nuevo else None,
         )
     except NoEncontrado as exc:
         raise _404(exc) from exc

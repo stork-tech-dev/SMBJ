@@ -15,7 +15,7 @@ de signo contrario, nunca editando el original.
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -109,6 +109,23 @@ def historial_puntos(
     )
 
 
+# Alfabético como se muestra, "Apellido, Nombre". Los clientes viejos sin
+# apellido van por su nombre.
+_ORDEN = (func.lower(func.coalesce(Cliente.apellido, Cliente.nombre)), func.lower(Cliente.nombre))
+
+
+def _por_palabras(texto: str):
+    """
+    Cada palabra tipeada tiene que estar en el apellido o el nombre, en
+    cualquier orden y sin importar tildes: "gomez ana" y "ana gomez"
+    encuentran a "Gómez, Ana".
+    """
+    completo = sin_tildes_sql(
+        func.coalesce(Cliente.apellido, "") + " " + Cliente.nombre
+    )
+    return and_(*(completo.ilike(f"%{sin_tildes(p)}%") for p in texto.split()))
+
+
 def listar_clientes(
     db: Session,
     *,
@@ -122,19 +139,16 @@ def listar_clientes(
     Listado con los filtros por defecto del Principio 5, resueltos en el
     backend.
 
-    `busqueda` es un solo campo que barre nombre y DNI, y no dos filtros
-    separados: quien busca a alguien tiene el dato que tiene, y no debería
-    tener que elegir en qué casillero escribirlo.
+    `busqueda` es un solo campo que barre apellido, nombre y DNI, y no
+    filtros separados: quien busca a alguien tiene el dato que tiene, y no
+    debería tener que elegir en qué casillero escribirlo.
     """
     consulta = select(Cliente)
 
     if busqueda:
         texto = busqueda.strip()
         consulta = consulta.where(
-            or_(
-                sin_tildes_sql(Cliente.nombre).ilike(f"%{sin_tildes(texto)}%"),
-                Cliente.dni.ilike(f"%{texto}%"),
-            )
+            or_(_por_palabras(texto), Cliente.dni.ilike(f"%{texto}%"))
         )
     if localidad:
         consulta = consulta.where(
@@ -149,7 +163,7 @@ def listar_clientes(
 
     filas = (
         db.execute(
-            consulta.order_by(func.lower(Cliente.nombre))
+            consulta.order_by(*_ORDEN)
             .offset((pagina - 1) * tamano)
             .limit(tamano)
         )
@@ -176,12 +190,9 @@ def buscar(db: Session, texto: str, limite: int = 10) -> list[Cliente]:
             select(Cliente)
             .where(
                 Cliente.activo.is_(True),
-                or_(
-                    sin_tildes_sql(Cliente.nombre).ilike(f"%{sin_tildes(limpio)}%"),
-                    Cliente.dni.ilike(f"{limpio}%"),
-                ),
+                or_(_por_palabras(limpio), Cliente.dni.ilike(f"{limpio}%")),
             )
-            .order_by(func.lower(Cliente.nombre))
+            .order_by(*_ORDEN)
             .limit(limite)
         )
         .scalars()
@@ -202,12 +213,14 @@ def _validar_dni_unico(db: Session, dni: str, excluir_id: int | None = None) -> 
     La base también lo garantiza con un UNIQUE; esto existe para devolver un
     mensaje entendible en vez de un error de integridad.
     """
-    consulta = select(Cliente.nombre).where(Cliente.dni == dni)
+    consulta = select(Cliente).where(Cliente.dni == dni)
     if excluir_id is not None:
         consulta = consulta.where(Cliente.id != excluir_id)
     duenio = db.execute(consulta).scalar_one_or_none()
     if duenio:
-        raise ReglaDeNegocio(f"El DNI {dni} ya está cargado en el cliente '{duenio}'")
+        raise ReglaDeNegocio(
+            f"El DNI {dni} ya está cargado en el cliente '{duenio.nombre_completo}'"
+        )
 
 
 def _limpiar_dni(dni: str | None) -> str | None:
@@ -232,18 +245,32 @@ def crear_cliente(
     autor: Usuario,
     *,
     nombre: str,
+    apellido: str | None = None,
+    email: str | None = None,
+    fecha_nacimiento: date | None = None,
     dni: str | None = None,
     domicilio: str | None = None,
     codigo_postal: str | None = None,
     localidad: str | None = None,
     telefono: str | None = None,
-    email: str | None = None,
-    fecha_nacimiento: date | None = None,
     ip_origen: str | None = None,
 ) -> Cliente:
+    """
+    Alta de cliente, desde /clientes, una seña o el cobro de una venta.
+
+    Apellido, nombre y email son obligatorios en TODA alta nueva. Los
+    clientes cargados antes pueden no tenerlos, y por eso la edición no los
+    exige (`editar_cliente`).
+    """
     limpio = normalizar_texto(nombre)
     if not limpio:
         raise ReglaDeNegocio("El nombre del cliente es obligatorio")
+    apellido_limpio = normalizar_texto(apellido)
+    if not apellido_limpio:
+        raise ReglaDeNegocio("El apellido del cliente es obligatorio")
+    email_limpio = normalizar_texto(email)
+    if not email_limpio:
+        raise ReglaDeNegocio("El email del cliente es obligatorio")
 
     documento = _limpiar_dni(dni)
     if documento:
@@ -252,13 +279,14 @@ def crear_cliente(
 
     cliente = Cliente(
         nombre=limpio,
+        apellido=apellido_limpio,
+        fecha_nacimiento=fecha_nacimiento,
         dni=documento,
         domicilio=normalizar_texto(domicilio),
         codigo_postal=normalizar_texto(codigo_postal),
         localidad=normalizar_texto(localidad),
         telefono=normalizar_texto(telefono),
-        email=normalizar_texto(email),
-        fecha_nacimiento=fecha_nacimiento,
+        email=email_limpio,
         activo=True,
         created_at=ahora_db(),
         updated_at=ahora_db(),
@@ -286,7 +314,7 @@ def _validar_fecha_nacimiento(fecha: date | None) -> None:
 
 # Los campos de texto que se editan igual: se normalizan y se guardan tal
 # cual. Van en una tupla para no repetir doce veces el mismo `if`.
-_CAMPOS_TEXTO = ("domicilio", "codigo_postal", "localidad", "telefono", "email")
+_CAMPOS_TEXTO = ("apellido", "domicilio", "codigo_postal", "localidad", "telefono", "email")
 
 
 def editar_cliente(
@@ -421,7 +449,7 @@ def registrar_movimiento_puntos(
         disponible = saldo_puntos(db, cliente_id)
         if magnitud > disponible:
             raise ReglaDeNegocio(
-                f"{cliente.nombre} tiene {disponible} puntos: no alcanzan para "
+                f"{cliente.nombre_completo} tiene {disponible} puntos: no alcanzan para "
                 f"canjear {magnitud}"
             )
         efectiva = -magnitud

@@ -60,7 +60,7 @@ def test_alta_fija_vencimiento_caja_y_queda_auditada(db, autor, cliente, config,
 
 
 def test_no_se_paga_una_sena_con_otra_sena(db, autor, local, cliente, medio_sena, dejar_sena):
-    otro = servicio_clientes.crear_cliente(db, autor, nombre="Otra", dni="11222333")
+    otro = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Otra", dni="11222333")
     dejar_sena(otro, "100")  # abre el turno
 
     with pytest.raises(ReglaDeNegocio, match="otra seña"):
@@ -82,12 +82,13 @@ def test_alta_con_cliente_nuevo_lo_crea_en_la_misma_operacion(
     dejar_sena(cliente, "100")  # abre el turno
 
     sena = servicio_senas.registrar_sena(
-        db, autor, cliente_nuevo={"nombre": "Marta Gómez", "dni": "28111222", "telefono": None},
+        db, autor, cliente_nuevo={"apellido": "Gómez", "nombre": "Marta", "email": "marta@prueba.com",
+                                 "dni": "28111222", "telefono": None},
         monto=Decimal("3000"), punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
     )
 
     nuevo = db.get(Cliente, sena.cliente_id)
-    assert (nuevo.nombre, nuevo.dni) == ("Marta Gómez", "28111222")
+    assert (nuevo.nombre_completo, nuevo.dni) == ("Gómez, Marta", "28111222")
 
 
 def test_cliente_existente_o_nuevo_nunca_los_dos(db, autor, local, efectivo, cliente):
@@ -118,7 +119,7 @@ def test_anular_devuelve_la_sena_entera_aunque_se_haya_perdido_una_parte(
 
 def test_alta_por_api_desde_el_celular(client, db, autor, dispositivo, efectivo, cliente, dejar_sena):
     """El local sale del dispositivo, no del pedido; el cliente nuevo se crea en el mismo POST."""
-    otro = servicio_clientes.crear_cliente(db, autor, nombre="Otra", dni="11222333")
+    otro = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Otra", dni="11222333")
     dejar_sena(otro, "100")  # abre el turno del local del dispositivo
     db.commit()
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
@@ -128,14 +129,16 @@ def test_alta_por_api_desde_el_celular(client, db, autor, dispositivo, efectivo,
     assert all(m["nombre"] != "Seña" for m in medios)
 
     r = client.post("/api/v1/senas", json={
-        "cliente_nuevo": {"nombre": "Marta Gómez", "dni": "28111222"},
+        "cliente_nuevo": {"apellido": "Gómez", "nombre": "Marta", "email": "marta@prueba.com",
+                          "dni": "28111222"},
         "medio_de_pago_id": efectivo.id, "monto": "3000",
     })
     assert r.status_code == 201, r.text
-    assert r.json()["cliente"]["nombre"] == "Marta Gómez"
+    assert r.json()["cliente"]["nombre_completo"] == "Gómez, Marta"
 
     r = client.post("/api/v1/senas", json={
-        "cliente_id": cliente.id, "cliente_nuevo": {"nombre": "X"},
+        "cliente_id": cliente.id,
+        "cliente_nuevo": {"apellido": "Y", "nombre": "X", "email": "x@prueba.com"},
         "medio_de_pago_id": efectivo.id, "monto": "1",
     })
     assert r.status_code == 422
@@ -173,7 +176,7 @@ def test_el_comprobante_trae_los_datos_de_la_sena(db, cliente, dejar_sena):
     )
 
     assert "Comprobante de seña" in html
-    assert "Leandra Carballo" in html
+    assert "Carballo, Leandra" in html
     assert "39059158" in html
     assert "$ 12.345,50" in html
     assert sena.vence_el.strftime("%d/%m/%Y") in html

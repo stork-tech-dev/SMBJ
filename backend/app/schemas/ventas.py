@@ -9,10 +9,10 @@ separadores de miles y el redondeo de pantalla los pone el frontend
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.venta import EstadoVenta
-from app.schemas.clientes import ClienteResumen
+from app.schemas.clientes import ClienteAltaRapida, ClienteResumen
 from app.schemas.stock import PuntoResumen
 from app.schemas.promociones import PromocionResumen
 from app.schemas.stock import PuntoResumen, VarianteEnStock
@@ -165,9 +165,21 @@ class ItemAgregar(BaseModel):
 
 
 class ClienteAsociar(BaseModel):
-    """`cliente_id` en NULL desasocia: la venta vuelve a ser sin cliente."""
+    """
+    El cliente de la venta: uno existente (`cliente_id`) o uno que se da de
+    alta en el momento (`cliente_nuevo`, igual que al dejar una seña).
+    Sin ninguno de los dos —`cliente_id` en NULL— desasocia: la venta
+    vuelve a ser sin cliente.
+    """
 
     cliente_id: int | None = None
+    cliente_nuevo: ClienteAltaRapida | None = None
+
+    @model_validator(mode="after")
+    def _no_los_dos(self):
+        if self.cliente_id is not None and self.cliente_nuevo is not None:
+            raise ValueError("Indicá un cliente existente o los datos de uno nuevo, no los dos")
+        return self
 
 
 class DescuentoAplicar(BaseModel):

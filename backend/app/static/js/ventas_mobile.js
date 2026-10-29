@@ -353,6 +353,9 @@ function finalizarVenta() {
     return {
         ...ventaBase(),
         ...window.buscadorClientes(),
+        // "+ Cliente nuevo": el alta en el momento, la misma que en señas.
+        ...window.altaRapidaCliente(),
+        guardandoCliente: false,
 
         medios: [],
         senas: [],
@@ -413,10 +416,28 @@ function finalizarVenta() {
         /* --- Cliente --- */
 
         async asociarCliente(clienteId) {
+            await this.enviarCliente({ cliente_id: clienteId });
+        },
+
+        /* Da de alta el cliente y lo asocia a la venta, en un solo pedido:
+           si el alta falla (email inválido, DNI repetido) no queda nada a
+           medias y el formulario sigue abierto para corregir. */
+        async crearYAsociarCliente() {
+            if (!this.nuevoCompleto()) return;
+            this.guardandoCliente = true;
+            const ok = await this.enviarCliente({ cliente_nuevo: this.clienteNuevoParaApi() });
+            this.guardandoCliente = false;
+            if (ok) {
+                this.cancelarAltaCliente();
+                window.toast('Cliente creado y asociado a la venta', 'exito');
+            }
+        },
+
+        async enviarCliente(cuerpo) {
             try {
                 this.venta = await pedir(`${API_VENTAS}/${this.venta.id}/cliente`, {
                     method: 'POST',
-                    body: JSON.stringify({ cliente_id: clienteId }),
+                    body: JSON.stringify(cuerpo),
                 });
                 this.limpiarBusquedaCliente();
 
@@ -426,8 +447,10 @@ function finalizarVenta() {
                 await this.cargarMedios();
                 await this.cargarSenas();
                 this.repartir(0);
+                return true;
             } catch (e) {
                 window.toast(e.message, 'error');
+                return false;
             }
         },
 

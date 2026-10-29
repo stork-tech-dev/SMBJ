@@ -543,22 +543,32 @@ def asociar_cliente(
     venta: Venta,
     cliente_id: int | None,
     ip_origen: str | None = None,
+    cliente_nuevo: dict | None = None,
 ) -> Venta:
     """
     Asocia (o desasocia, con None) el cliente de la venta.
+
+    Con `cliente_nuevo` lo da de alta en el momento y lo asocia, en la
+    misma transacción: el cliente que no estaba cargado se carga sin salir
+    del cobro (igual que al dejar una seña). El alta queda auditada como
+    `cliente.crear`.
 
     Vuelve a calcular porque el cliente puede traer promociones propias: la
     misma bolsa de productos puede valer distinto según quién compre.
     """
     _exigir_en_curso(venta)
 
-    if cliente_id is None:
+    if cliente_nuevo is not None:
+        venta.cliente = servicio_clientes.crear_cliente(
+            db, autor, ip_origen=ip_origen, **cliente_nuevo
+        )
+    elif cliente_id is None:
         venta.cliente = None
     else:
         cliente = servicio_clientes.obtener_cliente(db, cliente_id)
         if not cliente.activo:
             raise ReglaDeNegocio(
-                f"{cliente.nombre} está dado de baja: no se le puede facturar"
+                f"{cliente.nombre_completo} está dado de baja: no se le puede facturar"
             )
         # La relación y no solo el id: el recálculo lee `venta.cliente` para
         # el descuento de cumpleaños, y con el id solo seguiría viendo el

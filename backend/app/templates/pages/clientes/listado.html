@@ -59,7 +59,7 @@
             <table class="w-full border-collapse text-base">
                 <thead>
                     <tr>
-                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Nombre</th>
+                        <th class="px-8 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Apellido y nombre</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">DNI</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Localidad</th>
                         <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Teléfono</th>
@@ -73,7 +73,7 @@
                         <tr class="border-t border-borde transition-shadow
                                    hover:shadow-[0_0_15px_0_rgba(0,0,0,0.14)]"
                             :class="!c.activo && 'opacity-60'">
-                            <td class="px-8 py-3 align-middle font-medium" x-text="c.nombre"></td>
+                            <td class="px-8 py-3 align-middle font-medium" x-text="c.nombre_completo"></td>
                             <td class="px-4 py-3 align-middle" x-text="c.dni || '—'"></td>
                             <td class="px-4 py-3 align-middle" x-text="c.localidad || '—'"></td>
                             <td class="px-4 py-3 align-middle" x-text="c.telefono || '—'"></td>
@@ -151,12 +151,40 @@
                breakpoints campo por campo (Principio 6). #}
             <form @submit.prevent="guardar()" class="px-8 pb-8 pt-4">
                 <div class="grid gap-5" style="grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr))">
+                    {# Apellido, nombre y email primero: son los obligatorios del
+                       alta. Al editar no se exigen —los clientes cargados antes
+                       pueden no tenerlos—, por eso el asterisco y el `required`
+                       dependen de `form.id`. #}
+                    <div class="flex flex-col gap-1">
+                        <label for="cl-apellido" class="text-sm font-semibold text-texto-header">
+                            Apellido<span x-show="!form.id" class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="cl-apellido" x-model="form.apellido" :required="!form.id" maxlength="100"
+                               placeholder="Carballo" class="campo-linea">
+                    </div>
+
                     <div class="flex flex-col gap-1">
                         <label for="cl-nombre" class="text-sm font-semibold text-texto-header">
                             Nombre<span class="text-danger ml-0.5">*</span>
                         </label>
                         <input id="cl-nombre" x-model="form.nombre" required maxlength="150"
-                               placeholder="Leandra Carballo" class="campo-linea">
+                               placeholder="Leandra" class="campo-linea">
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label for="cl-email" class="text-sm font-semibold text-texto-header">
+                            Email<span x-show="!form.id" class="text-danger ml-0.5">*</span>
+                        </label>
+                        <input id="cl-email" x-model="form.email" type="email" :required="!form.id"
+                               maxlength="150" class="campo-linea">
+                    </div>
+
+                    {# Con fecha y categoría de fidelización, el cliente tiene
+                       descuento en todas sus compras del mes de su cumpleaños. #}
+                    <div class="flex flex-col gap-1">
+                        <label for="cl-nacimiento" class="text-sm font-semibold text-texto-header">Fecha de nacimiento</label>
+                        <input id="cl-nacimiento" x-model="form.fecha_nacimiento" type="date"
+                               :max="hoyISO()" class="campo-linea">
                     </div>
 
                     <div class="flex flex-col gap-1">
@@ -191,20 +219,6 @@
                         <input id="cl-telefono" x-model="form.telefono" maxlength="30"
                                inputmode="tel" class="campo-linea">
                     </div>
-
-                    <div class="flex flex-col gap-1">
-                        <label for="cl-email" class="text-sm font-semibold text-texto-header">Email</label>
-                        <input id="cl-email" x-model="form.email" type="email" maxlength="150"
-                               class="campo-linea">
-                    </div>
-
-                    {# Con fecha y categoría de fidelización, el cliente tiene
-                       descuento en todas sus compras del mes de su cumpleaños. #}
-                    <div class="flex flex-col gap-1">
-                        <label for="cl-nacimiento" class="text-sm font-semibold text-texto-header">Fecha de nacimiento</label>
-                        <input id="cl-nacimiento" x-model="form.fecha_nacimiento" type="date"
-                               :max="hoyISO()" class="campo-linea">
-                    </div>
                 </div>
 
                 <div class="flex justify-end gap-3 mt-8">
@@ -231,7 +245,7 @@
             <div class="flex items-start justify-between px-8 pt-7 pb-2">
                 <div>
                     <h2 id="titulo-ficha" class="text-lg font-black text-welcome"
-                        x-text="ficha.datos?.nombre"></h2>
+                        x-text="ficha.datos?.nombre_completo"></h2>
                     <p class="text-sm text-texto-muted"
                        x-text="[ficha.datos?.dni, ficha.datos?.localidad].filter(Boolean).join(' · ') || '—'"></p>
                 </div>

@@ -24,7 +24,7 @@ function abmClientes() {
 
         form: {
             abierto: false, guardando: false, id: null,
-            nombre: '', dni: '', domicilio: '', codigo_postal: '',
+            apellido: '', nombre: '', dni: '', domicilio: '', codigo_postal: '',
             localidad: '', telefono: '', email: '', fecha_nacimiento: '',
         },
 
@@ -90,7 +90,7 @@ function abmClientes() {
         abrirAlta() {
             this.form = {
                 abierto: true, guardando: false, id: null,
-                nombre: '', dni: '', domicilio: '', codigo_postal: '',
+                apellido: '', nombre: '', dni: '', domicilio: '', codigo_postal: '',
                 localidad: '', telefono: '', email: '', fecha_nacimiento: '',
             };
         },
@@ -98,7 +98,7 @@ function abmClientes() {
         abrirEdicion(c) {
             this.form = {
                 abierto: true, guardando: false, id: c.id,
-                nombre: c.nombre || '', dni: c.dni || '',
+                apellido: c.apellido || '', nombre: c.nombre || '', dni: c.dni || '',
                 domicilio: c.domicilio || '', codigo_postal: c.codigo_postal || '',
                 localidad: c.localidad || '', telefono: c.telefono || '',
                 email: c.email || '', fecha_nacimiento: c.fecha_nacimiento || '',
