@@ -7,7 +7,14 @@ las tablas al autogenerar migraciones.
 
 from app.core.database import Base
 from app.models.auditoria import Auditoria
-from app.models.cambio import Cambio, CambioItemDevuelto, CambioItemNuevo, EstadoCambio, TipoCambio
+from app.models.cambio import (
+    Cambio,
+    CambioItemDevuelto,
+    CambioItemNuevo,
+    CambioOrigen,
+    EstadoCambio,
+    TipoCambio,
+)
 from app.models.compra import Compra, CompraItem, EstadoCompra
 from app.models.auditoria_inventario import (
     AuditoriaInventario,
@@ -87,6 +94,7 @@ __all__ = [
     "Cambio",
     "CambioItemDevuelto",
     "CambioItemNuevo",
+    "CambioOrigen",
     "EstadoCambio",
     "TipoCambio",
     "Compra",

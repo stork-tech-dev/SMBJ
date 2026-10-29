@@ -93,7 +93,7 @@
                             <td class="px-4 py-3 align-middle text-sm"
                                 x-text="c.punto_de_venta_nombre || '—'"></td>
                             <td class="px-4 py-3 align-middle font-mono text-sm"
-                                x-text="c.codigo_venta_origen || '—'"></td>
+                                x-text="c.origenes.map((o) => o.codigo).join(', ') || '—'"></td>
                             <td class="px-4 py-3 align-middle text-right tabular-nums"
                                 :class="Number(c.diferencia) > 0 ? 'text-danger' : (Number(c.diferencia) < 0 ? 'text-success' : '')"
                                 x-text="Number(c.diferencia) === 0 ? 'Sin diferencia' : pesos(Math.abs(Number(c.diferencia))) + (Number(c.diferencia) > 0 ? ' cliente paga' : ' a favor cliente')"></td>
@@ -161,7 +161,7 @@
                 <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                     <div>
                         <span class="text-texto-muted">Venta origen:</span>
-                        <span class="ml-2 font-mono" x-text="detalle.cambio?.codigo_venta_origen || '—'"></span>
+                        <span class="ml-2 font-mono" x-text="(detalle.cambio?.origenes || []).map((o) => o.codigo).join(', ') || '—'"></span>
                     </div>
                     <div>
                         <span class="text-texto-muted">Operador:</span>

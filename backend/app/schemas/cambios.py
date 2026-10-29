@@ -20,8 +20,10 @@ from app.models.cambio import EstadoCambio, TipoCambio
 
 class IniciarCambioRequest(BaseModel):
     tipo: TipoCambio
-    # Obligatorio para comun/promocion/gift_card_fisica; None para falla
-    codigo_cambio: str | None = Field(default=None, max_length=8)
+    # Los tickets que trae el cliente: uno o más códigos de cambio, cuyo
+    # valor devuelto se suma. Obligatorio para comun/promocion/gift_card;
+    # vacío para falla.
+    codigos_cambio: list[str] = Field(default_factory=list)
     # Solo para falla
     autorizador_id: int | None = None
     # Local donde se hace el cambio (puede diferir del local de compra)
@@ -30,8 +32,16 @@ class IniciarCambioRequest(BaseModel):
 
 class ItemDevueltoRequest(BaseModel):
     variante_id: int
-    # Para comun/promocion/gift_card: obligatorio
+    # La unidad de qué ticket: el ítem de la venta o el retiro de
+    # mercadería. Sin ninguno, el servicio la busca en los tickets del cambio.
     venta_item_id: int | None = None
+    retiro_mercaderia_id: int | None = None
+
+
+class AgregarOrigenRequest(BaseModel):
+    """Otro ticket para el mismo cambio."""
+
+    codigo_cambio: str = Field(min_length=1, max_length=8)
 
 
 class ItemNuevoRequest(BaseModel):
@@ -85,14 +95,22 @@ class ItemNuevoResponse(BaseModel):
     foto_url: str | None
 
 
+class OrigenCambioResponse(BaseModel):
+    """Un ticket del cambio: una venta o un retiro de mercadería."""
+
+    venta_id: int | None
+    retiro_mercaderia_id: int | None
+    codigo: str | None
+
+
 class CambioResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     tipo: TipoCambio
     estado: EstadoCambio
-    venta_origen_id: int | None
-    codigo_venta_origen: str | None
+    # Los tickets que trajo el cliente (vacío en un cambio por falla).
+    origenes: list[OrigenCambioResponse] = []
     punto_de_venta_id: int
     punto_de_venta_nombre: str
     usuario_id: int
@@ -141,8 +159,10 @@ class VentaParaCambioResponse(BaseModel):
 class TicketItem(BaseModel):
     """Un producto del ticket del código de cambio."""
 
-    # None si el código es de un retiro de mercadería (no hay venta).
+    # None si el código es de un retiro de mercadería (no hay venta): ahí
+    # va `retiro_mercaderia_id`.
     venta_item_id: int | None
+    retiro_mercaderia_id: int | None = None
     variante_id: int
     descripcion: str
     codigo: str

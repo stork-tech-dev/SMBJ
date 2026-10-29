@@ -25,8 +25,65 @@
         </div>
     </div>
 
-    <div x-show="form.tipo !== 'falla'" class="mt-4 flex flex-col gap-1">
-        <label for="codigo-cambio" class="text-sm font-semibold text-texto-header">Código de cambio del ticket</label>
+    {# Tickets que trae el cliente: pueden ser varios y lo devuelto de todos
+       suma, para llevarse algo de más valor. De cada uno se elige acá qué
+       devuelve, así que la pantalla "Ítems devueltos" se saltea. #}
+    <div x-show="form.tipo !== 'falla' && tickets.length" x-cloak class="mt-5 space-y-4">
+        <p class="text-sm font-semibold text-texto-header">¿Qué devuelve el cliente?</p>
+        <template x-for="tk in tickets" :key="tk.codigo">
+            <section class="rounded-input border-2 border-borde px-3">
+                <div class="flex items-center justify-between gap-2 pt-2">
+                    <p class="text-sm font-semibold text-texto">
+                        Ticket <span class="font-mono" x-text="tk.codigo"></span>
+                    </p>
+                    <button type="button" @click="quitarTicket(tk)"
+                            class="min-h-toque px-2 text-sm text-texto-muted hover:text-danger">
+                        Quitar
+                    </button>
+                </div>
+                <ul class="divide-y divide-borde">
+                    <template x-for="it in tk.items" :key="claveItem(it)">
+                    <li>
+                        <label class="flex items-center gap-3 py-3 min-h-toque"
+                               :class="it.disponible ? 'cursor-pointer' : 'opacity-50'">
+                            <input type="checkbox" :disabled="!it.disponible"
+                                   :checked="elegido(it)" @change="alternar(it)"
+                                   class="w-5 h-5 shrink-0 accent-[color:var(--color-primary)]">
+                            <template x-if="it.foto_url">
+                                <img :src="it.foto_url" alt="" class="w-12 h-12 rounded object-contain bg-surface-alt shrink-0">
+                            </template>
+                            <template x-if="!it.foto_url">
+                                <span class="w-12 h-12 rounded bg-surface-alt grid place-items-center shrink-0
+                                             text-texto-disabled">{{ icono('box', clases='w-5 h-5') }}</span>
+                            </template>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-base font-medium truncate" x-text="it.descripcion"></span>
+                                <span class="block text-sm text-texto-muted font-mono" x-text="it.codigo"></span>
+                                <span x-show="!it.disponible" class="block text-xs font-medium text-danger">
+                                    Ya devuelto
+                                </span>
+                            </span>
+                            <span class="shrink-0 text-base font-semibold tabular-nums" x-text="pesos(it.precio)"></span>
+                        </label>
+                    </li>
+                    </template>
+                </ul>
+            </section>
+        </template>
+        <p x-show="elegidos.length" class="flex justify-between text-base font-semibold">
+            <span>Lo que devuelve suma</span>
+            <span class="tabular-nums" x-text="pesos(totalElegido)"></span>
+        </p>
+        <button type="button" x-show="!agregandoTicket" @click="agregandoTicket = true"
+                class="w-full h-boton rounded-input border border-borde text-sm text-texto-muted
+                       hover:border-primary hover:text-primary">
+            + Agregar otro ticket
+        </button>
+    </div>
+
+    <div x-show="verCampoCodigo" class="mt-4 flex flex-col gap-1">
+        <label for="codigo-cambio" class="text-sm font-semibold text-texto-header"
+               x-text="tickets.length ? 'Código del otro ticket' : 'Código de cambio del ticket'"></label>
         <div class="flex gap-2">
             <input id="codigo-cambio" x-model="form.codigo_cambio" type="search" inputmode="text"
                    placeholder="AB23" maxlength="8" enterkeyhint="search"
@@ -40,40 +97,8 @@
         </div>
         <p class="text-xs text-texto-muted">
             El código de 4 caracteres anotado en el ticket de la compra original.
+            Si el cliente trae más de un ticket, se suman.
         </p>
-    </div>
-
-    {# Productos del ticket: se elige acá qué devuelve el cliente (uno o
-       varios), así que la pantalla "Ítems devueltos" se saltea. #}
-    <div x-show="form.tipo !== 'falla' && ticket" x-cloak class="mt-5">
-        <p class="text-sm font-semibold text-texto-header">¿Qué devuelve el cliente?</p>
-        <ul class="mt-2 divide-y divide-borde">
-            <template x-for="it in ticket?.items || []" :key="it.venta_item_id ?? it.variante_id">
-                <li>
-                    <label class="flex items-center gap-3 py-3 min-h-toque"
-                           :class="it.disponible ? 'cursor-pointer' : 'opacity-50'">
-                        <input type="checkbox" :disabled="!it.disponible"
-                               :checked="elegido(it)" @change="alternar(it)"
-                               class="w-5 h-5 shrink-0 accent-[color:var(--color-primary)]">
-                        <template x-if="it.foto_url">
-                            <img :src="it.foto_url" alt="" class="w-12 h-12 rounded object-contain bg-surface-alt shrink-0">
-                        </template>
-                        <template x-if="!it.foto_url">
-                            <span class="w-12 h-12 rounded bg-surface-alt grid place-items-center shrink-0
-                                         text-texto-disabled">{{ icono('box', clases='w-5 h-5') }}</span>
-                        </template>
-                        <span class="min-w-0 flex-1">
-                            <span class="block text-base font-medium truncate" x-text="it.descripcion"></span>
-                            <span class="block text-sm text-texto-muted font-mono" x-text="it.codigo"></span>
-                            <span x-show="!it.disponible" class="block text-xs font-medium text-danger">
-                                Ya devuelto
-                            </span>
-                        </span>
-                        <span class="shrink-0 text-base font-semibold tabular-nums" x-text="pesos(it.precio)"></span>
-                    </label>
-                </li>
-            </template>
-        </ul>
     </div>
 
     <div x-show="form.tipo === 'falla'" class="mt-4 flex flex-col gap-1">

@@ -101,7 +101,7 @@ def _cambio_con(db, autor, local, venta, item):
     """Cambio común que devuelve `item` del ticket y se lleva lo mismo (diferencia 0)."""
     cambio, _ = servicio_cambios.iniciar_cambio(
         db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
-        codigo_cambio=venta.codigo_cambio,
+        codigos_cambio=[venta.codigo_cambio],
     )
     servicio_cambios.agregar_item_devuelto(db, cambio, item["variante_id"], item["venta_item_id"])
     servicio_cambios.agregar_item_nuevo(db, cambio, item["variante_id"])
@@ -145,7 +145,7 @@ def test_no_se_devuelve_dos_veces_lo_mismo_en_un_cambio(db, autor, local, venta)
     anillo = servicio_cambios.items_del_ticket(db, venta.codigo_cambio)["items"][0]
     cambio, _ = servicio_cambios.iniciar_cambio(
         db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
-        codigo_cambio=venta.codigo_cambio,
+        codigos_cambio=[venta.codigo_cambio],
     )
     servicio_cambios.agregar_item_devuelto(db, cambio, anillo["variante_id"], anillo["venta_item_id"])
     db.flush()
@@ -193,7 +193,7 @@ def test_la_vendedora_ve_los_medios_para_pagar_la_diferencia_y_confirma(
     anillo = next(v for k, v in items.items() if k.startswith("Anillo"))
     cambio, _ = servicio_cambios.iniciar_cambio(
         db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
-        codigo_cambio=venta.codigo_cambio,
+        codigos_cambio=[venta.codigo_cambio],
     )
     servicio_cambios.agregar_item_devuelto(db, cambio, aro["variante_id"], aro["venta_item_id"])
     servicio_cambios.agregar_item_nuevo(db, cambio, anillo["variante_id"])
@@ -248,3 +248,163 @@ def test_un_codigo_viejo_de_8_caracteres_se_sigue_encontrando(db, venta):
     db.flush()
 
     assert servicio_cambios.items_del_ticket(db, "ABCD2345")["items"]
+
+
+# ── Varios tickets en un mismo cambio ───────────────────────────────────────
+
+
+@pytest.fixture
+def hacer_venta(db, autor, dispositivo, crear_variante, con_stock, asegurar_turno):
+    """Fábrica de ventas confirmadas de UN producto, opcionalmente con cliente."""
+    asegurar_turno(dispositivo.punto_de_venta_id, autor.id)
+    efectivo = next(m for m in servicio_medios.listar_medios(db) if m.nombre == "Efectivo")
+
+    def _hacer(descripcion, precio, cliente=None):
+        variante = crear_variante(descripcion, precio)
+        con_stock(variante, 5)
+        venta = servicio_ventas.iniciar_venta(db, autor, dispositivo, LIBRE)
+        servicio_ventas.agregar_item(db, autor, venta, variante_id=variante.id)
+        if cliente is not None:
+            servicio_ventas.asociar_cliente(db, autor, venta, cliente.id)
+        servicio_ventas.registrar_pagos(
+            db, autor, venta, [{"medio_de_pago_id": efectivo.id, "monto": venta.total}]
+        )
+        servicio_ventas.confirmar_venta(db, autor, venta, LIBRE)
+        db.flush()
+        return venta
+
+    return _hacer
+
+
+def _cliente(db, autor, apellido, dni):
+    from app.services import clientes as servicio_clientes
+
+    return servicio_clientes.crear_cliente(
+        db, autor, apellido=apellido, nombre="Ana", email=f"{dni}@prueba.com", dni=dni
+    )
+
+
+def _devolver_todo(db, cambio, venta):
+    for i in servicio_cambios.items_del_ticket(db, venta.codigo_cambio)["items"]:
+        servicio_cambios.agregar_item_devuelto(db, cambio, i["variante_id"], i["venta_item_id"])
+
+
+def test_dos_tickets_suman_lo_devuelto_para_llevar_algo_de_mas_valor(
+    db, autor, local, hacer_venta, crear_variante, con_stock,
+):
+    """
+    Dos tickets de $1000 y $500 se juntan: el cliente se lleva algo de
+    $2000 y paga solo la diferencia contra los dos ($500).
+    """
+    from sqlalchemy import select
+
+    from app.models.stock import MovimientoStock, TipoMovimiento
+
+    t1 = hacer_venta("Anillo", "1000")
+    t2 = hacer_venta("Aro", "500")
+    caro = crear_variante("Collar", "2000")
+    con_stock(caro, 3)
+
+    cambio, _ = servicio_cambios.iniciar_cambio(
+        db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
+        codigos_cambio=[t1.codigo_cambio, t2.codigo_cambio.lower()],
+    )
+    _devolver_todo(db, cambio, t1)
+    _devolver_todo(db, cambio, t2)
+    servicio_cambios.agregar_item_nuevo(db, cambio, caro.id)
+
+    calculo = servicio_cambios.calcular_diferencia(db, cambio)
+    assert calculo["total_devuelto"] == Decimal("1500")
+    assert calculo["diferencia"] == Decimal("500")
+
+    efectivo = next(m for m in servicio_medios.listar_medios(db) if m.nombre == "Efectivo")
+    servicio_cambios.confirmar_cambio(db, autor, cambio, medio_pago_diferencia_id=efectivo.id)
+    db.flush()
+
+    assert {o.codigo for o in cambio.origenes} == {t1.codigo_cambio, t2.codigo_cambio}
+    # Cada devolución de stock queda referida a la venta de la que salió.
+    referencias = set(db.execute(
+        select(MovimientoStock.referencia_venta_id).where(
+            MovimientoStock.tipo == TipoMovimiento.DEVOLUCION_VENTA,
+            MovimientoStock.notas.like(f"Cambio #{cambio.id}%"),
+        )
+    ).scalars())
+    assert referencias == {t1.id, t2.id}
+
+
+def test_no_se_devuelve_algo_que_no_es_de_ningun_ticket(db, autor, local, hacer_venta):
+    t1 = hacer_venta("Anillo", "1000")
+    otra = hacer_venta("Pulsera", "800")
+    cambio, _ = servicio_cambios.iniciar_cambio(
+        db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
+        codigos_cambio=[t1.codigo_cambio],
+    )
+    item = servicio_cambios.items_del_ticket(db, otra.codigo_cambio)["items"][0]
+
+    with pytest.raises(ReglaDeNegocio, match="ninguno de los tickets"):
+        servicio_cambios.agregar_item_devuelto(
+            db, cambio, item["variante_id"], item["venta_item_id"]
+        )
+
+
+def test_el_mismo_ticket_no_entra_dos_veces(db, autor, local, hacer_venta):
+    t1 = hacer_venta("Anillo", "1000")
+
+    with pytest.raises(ReglaDeNegocio, match="repetido"):
+        servicio_cambios.iniciar_cambio(
+            db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
+            codigos_cambio=[t1.codigo_cambio, t1.codigo_cambio.lower()],
+        )
+
+    cambio, _ = servicio_cambios.iniciar_cambio(
+        db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
+        codigos_cambio=[t1.codigo_cambio],
+    )
+    with pytest.raises(ReglaDeNegocio, match="ya está en este cambio"):
+        servicio_cambios.agregar_origen(db, autor, cambio, t1.codigo_cambio)
+
+
+def test_tickets_de_clientes_distintos_no_se_juntan(db, autor, local, hacer_venta):
+    ana = _cliente(db, autor, "Gómez", "30111222")
+    eva = _cliente(db, autor, "Pérez", "30111333")
+    de_ana = hacer_venta("Anillo", "1000", cliente=ana)
+    de_eva = hacer_venta("Aro", "500", cliente=eva)
+    sin_cliente = hacer_venta("Collar", "700")
+
+    with pytest.raises(ReglaDeNegocio, match="clientes distintos"):
+        servicio_cambios.iniciar_cambio(
+            db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
+            codigos_cambio=[de_ana.codigo_cambio, de_eva.codigo_cambio],
+        )
+
+    # Uno con cliente y uno sin cliente sí.
+    cambio, _ = servicio_cambios.iniciar_cambio(
+        db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
+        codigos_cambio=[de_ana.codigo_cambio, sin_cliente.codigo_cambio],
+    )
+    assert len(cambio.origenes) == 2
+
+
+def test_api_suma_otro_ticket_solo_a_un_cambio_pendiente(
+    client, db, autor, local, hacer_venta,
+):
+    t1 = hacer_venta("Anillo", "1000")
+    t2 = hacer_venta("Aro", "500")
+    db.commit()
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    r = client.post("/api/v1/cambios", json={
+        "tipo": "comun", "codigos_cambio": [t1.codigo_cambio], "punto_de_venta_id": local.id,
+    })
+    assert r.status_code == 201, r.text
+    cambio_id = r.json()["id"]
+
+    r = client.post(f"/api/v1/cambios/{cambio_id}/origenes", json={"codigo_cambio": t2.codigo_cambio})
+    assert r.status_code == 200, r.text
+    assert [o["codigo"] for o in r.json()["origenes"]] == [t1.codigo_cambio, t2.codigo_cambio]
+
+    client.patch(f"/api/v1/cambios/{cambio_id}/cancelar")
+    otro = hacer_venta("Collar", "700")
+    db.commit()
+    r = client.post(f"/api/v1/cambios/{cambio_id}/origenes", json={"codigo_cambio": otro.codigo_cambio})
+    assert r.status_code == 409

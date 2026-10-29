@@ -106,10 +106,16 @@ function nuevoCambio(codigoInicial = '') {
 
         form: {
             tipo: 'comun',
+            // El código que se está tipeando; los ya cargados van en `codigos`.
             codigo_cambio: codigoInicial || '',
+            codigos: [],
             autorizador_id: null,
             punto_de_venta_id: null,
         },
+        // Los tickets del cambio ya iniciado ({codigo, ...}), y el campo
+        // para sumar otro desde "Ítems devueltos".
+        origenes: [],
+        otroCodigo: '',
 
         scan: { codigo: '', resultados: [], sinResultados: false },
 
@@ -141,12 +147,49 @@ function nuevoCambio(codigoInicial = '') {
 
         // ── Paso 0: iniciar cambio ──────────────────────────────────────────
 
+        /* Suma el código tipeado a la lista: el cliente puede traer varios
+           tickets y lo devuelto de todos suma. Lo valida el backend al
+           iniciar. */
+        agregarCodigo() {
+            const codigo = this.form.codigo_cambio.trim().toUpperCase();
+            if (!codigo) return;
+            if (this.form.codigos.includes(codigo)) {
+                window.toast(`El ticket ${codigo} ya está cargado`, 'error');
+                return;
+            }
+            this.form.codigos = [...this.form.codigos, codigo];
+            this.form.codigo_cambio = '';
+        },
+
+        quitarCodigo(codigo) {
+            this.form.codigos = this.form.codigos.filter((c) => c !== codigo);
+        },
+
+        /* Otro ticket para el cambio ya iniciado (paso "Ítems devueltos"). */
+        async agregarOrigen() {
+            const codigo = this.otroCodigo.trim().toUpperCase();
+            if (!codigo) return;
+            try {
+                const cambio = await window.pedir(`${URL_CAMBIOS}/${this.cambioId}/origenes`, {
+                    method: 'POST',
+                    body: JSON.stringify({ codigo_cambio: codigo }),
+                });
+                this.origenes = cambio.origenes;
+                this.otroCodigo = '';
+                window.toast(`Ticket ${codigo} agregado al cambio`, 'exito');
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
+
         async iniciar() {
             if (!this.form.punto_de_venta_id) {
                 window.toast('Completá el local donde se hace el cambio', 'error');
                 return;
             }
-            if (this.form.tipo !== 'falla' && !this.form.codigo_cambio.trim()) {
+            // Lo que quedó tipeado sin tocar "Agregar" también cuenta.
+            if (this.form.codigo_cambio.trim()) this.agregarCodigo();
+            if (this.form.tipo !== 'falla' && !this.form.codigos.length) {
                 window.toast('Ingresá el código de cambio del ticket', 'error');
                 return;
             }
@@ -156,7 +199,7 @@ function nuevoCambio(codigoInicial = '') {
                 const body = {
                     tipo: this.form.tipo,
                     punto_de_venta_id: this.form.punto_de_venta_id,
-                    codigo_cambio: this.form.tipo !== 'falla' ? this.form.codigo_cambio.trim().toUpperCase() : null,
+                    codigos_cambio: this.form.tipo !== 'falla' ? this.form.codigos : [],
                     autorizador_id: this.form.tipo === 'falla' ? this.form.autorizador_id : null,
                 };
 
@@ -174,6 +217,7 @@ function nuevoCambio(codigoInicial = '') {
 
                 const cambio = await resp.json();
                 this.cambioId = cambio.id;
+                this.origenes = cambio.origenes;
 
                 // Leer avisos del header X-Avisos si los hay
                 const hdr = resp.headers.get('X-Avisos');

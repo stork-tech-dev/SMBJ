@@ -59,17 +59,39 @@
                 </div>
             </div>
 
+            {# Uno o más tickets: lo devuelto de todos suma, para que el
+               cliente pueda llevarse algo de más valor. #}
             <div x-show="form.tipo !== 'falla'" class="flex flex-col gap-1">
-                <label class="text-sm font-semibold text-texto-header">
-                    Código de cambio del ticket
+                <label for="cambio-codigo" class="text-sm font-semibold text-texto-header">
+                    Códigos de cambio de los tickets
                 </label>
-                <input x-model="form.codigo_cambio"
-                       placeholder="AB23"
-                       class="campo-linea uppercase"
-                       maxlength="8"
-                       @keydown.enter="iniciar()">
+                <div x-show="form.codigos.length" class="flex flex-wrap gap-2 mb-1">
+                    <template x-for="c in form.codigos" :key="c">
+                        <span class="inline-flex items-center gap-1 pl-3 pr-1 rounded-[15px]
+                                     bg-accent text-white text-sm font-mono">
+                            <span x-text="c"></span>
+                            <button type="button" @click="quitarCodigo(c)" :aria-label="'Quitar ' + c"
+                                    class="grid place-items-center min-h-toque min-w-toque">
+                                {{ icono('cerrar', clases='w-4 h-4') }}
+                            </button>
+                        </span>
+                    </template>
+                </div>
+                <div class="flex gap-2">
+                    <input id="cambio-codigo" x-model="form.codigo_cambio"
+                           placeholder="AB23"
+                           class="campo-linea uppercase flex-1"
+                           maxlength="8"
+                           @keydown.enter.prevent="agregarCodigo()">
+                    <button type="button" @click="agregarCodigo()"
+                            class="h-boton px-4 rounded-input border border-borde text-sm
+                                   hover:border-primary hover:text-primary">
+                        + Agregar
+                    </button>
+                </div>
                 <p class="text-xs text-texto-muted">
                     El código de 4 caracteres anotado en el ticket de la compra original.
+                    Si el cliente trae más de un ticket, agregalos todos: se suman.
                 </p>
             </div>
 
@@ -118,6 +140,26 @@
         {# Panel izquierdo: escáner #}
         <div class="tarjeta rounded-[10px] p-6 space-y-4">
             <h2 class="text-base font-black text-welcome">¿Qué devuelve el cliente?</h2>
+
+            {# Los tickets del cambio, y uno más si el cliente trae otro. #}
+            <div x-show="form.tipo !== 'falla'" class="space-y-2">
+                <p class="text-sm text-texto-muted">
+                    Tickets:
+                    <span class="font-mono text-texto"
+                          x-text="origenes.map((o) => o.codigo).join(', ') || '—'"></span>
+                </p>
+                <div class="flex gap-2">
+                    <label for="cambio-otro-codigo" class="sr-only">Código de otro ticket</label>
+                    <input id="cambio-otro-codigo" x-model="otroCodigo" placeholder="Otro ticket (AB23)"
+                           maxlength="8" class="campo-linea uppercase flex-1"
+                           @keydown.enter.prevent="agregarOrigen()">
+                    <button type="button" @click="agregarOrigen()"
+                            class="h-boton px-4 rounded-input border border-borde text-sm
+                                   hover:border-primary hover:text-primary">
+                        + Agregar ticket
+                    </button>
+                </div>
+            </div>
             <p class="text-sm text-texto-muted">
                 Ingresá el código o SKU del producto que trae el cliente.
             </p>
