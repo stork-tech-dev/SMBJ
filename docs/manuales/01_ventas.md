@@ -200,6 +200,19 @@ Permite que un cliente devuelva uno o varios productos y se lleve otros distinto
    - Si se lleva algo más barato, la diferencia queda **a favor del cliente pero no se le devuelve en dinero** — puede usarla para llevarse más productos en el momento, o la pierde.
 6. Confirmá. El sistema entrega un **código de cambio nuevo** para los productos que se lleva, por si en el futuro los quiere cambiar también.
 
+#### Si el cliente trae más de un ticket
+
+Se pueden juntar varios tickets en un mismo cambio: **lo que devuelve de todos se suma**, y la diferencia se calcula contra ese total. Así, con dos tickets de $1.000 y $500 puede llevarse algo de $2.000 pagando solo $500.
+
+- **En el celular**: después de cargar el primer ticket, tocá **"+ Agregar otro ticket"** e ingresá el código. Cada ticket aparece con sus productos para tildar qué devuelve, y abajo se ve cuánto suma lo devuelto. Un ticket cargado por error se saca con **"Quitar"**.
+- **En la computadora**: en el primer paso agregá cada código con **"+ Agregar"**; ya en "Ítems devueltos", podés sumar otro con **"+ Agregar ticket"**.
+
+Reglas:
+
+- Todos los tickets van con el **mismo tipo de cambio** (común, promoción o gift card). Un código de retiro de mercadería de empleada se puede sumar en un cambio común.
+- Tienen que ser compras **del mismo cliente**. Una compra sin cliente se puede juntar con cualquiera.
+- El aviso de plazo vencido sale por cada ticket que lo pasó (avisa, no bloquea).
+
 ### Cómo se calcula lo que vale el producto devuelto
 
 - **Cambio común**: se reconoce el precio de lista al momento de la compra original (no lo que el cliente pagó con descuentos).
