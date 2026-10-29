@@ -11,7 +11,11 @@
    Cada turno tiene tres secciones bien separadas: el saldo inicial (con lo
    que abrió la caja, aparte para que no se lea como una venta), las ventas
    y movimientos, y los totales. Cada venta se toca para ver su detalle
-   (productos, descuentos, pagos y código de cambio). #}
+   (productos, descuentos, pagos y código de cambio).
+
+   El turno en curso se ve siempre completo: es el que la vendedora está
+   mirando. Los cerrados arrancan colapsados —solo el encabezado— y se
+   abren con la flecha. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
@@ -42,9 +46,22 @@
     <template x-if="datos">
         <div class="mt-5 space-y-5">
             <template x-for="t in datos.turnos" :key="t.turno_id">
-                <section class="rounded-input border-2 border-borde overflow-hidden">
-                    <h2 class="px-4 py-3 text-sm font-semibold text-welcome"
-                        x-text="rangoTurno(t)"></h2>
+                <section x-data="{ abierto: !t.fecha_cierre }"
+                         class="rounded-input border-2 border-borde overflow-hidden">
+                    <div class="flex items-center justify-between gap-2 pl-4 pr-1">
+                        <h2 class="py-3 text-sm font-semibold text-welcome" x-text="rangoTurno(t)"></h2>
+                        <button type="button" x-show="t.fecha_cierre" @click="abierto = !abierto"
+                                :aria-expanded="abierto ? 'true' : 'false'"
+                                :aria-label="abierto ? 'Ocultar el turno' : 'Ver el turno'"
+                                class="grid place-items-center shrink-0 min-h-toque min-w-toque
+                                       text-texto-muted hover:text-primary">
+                            <span class="transition-transform" :class="abierto && 'rotate-180'">
+                                {{ icono('chevron', clases='w-5 h-5') }}
+                            </span>
+                        </button>
+                    </div>
+
+                    <div x-show="abierto" x-cloak>
 
                     {# 1. Saldo inicial: el efectivo con el que abrió la caja.
                        Aparte y sin verde: no es una venta ni plata que entró
@@ -154,6 +171,7 @@
                                 <dd class="tabular-nums" x-text="pesos(t.efectivo_esperado)"></dd>
                             </div>
                         </dl>
+                    </div>
                     </div>
                 </section>
             </template>
