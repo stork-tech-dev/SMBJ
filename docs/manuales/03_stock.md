@@ -41,6 +41,13 @@ Por defecto se ve solo el stock de **tu local**. Marcá **"Ver todos los locales
 
 Con **"Filtros"** podés acotar por categoría, eligiendo nivel por nivel.
 
+#### Si no sos vendedora (supervisora, dueño, etc.)
+
+Depende de si tu usuario tiene un **Punto de Venta asignado** (se carga en **Usuarios**):
+
+- **Con Punto de Venta asignado**: la pantalla funciona igual que para la vendedora. "Tu local" es **el del celular** desde el que estás consultando, aunque tu usuario tenga asignado otro: es desde ese local que se vende.
+- **Sin Punto de Venta asignado** (por ejemplo, el dueño): se ven **todos los locales a la vez**, solo los productos que **tienen stock**, con el nombre del local en cada uno. No aparece "Ver todos los locales" y no se pueden agregar productos al carrito desde esta pantalla.
+
 #### Agregar un producto al carrito desde la consulta
 
 No hace falta filtrar: **deslizá la fila del producto hacia un costado** (izquierda o derecha). Aparece un fondo azul con **"Agregar"** y, al soltar, el sistema pregunta **"¿Agregar al carrito?"** mostrando el producto y su precio:
