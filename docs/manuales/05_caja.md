@@ -107,6 +107,8 @@ Muestra todo lo que entró y salió de la caja en cada turno del día, para cont
 
 Los turnos se muestran del más reciente al más antiguo: el **turno en curso aparece primero** y, si ese día hubo turnos anteriores, quedan debajo (bajá para verlos).
 
+El **turno en curso** se ve siempre completo. Los **turnos cerrados** aparecen **colapsados**: solo se ve su horario. Para ver el detalle, tocá la **flecha** de la derecha; tocala de nuevo para ocultarlo.
+
 Cada turno aparece como una tarjeta con su horario y tres secciones bien separadas:
 
 - **Saldo inicial**: el efectivo con el que se abrió la caja, con la hora de apertura. Va aparte y en negro (no en verde) porque no es una venta ni plata que entró durante el turno: es con lo que se arrancó.
