@@ -309,15 +309,19 @@ def _nombre_item(item: ArqueoItem, db: Session) -> str:
 ROLES_NOTIFICADOS = (ROL_DUENO, ROL_CUENTA_MAESTRA)
 
 
-def _notificar_diferencia(
-    turno: Turno,
-    arqueo: Arqueo,
-    items: list[ArqueoItem],
+def notificar_a_duenos(
     db: Session,
+    tipo: TipoNotificacion,
+    titulo: str,
+    cuerpo: str,
+    metadata: dict,
 ) -> None:
     """
-    Genera una notificación para cada usuario activo con rol Dueño o Cuenta
-    Maestra (`ROLES_NOTIFICADOS`). Se llama solo si diferencia != 0.
+    Una notificación para cada usuario activo con rol Dueño o Cuenta Maestra
+    (`ROLES_NOTIFICADOS`), en la transacción del que la llama: si la acción
+    que la origina falla, no queda notificación suelta.
+
+    La usan la diferencia de arqueo y la de apertura de turno.
     """
     duenos = db.execute(
         select(Usuario)
@@ -326,9 +330,26 @@ def _notificar_diferencia(
         .where(Usuario.activo.is_(True))
     ).scalars().all()
 
-    if not duenos:
-        return
+    ahora = ahora_db()
+    for dueno in duenos:
+        db.add(Notificacion(
+            usuario_id=dueno.id,
+            tipo=tipo,
+            titulo=titulo,
+            cuerpo=cuerpo,
+            leida=False,
+            metadata_=metadata,
+            created_at=ahora,
+        ))
 
+
+def _notificar_diferencia(
+    turno: Turno,
+    arqueo: Arqueo,
+    items: list[ArqueoItem],
+    db: Session,
+) -> None:
+    """Notifica a los dueños la diferencia del arqueo. Solo si diferencia != 0."""
     vendedoras_nombres = [
         tv.usuario.nombre for tv in turno.vendedoras if tv.usuario
     ]
@@ -362,17 +383,13 @@ def _notificar_diferencia(
         "vendedoras": vendedoras_nombres,
     }
 
-    ahora = ahora_db()
-    for dueno in duenos:
-        db.add(Notificacion(
-            usuario_id=dueno.id,
-            tipo=TipoNotificacion.DIFERENCIA_ARQUEO,
-            titulo=f"Diferencia en arqueo — {turno.punto_de_venta.nombre} — {fecha_str}",
-            cuerpo=cuerpo,
-            leida=False,
-            metadata_=metadata_data,
-            created_at=ahora,
-        ))
+    notificar_a_duenos(
+        db,
+        TipoNotificacion.DIFERENCIA_ARQUEO,
+        f"Diferencia en arqueo — {turno.punto_de_venta.nombre} — {fecha_str}",
+        cuerpo,
+        metadata_data,
+    )
 
 
 def registrar_arqueo(

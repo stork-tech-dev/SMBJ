@@ -16,8 +16,7 @@
     <form x-show="!cargando && !error && !hecho" x-cloak @submit.prevent="confirmar()" class="space-y-6">
         <div>
             <label for="re-monto" class="text-sm font-semibold text-texto-header">Monto a retirar</label>
-            <input id="re-monto" type="number" inputmode="decimal" min="0" step="0.01"
-                   x-model="monto" required class="campo-linea" placeholder="$0">
+            <input id="re-monto" x-monto="monto" required class="campo-linea" placeholder="$0">
             <p class="mt-2 text-sm text-texto-muted">
                 Efectivo disponible en caja:
                 <span class="font-semibold text-texto" x-text="pesos(disponible)"></span>

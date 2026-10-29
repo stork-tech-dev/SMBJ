@@ -78,6 +78,71 @@ window.pesos = function (valor) {
 };
 
 /**
+ * Campo de pesos con separador de miles: `x-monto="variable"` en lugar de
+ * `x-model`, en un `<input>` de texto.
+ *
+ * La vendedora ve `125.000` o `1.250,50` mientras tipea —con los puntos es
+ * difícil errarle por un cero— y en la variable queda un Number (o '' si
+ * está vacío): el JS de cada pantalla sigue usando `Number()` como antes.
+ *
+ * Los puntos de miles los pone el campo. Un punto TIPEADO se toma como la
+ * coma decimal: el teclado de algunos celulares solo ofrece punto.
+ */
+const _agruparMiles = (entero) => entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+function _textoDeMonto(valor) {
+    if (valor === '' || valor === null || valor === undefined || Number.isNaN(Number(valor))) return '';
+    const [entero, decimales] = String(Math.round(Number(valor) * 100) / 100).split('.');
+    return _agruparMiles(entero) + (decimales ? ',' + decimales : '');
+}
+
+document.addEventListener('alpine:init', () => {
+    window.Alpine.directive('monto', (el, { expression }, { evaluateLater, effect, cleanup }) => {
+        const leer = evaluateLater(expression);
+        const escribir = evaluateLater(`${expression} = __monto`);
+        el.type = 'text';
+        el.inputMode = 'decimal';
+        el.autocomplete = 'off';
+
+        // Lo último que escribió el campo: mientras se tipea no se reformatea
+        // lo propio (borraría una coma recién puesta); un cambio que viene de
+        // afuera —la precarga del efectivo inicial— sí se muestra.
+        let ultimo;
+        effect(() => leer((valor) => {
+            if (document.activeElement === el && valor === ultimo) return;
+            el.value = _textoDeMonto(valor);
+        }));
+
+        const alTipear = (e) => {
+            let texto = el.value;
+            const cursor = el.selectionStart ?? texto.length;
+            if (e.data === '.' && !texto.includes(',')) {
+                texto = texto.slice(0, cursor - 1) + ',' + texto.slice(cursor);
+            }
+            const antes = texto.slice(0, cursor).replace(/[^\d,]/g, '').length;
+
+            const [crudo, ...resto] = texto.split(',');
+            const entero = crudo.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+            const decimales = resto.length ? resto.join('').replace(/\D/g, '').slice(0, 2) : null;
+            const visible = _agruparMiles(entero) + (decimales !== null ? ',' + decimales : '');
+
+            el.value = visible;
+            // El cursor vuelve a quedar después del mismo dígito.
+            let pos = 0;
+            for (let n = 0; pos < visible.length && n < antes; pos++) {
+                if (/[\d,]/.test(visible[pos])) n++;
+            }
+            el.setSelectionRange(pos, pos);
+
+            ultimo = entero === '' && !decimales ? '' : Number(`${entero || '0'}.${decimales || '0'}`);
+            escribir(() => {}, { scope: { __monto: ultimo } });
+        };
+        el.addEventListener('input', alTipear);
+        cleanup(() => el.removeEventListener('input', alTipear));
+    });
+});
+
+/**
  * Hoy en hora local como "YYYY-MM-DD" (lo que espera un <input type="date">).
  * A mano y no con toISOString(): esa da la fecha UTC, que después de las
  * 21 h en Argentina ya es mañana. La usan los filtros de fecha de reportes.

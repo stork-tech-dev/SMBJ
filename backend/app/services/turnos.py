@@ -182,7 +182,57 @@ def abrir_turno(
         }),
         ip_origen=ip,
     )
+    _notificar_diferencia_apertura(turno, anterior, db)
     return turno
+
+
+def _notificar_diferencia_apertura(turno: Turno, anterior: dict | None, db: Session) -> None:
+    """
+    Avisa a los dueños si el efectivo inicial no coincide con lo contado al
+    cerrar el turno anterior del local: es plata que falta (o sobra) entre un
+    turno y otro. Sin cierre anterior no hay con qué comparar.
+
+    La vendedora ya lo vio en rojo al tipear; esto es lo que se entera el dueño.
+    """
+    from decimal import Decimal
+
+    from app.models.turno import TipoNotificacion
+    from app.models.usuario import Usuario
+    from app.services.arqueo import notificar_a_duenos
+
+    if anterior is None:
+        return
+    diferencia = Decimal(str(turno.efectivo_apertura)) - Decimal(anterior["efectivo"])
+    if diferencia == 0:
+        return
+
+    tipo = "Faltante" if diferencia < 0 else "Sobrante"
+    local = turno.punto_de_venta.nombre
+    abrio = db.get(Usuario, turno.usuario_apertura_id)
+    cierre = anterior["fecha_cierre"]
+    cuerpo = (
+        f"Local: {local}\n"
+        f"Apertura: {turno.fecha_apertura.strftime('%d/%m/%Y %H:%M')}\n"
+        f"Abrió: {abrio.nombre if abrio else '—'}\n"
+        f"Efectivo al cerrar el turno anterior"
+        f"{' (' + cierre.strftime('%d/%m/%Y %H:%M') + ')' if cierre else ''}: "
+        f"${Decimal(anterior['efectivo']):,.2f}\n"
+        f"Efectivo inicial declarado: ${Decimal(str(turno.efectivo_apertura)):,.2f}\n"
+        f"{tipo}: ${abs(diferencia):,.2f}"
+    )
+    notificar_a_duenos(
+        db,
+        TipoNotificacion.DIFERENCIA_APERTURA,
+        f"{tipo} al abrir el turno — {local} — {turno.fecha_apertura.strftime('%d/%m/%Y')}",
+        cuerpo,
+        {
+            "turno_id": turno.id,
+            "turno_anterior_id": anterior["turno_id"],
+            "diferencia": str(diferencia),
+            "punto_de_venta": local,
+            "usuario": abrio.nombre if abrio else None,
+        },
+    )
 
 
 def unirse_a_turno(

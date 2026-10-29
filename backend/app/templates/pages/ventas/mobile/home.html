@@ -105,21 +105,27 @@
                     Efectivo inicial en caja
                 </label>
                 <input
-                    type="number"
-                    inputmode="decimal"
-                    x-model="efectivoApertura"
+                    x-monto="efectivoApertura"
                     placeholder="$0"
                     class="w-full h-boton border border-borde rounded-input px-3 text-center text-base">
 
                 {# Precargado con lo contado al cerrar el turno anterior; se
-                   puede corregir, y si difiere se avisa. #}
+                   puede corregir, pero si difiere es plata que falta o sobra
+                   entre un turno y otro: se avisa en rojo y, al confirmar, el
+                   backend les manda una notificación a los dueños. #}
                 <p x-show="cierreAnterior" x-cloak class="mt-2 text-xs text-texto-muted text-center">
                     Cierre anterior: <span class="font-semibold" x-text="pesos(cierreAnterior?.efectivo)"></span>
                     (<span x-text="fecha(cierreAnterior?.fecha_cierre)"></span>)
                 </p>
-                <p x-show="distintoDelCierre" x-cloak class="mt-1 text-xs font-medium text-warning text-center">
-                    Distinto del cierre anterior
-                </p>
+                <div x-show="diferenciaApertura" x-cloak role="alert"
+                     class="mt-3 p-3 rounded-input bg-danger/15 text-danger text-center">
+                    <p class="text-base font-semibold">
+                        Estás generando un
+                        <span x-text="diferenciaApertura < 0 ? 'faltante' : 'sobrante'"></span>
+                        de <span x-text="pesos(Math.abs(diferenciaApertura || 0))"></span>
+                    </p>
+                    <p class="mt-1 text-xs">Al confirmar se les avisa a los dueños.</p>
+                </div>
 
                 <button
                     @click="confirmarApertura()"

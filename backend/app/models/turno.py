@@ -48,6 +48,9 @@ class EstadoTurno(str, enum.Enum):
 
 class TipoNotificacion(str, enum.Enum):
     DIFERENCIA_ARQUEO = "diferencia_arqueo"
+    # El efectivo inicial de un turno no coincide con lo contado al cerrar el
+    # anterior: faltante o sobrante entre un turno y otro.
+    DIFERENCIA_APERTURA = "diferencia_apertura"
 
 
 class Turno(Base):
