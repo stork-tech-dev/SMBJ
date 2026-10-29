@@ -66,21 +66,24 @@ def buscar_productos(db: Session, texto: str, limite: int = 10) -> list[Producto
     """
     Productos por SKU, descripción o código de etiqueta (con o sin dígito
     verificador): las mismas formas de nombrar un artículo que el listado
-    de productos (`condiciones_codigo_variante`).
+    de productos (`condiciones_codigo_variante`). La descripción va por
+    palabras, en cualquier orden (`condicion_descripcion_por_palabras`).
     """
-    from app.services.productos import condiciones_codigo_variante
+    from app.services.productos import (
+        condicion_descripcion_por_palabras,
+        condiciones_codigo_variante,
+    )
 
     limpio = (texto or "").strip()
     if not limpio:
         return []
     mayus = limpio.upper()
-    patron = f"%{limpio}%"
     por_codigo = select(Variante.producto_id).where(or_(*condiciones_codigo_variante(mayus)))
     consulta = (
         select(Producto)
         .where(or_(
             Producto.sku.ilike(f"%{mayus}%"),
-            Producto.descripcion.ilike(patron),
+            condicion_descripcion_por_palabras(limpio),
             Producto.id.in_(por_codigo),
         ))
         .options(selectinload(Producto.fotos))

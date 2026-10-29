@@ -16,7 +16,7 @@ Los dos caminos son:
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -722,6 +722,38 @@ def condiciones_codigo_variante(texto: str) -> list[Any]:
     return condiciones
 
 
+def condicion_descripcion_por_palabras(texto: str) -> Any:
+    """
+    Cada palabra tipeada tiene que estar en la descripción, en cualquier
+    orden y sin importar mayúsculas ni tildes: "cruz equilibrio" encuentra
+    "Anillo Cruz del Equilibrio", y "cafe" encuentra "Café".
+
+    Comparar el texto entero exigía las palabras juntas y en ese orden, y
+    la vendedora no recuerda la descripción exacta: recuerda palabras.
+    """
+    descripcion_plana = sin_tildes_sql(Producto.descripcion)
+    return and_(*(
+        descripcion_plana.ilike(f"%{sin_tildes(palabra)}%") for palabra in texto.split()
+    ))
+
+
+def condicion_busqueda_variante(texto: str) -> Any:
+    """
+    El criterio único de los buscadores de productos: código de etiqueta
+    (con o sin dígito verificador), SKU o descripción por palabras.
+
+    El código y el SKU se comparan con el texto entero: no llevan espacios.
+    Lo usan `listar_variantes()` acá, `listar_stock()` / `consulta_cruzada()`
+    en `app/services/stock.py` y el análisis por producto de ventas.
+    """
+    mayus = texto.strip().upper()
+    return or_(
+        *condiciones_codigo_variante(mayus),
+        Producto.sku.ilike(f"%{mayus}%"),
+        condicion_descripcion_por_palabras(texto),
+    )
+
+
 def listar_variantes(
     db: Session,
     busqueda: str | None = None,
@@ -759,9 +791,6 @@ def listar_variantes(
     consulta = select(Variante).join(Producto, Variante.producto_id == Producto.id)
 
     if busqueda:
-        texto = busqueda.strip().upper()
-        patron = f"%{texto}%"
-
         # Las tres formas se buscan SIEMPRE, y el código exacto (sin el
         # dígito verificador) se suma cuando corresponde vía
         # `condiciones_codigo_variante`. Antes eran excluyentes —o código,
@@ -770,12 +799,7 @@ def listar_variantes(
         # cada 11), y ahí el buscador lo leía como etiqueta, le sacaba el
         # último carácter y comparaba contra un código que no existe.
         # Tipear `AA009` no devolvía nada, sin ninguna señal de por qué.
-        condiciones: list[Any] = condiciones_codigo_variante(texto) + [
-            Producto.sku.ilike(patron),
-            Producto.descripcion.ilike(patron),
-        ]
-
-        consulta = consulta.where(or_(*condiciones))
+        consulta = consulta.where(condicion_busqueda_variante(busqueda))
 
     if categoria_id is not None:
         # Misma regla que en el listado de productos: incluye la descendencia.

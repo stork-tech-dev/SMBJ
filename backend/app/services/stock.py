@@ -595,18 +595,11 @@ def listar_stock(
         # Las mismas tres formas de nombrar un artículo que el listado de
         # productos: código de etiqueta (con o sin dígito verificador), SKU
         # o parte de la descripción — mismo criterio, un solo lugar
-        # (Principio 2: `condiciones_codigo_variante`).
-        from app.services.productos import condiciones_codigo_variante
+        # (Principio 2: `condicion_busqueda_variante`). La descripción va
+        # por palabras, en cualquier orden.
+        from app.services.productos import condicion_busqueda_variante
 
-        texto = busqueda.strip().upper()
-        patron = f"%{texto}%"
-        consulta = consulta.where(
-            or_(
-                *condiciones_codigo_variante(texto),
-                Producto.sku.ilike(patron),
-                Producto.descripcion.ilike(patron),
-            )
-        )
+        consulta = consulta.where(condicion_busqueda_variante(busqueda))
     if solo_bajo_minimo:
         # `minimo_aplicable_sql() > 0` deja afuera los que nunca tuvieron un mínimo
         # configurado (columna no nullable, default 0): sin esto, cualquier
@@ -805,17 +798,9 @@ def consulta_cruzada(
     if busqueda:
         # Mismo criterio que `listar_stock` (Principio 2): código de
         # etiqueta con o sin dígito verificador, SKU o descripción.
-        from app.services.productos import condiciones_codigo_variante
+        from app.services.productos import condicion_busqueda_variante
 
-        texto = busqueda.strip().upper()
-        patron = f"%{texto}%"
-        consulta_variantes = consulta_variantes.where(
-            or_(
-                *condiciones_codigo_variante(texto),
-                Producto.sku.ilike(patron),
-                Producto.descripcion.ilike(patron),
-            )
-        )
+        consulta_variantes = consulta_variantes.where(condicion_busqueda_variante(busqueda))
     if categoria_id is not None:
         from app.services.categorias import rama_de_ids
         consulta_variantes = consulta_variantes.where(

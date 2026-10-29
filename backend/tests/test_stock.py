@@ -1638,6 +1638,50 @@ def test_consulta_cruzada_busqueda_con_el_digito_verificador_incluido(db, con_st
     assert filas[0]["codigo_completo"] == con_stock.codigo_completo
 
 
+@pytest.mark.parametrize(
+    "busqueda,encuentra",
+    [
+        ("cruz equilibrio", True),     # palabras salteadas
+        ("equilibrio cruz", True),     # en otro orden
+        ("CRUZ  Equilibrio ", True),   # mayúsculas y espacios de más
+        ("equilíbrio", True),          # la tilde no decide
+        ("cruz plata", False),         # se exigen TODAS las palabras
+    ],
+)
+def test_listar_stock_busca_la_descripcion_por_palabras(db, con_stock, busqueda, encuentra):
+    """
+    La vendedora recuerda palabras, no la descripción exacta: "cruz
+    equilibrio" tiene que encontrar "Anillo Cruz del Equilibrio".
+    """
+    con_stock.producto.descripcion = "Anillo Cruz del Equilibrio"
+    db.flush()
+
+    _filas, total = servicio.listar_stock(db, LIBRE, busqueda=busqueda)
+
+    assert (total == 1) is encuentra
+
+
+def test_consulta_cruzada_busca_la_descripcion_por_palabras(db, con_stock):
+    con_stock.producto.descripcion = "Anillo Cruz del Equilibrio"
+    db.flush()
+
+    filas, _columnas, total, _opciones = servicio.consulta_cruzada(
+        db, busqueda="equilibrio anillo", tamano=None
+    )
+
+    assert total == 1
+
+
+def test_listar_variantes_busca_la_descripcion_por_palabras(db, variante):
+    variante.producto.descripcion = "Anillo Cruz del Equilibrio"
+    db.flush()
+
+    variantes, total = servicio_productos.listar_variantes(db, busqueda="equilibrio cruz")
+
+    assert total == 1
+    assert variantes[0].id == variante.id
+
+
 # ============================================================================
 # PRECIO CON DESCUENTO Y STOCK RESERVADO EN CARRITO
 # ============================================================================

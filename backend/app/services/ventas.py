@@ -1358,17 +1358,9 @@ def analisis_por_producto(
     if proveedor_id is not None:
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
     if busqueda:
-        from app.services.productos import condiciones_codigo_variante
+        from app.services.productos import condicion_busqueda_variante
 
-        texto = busqueda.strip().upper()
-        patron = f"%{texto}%"
-        consulta = consulta.where(
-            or_(
-                *condiciones_codigo_variante(texto),
-                Producto.sku.ilike(patron),
-                Producto.descripcion.ilike(patron),
-            )
-        )
+        consulta = consulta.where(condicion_busqueda_variante(busqueda))
 
     consulta = consulta.group_by(
         VentaItem.variante_id,
