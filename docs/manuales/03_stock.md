@@ -16,7 +16,7 @@ Mostrá el stock disponible de todos los artículos en cada ubicación.
 
 | Filtro | Cómo funciona |
 |---|---|
-| Texto libre | Busca en descripción, SKU y SKU proveedor |
+| Texto libre | Busca por código de etiqueta, SKU o descripción. En la descripción busca cada palabra por separado, en cualquier orden |
 | Categoría | Filtra por rama del árbol de categorías |
 | Proveedor | Filtra por proveedor |
 | Local | Filtra por punto de venta (si tenés acceso a varios) |
@@ -28,6 +28,8 @@ Hacé clic en **"Exportar XLS"** para descargar el listado en Excel.
 ### Desde el celular del local
 
 En el celular, tocá **"Consultar stock"** en la pantalla de inicio (o **"Stock"** en la barra inferior). Buscá por código, SKU o descripción, o tocá el **ícono de la cámara** para leer el código cuadrado de la etiqueta (centralo dentro del recuadro).
+
+En la descripción no hace falta escribirla completa ni en orden: se buscan **todas las palabras que escribas, en cualquier orden** y sin importar tildes ni mayúsculas. Por ejemplo, **"cruz equilibrio"** encuentra "Anillo Cruz del Equilibrio". Si escribís una palabra que el producto no tiene ("cruz plata"), no aparece.
 
 Cada producto se muestra así:
 
