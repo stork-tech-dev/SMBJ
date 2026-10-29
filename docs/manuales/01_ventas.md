@@ -84,11 +84,12 @@ Si tenés permiso:
 #### Cobrar
 
 1. En el carrito, tocá **"Cerrar Venta"**.
-2. Seleccioná el medio de pago (efectivo, tarjeta, transferencia, etc.).
-3. Si el pago es en cuotas, elegí el plan.
-4. Si usás señas, podés aplicar el saldo disponible del cliente.
-5. Ingresá el monto para cada medio si la venta es mixta.
-6. Tocá **"Confirmar venta"**.
+2. **Cliente** (opcional): buscalo por DNI, apellido o nombre. Si no está cargado, tocá **"+ Cliente nuevo"**, completá **apellido, nombre y email** (obligatorios) y, si los tenés, fecha de nacimiento, DNI y teléfono, y tocá **"Guardar y asociar"**: queda dado de alta y asociado a la venta, sin salir del cobro.
+3. Seleccioná el medio de pago (efectivo, tarjeta, transferencia, etc.).
+4. Si el pago es en cuotas, elegí el plan.
+5. Si usás señas, podés aplicar el saldo disponible del cliente.
+6. Ingresá el monto para cada medio si la venta es mixta.
+7. Tocá **"Confirmar venta"**.
 
 > El sistema descuenta el stock automáticamente al confirmar la venta.
 
@@ -116,7 +117,7 @@ Si tenés permiso, en la pantalla de inicio aparece la tarjeta **"Anulaciones"**
 ### Dejar una seña
 
 1. En la pantalla de inicio, tocá **"Señas"**.
-2. Buscá al cliente o cargalo como nuevo (nombre, y si querés DNI y teléfono).
+2. Buscá al cliente o tocá **"+ Cliente nuevo"** para cargarlo: **apellido, nombre y email** son obligatorios; fecha de nacimiento, DNI y teléfono, opcionales. Es el mismo formulario que al cobrar una venta.
 3. Indicá el monto, el medio de pago y, si hace falta, una nota (por ejemplo, qué producto reserva).
 4. Tocá **"Registrar seña"**.
 
