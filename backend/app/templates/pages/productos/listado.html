@@ -348,7 +348,7 @@
                     <template x-for="f in (fotosVisibles() || [])" :key="f.id">
                         <div class="relative border rounded-input overflow-hidden"
                              :class="f.es_principal ? 'border-primary' : 'border-borde'">
-                            <img :src="f.url" alt="" class="w-full aspect-square object-cover">
+                            <img :src="f.url" alt="" class="w-full aspect-square object-contain bg-surface-alt">
 
                             <div class="flex items-center justify-between gap-1 px-2">
                                 <button type="button" @click="marcarPrincipal(f)"

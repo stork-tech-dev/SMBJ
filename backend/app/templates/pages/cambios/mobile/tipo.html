@@ -56,7 +56,7 @@
                                :checked="elegido(it)" @change="alternar(it)"
                                class="w-5 h-5 shrink-0 accent-[color:var(--color-primary)]">
                         <template x-if="it.foto_url">
-                            <img :src="it.foto_url" alt="" class="w-12 h-12 rounded object-cover shrink-0">
+                            <img :src="it.foto_url" alt="" class="w-12 h-12 rounded object-contain bg-surface-alt shrink-0">
                         </template>
                         <template x-if="!it.foto_url">
                             <span class="w-12 h-12 rounded bg-surface-alt grid place-items-center shrink-0

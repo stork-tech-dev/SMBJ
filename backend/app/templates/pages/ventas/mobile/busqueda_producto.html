@@ -71,11 +71,13 @@
         {# Foto: `object-contain` y no `cover` — recortar una cadena para
            llenar el recuadro puede dejar afuera justo el dije, que es lo que
            la vendedora está mirando para confirmar que escaneó bien. #}
-        <div class="w-full aspect-[3/2] rounded-input bg-surface-alt overflow-hidden
+        {# La foto va en absoluto sobre el recuadro: dentro de un grid, una
+           foto vertical estiraba la fila más que el 3/2 y se cortaba abajo. #}
+        <div class="relative w-full aspect-[3/2] rounded-input bg-surface-alt overflow-hidden
                     grid place-items-center">
             <template x-if="producto && producto.foto">
                 <img :src="producto.foto" :alt="producto.descripcion"
-                     class="w-full h-full object-contain">
+                     class="absolute inset-0 w-full h-full object-contain">
             </template>
             <template x-if="producto && !producto.foto">
                 <span class="text-sm text-texto-disabled">Sin foto cargada</span>
