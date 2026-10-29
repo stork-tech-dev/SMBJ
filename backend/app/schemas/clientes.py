@@ -27,6 +27,7 @@ class ClienteCrear(BaseModel):
     localidad: str | None = Field(default=None, max_length=100)
     telefono: str | None = Field(default=None, max_length=30)
     email: str | None = Field(default=None, max_length=150)
+    fecha_nacimiento: date | None = None
 
 
 class ClienteEditar(BaseModel):
@@ -46,6 +47,7 @@ class ClienteEditar(BaseModel):
     localidad: str | None = Field(default=None, max_length=100)
     telefono: str | None = Field(default=None, max_length=30)
     email: str | None = Field(default=None, max_length=150)
+    fecha_nacimiento: date | None = None
 
 
 class ClienteEstado(BaseModel):
@@ -74,6 +76,7 @@ class ClienteResponse(ClienteResumen):
     localidad: str | None
     telefono: str | None
     email: str | None
+    fecha_nacimiento: date | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -115,6 +118,9 @@ class ClienteFicha(ClienteResponse):
 
     saldo_senas: Decimal = Decimal("0")
     senas: list[SenaDeCliente] = []
+    # Fidelización: calculados, no guardados (Principio 4).
+    puntos_historicos: int = 0
+    categoria: str | None = None
     promociones: list[PromocionDeCliente] = []
 
 

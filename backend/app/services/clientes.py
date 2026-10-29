@@ -12,6 +12,7 @@ trigger, así que corregir un movimiento mal cargado se hace con un `ajuste`
 de signo contrario, nunca editando el original.
 """
 
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, or_, select
@@ -237,6 +238,7 @@ def crear_cliente(
     localidad: str | None = None,
     telefono: str | None = None,
     email: str | None = None,
+    fecha_nacimiento: date | None = None,
     ip_origen: str | None = None,
 ) -> Cliente:
     limpio = normalizar_texto(nombre)
@@ -246,6 +248,7 @@ def crear_cliente(
     documento = _limpiar_dni(dni)
     if documento:
         _validar_dni_unico(db, documento)
+    _validar_fecha_nacimiento(fecha_nacimiento)
 
     cliente = Cliente(
         nombre=limpio,
@@ -255,6 +258,7 @@ def crear_cliente(
         localidad=normalizar_texto(localidad),
         telefono=normalizar_texto(telefono),
         email=normalizar_texto(email),
+        fecha_nacimiento=fecha_nacimiento,
         activo=True,
         created_at=ahora_db(),
         updated_at=ahora_db(),
@@ -274,6 +278,12 @@ def crear_cliente(
     return cliente
 
 
+def _validar_fecha_nacimiento(fecha: date | None) -> None:
+    """Una fecha futura es un error de carga: el beneficio caería en otro mes."""
+    if fecha is not None and fecha > ahora_db().date():
+        raise ReglaDeNegocio("La fecha de nacimiento no puede ser futura")
+
+
 # Los campos de texto que se editan igual: se normalizan y se guardan tal
 # cual. Van en una tupla para no repetir doce veces el mismo `if`.
 _CAMPOS_TEXTO = ("domicilio", "codigo_postal", "localidad", "telefono", "email")
@@ -287,6 +297,8 @@ def editar_cliente(
     nombre: str | None = None,
     dni: str | None = None,
     editar_dni: bool = False,
+    fecha_nacimiento: date | None = None,
+    editar_fecha_nacimiento: bool = False,
     ip_origen: str | None = None,
     **campos,
 ) -> Cliente:
@@ -295,7 +307,8 @@ def editar_cliente(
 
     `editar_dni` distingue "no lo mandes" de "borralo": None es ambiguo y
     acá NULL significa algo concreto —el cliente se queda sin documento
-    cargado—, igual que `editar_precio` en el módulo de productos.
+    cargado—, igual que `editar_precio` en el módulo de productos. Lo mismo
+    `editar_fecha_nacimiento`.
     """
     cliente = obtener_cliente(db, cliente_id)
     antes = snapshot(cliente)
@@ -311,6 +324,10 @@ def editar_cliente(
         if documento:
             _validar_dni_unico(db, documento, excluir_id=cliente.id)
         cliente.dni = documento
+
+    if editar_fecha_nacimiento:
+        _validar_fecha_nacimiento(fecha_nacimiento)
+        cliente.fecha_nacimiento = fecha_nacimiento
 
     for campo in _CAMPOS_TEXTO:
         if campo in campos and campos[campo] is not None:

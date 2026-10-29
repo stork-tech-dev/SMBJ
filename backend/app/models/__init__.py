@@ -25,6 +25,7 @@ from app.models.etiqueta import (
     EtiquetaImpresora,
     GiroFormato,
 )
+from app.models.fidelizacion import CategoriaFidelizacion
 from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.motivo_baja import MotivoBaja
 from app.models.operaciones_caja import (
@@ -80,6 +81,7 @@ from app.models.turno import (
 )
 
 __all__ = [
+    "CategoriaFidelizacion",
     "Base",
     "Auditoria",
     "Cambio",

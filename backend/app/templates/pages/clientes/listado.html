@@ -197,6 +197,14 @@
                         <input id="cl-email" x-model="form.email" type="email" maxlength="150"
                                class="campo-linea">
                     </div>
+
+                    {# Con fecha y categoría de fidelización, el cliente tiene
+                       descuento en todas sus compras del mes de su cumpleaños. #}
+                    <div class="flex flex-col gap-1">
+                        <label for="cl-nacimiento" class="text-sm font-semibold text-texto-header">Fecha de nacimiento</label>
+                        <input id="cl-nacimiento" x-model="form.fecha_nacimiento" type="date"
+                               :max="hoyISO()" class="campo-linea">
+                    </div>
                 </div>
 
                 <div class="flex justify-end gap-3 mt-8">
@@ -241,6 +249,15 @@
                         <p class="text-xs font-semibold text-texto-header uppercase">Puntos</p>
                         <p class="text-xl font-black text-welcome tabular-nums"
                            x-text="ficha.datos?.puntos ?? 0"></p>
+                    </div>
+                    {# Por puntos históricos (sin restar canjes). #}
+                    <div class="p-4 rounded-input bg-surface-alt">
+                        <p class="text-xs font-semibold text-texto-header uppercase">Categoría</p>
+                        <p class="text-xl font-black text-welcome"
+                           x-text="ficha.datos?.categoria || 'Sin categoría'"></p>
+                        <p class="text-xs text-texto-muted"
+                           x-text="(ficha.datos?.puntos_historicos ?? 0) + ' puntos históricos'
+                                   + (ficha.datos?.fecha_nacimiento ? ' · cumple ' + fechaDia(ficha.datos.fecha_nacimiento).slice(0, 5) : '')"></p>
                     </div>
                     <div class="p-4 rounded-input bg-surface-alt">
                         <p class="text-xs font-semibold text-texto-header uppercase">Saldo en señas</p>

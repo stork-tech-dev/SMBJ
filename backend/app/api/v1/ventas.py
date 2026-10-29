@@ -15,7 +15,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.core.database import get_db
 from app.core.device_deps import get_active_device
@@ -28,6 +28,8 @@ from app.schemas.medios_pago import MedioDisponible, PlanCuotasResponse
 from app.schemas.cambios import VentaParaCambioResponse
 from app.schemas.ventas import (
     AnalisisVentasResponse,
+    BeneficioCumpleanosResponse,
+    CumpleanosCambiar,
     ClienteAsociar,
     DescuentoAplicar,
     ItemAgregadoResponse,
@@ -47,6 +49,7 @@ from app.schemas.ventas import (
 from app.schemas.promociones import PromocionResumen
 from app.services import configuracion as servicio_configuracion
 from app.services import descuentos as servicio_descuentos
+from app.services import fidelizacion as servicio_fidelizacion
 from app.services import medios_pago as servicio_medios
 from app.services import promociones as servicio_promociones
 from app.services import stock as servicio_stock
@@ -79,6 +82,20 @@ def _respuesta(venta: Venta) -> VentaResponse:
     respuesta.a_cobrar = sum(
         (Decimal(i.precio_final) for i in venta.items), Decimal("0")
     )
+
+    # Fidelización. La sesión sale de la venta: `_respuesta` se llama desde
+    # todos los endpoints y pasarle `db` a cada uno sería ruido.
+    db = object_session(venta)
+    if db is not None and venta.cliente_id is not None:
+        categoria = servicio_fidelizacion.categoria_de(db, venta.cliente_id)
+        respuesta.categoria_cliente = categoria.nombre if categoria else None
+        beneficio = servicio_fidelizacion.beneficio_cumpleanos(db, venta.cliente)
+        if beneficio is not None:
+            respuesta.beneficio_cumpleanos = BeneficioCumpleanosResponse(
+                categoria=beneficio.categoria,
+                porcentaje=beneficio.porcentaje,
+                activo=not venta.sin_descuento_cumpleanos,
+            )
     return respuesta
 
 
@@ -706,6 +723,36 @@ def quitar_item(
     db.commit()
     if descartada:
         return None
+    db.refresh(venta)
+    return _respuesta(venta)
+
+
+@router.post(
+    "/{venta_id}/descuento-cumpleanos",
+    response_model=VentaResponse,
+    summary="Quitar o reponer el descuento de cumpleaños",
+)
+def descuento_cumpleanos(
+    venta_id: int,
+    datos: CumpleanosCambiar,
+    request: Request,
+    db: Session = Depends(get_db),
+    scope: DeviceScope = Depends(get_device_scope),
+    autor=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
+):
+    """
+    El descuento del mes del cumpleaños se aplica solo; esto lo quita de la
+    venta (`activo: false`) o lo repone. Vale hasta que cambie el cliente.
+    """
+    venta = _venta(db, venta_id, scope)
+    try:
+        servicio.cambiar_descuento_cumpleanos(
+            db, autor, venta, datos.activo, ip_origen=ip_de_request(request)
+        )
+    except ReglaDeNegocio as exc:
+        raise _409(exc) from exc
+
+    db.commit()
     db.refresh(venta)
     return _respuesta(venta)
 

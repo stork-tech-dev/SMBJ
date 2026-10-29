@@ -26,6 +26,7 @@
 {% from "components/icons.html" import icono %}
 {% from "components/boton_escanear.html" import boton_escanear %}
 {% from "components/venta_item.html" import venta_item_info %}
+{% from "components/beneficio_cumpleanos.html" import beneficio_cumpleanos %}
 
 {% block contenido_mobile %}
 <div x-data="carritoVenta({{ 'true' if puede_descontar else 'false' }})" x-init="iniciar()">
@@ -145,6 +146,8 @@
                 {{ icono('check', clases='w-5 h-5 shrink-0') }}
                 <span x-text="'Promoción aplicada: ' + (venta.promocion?.nombre || '')"></span>
             </p>
+
+            {{ beneficio_cumpleanos('cumple-carrito') }}
 
             {# ---------- Ítems ---------- #}
             <ul class="mt-4 divide-y divide-borde">

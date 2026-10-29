@@ -128,6 +128,13 @@
                                autocomplete="off" class="campo-linea mt-1">
                     </div>
                 </div>
+                <div>
+                    <label for="sena-nacimiento" class="text-sm font-semibold text-texto-header">
+                        Fecha de nacimiento
+                    </label>
+                    <input id="sena-nacimiento" x-model="nuevo.fecha_nacimiento" type="date"
+                           :max="hoyISO()" class="campo-linea mt-1">
+                </div>
                 <button type="button" @click="creandoCliente = false"
                         class="text-sm text-primary min-h-toque">
                     Buscar un cliente existente

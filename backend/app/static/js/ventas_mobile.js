@@ -74,6 +74,21 @@ function ventaBase() {
                 this.cargando = false;
             }
         },
+
+        /* Quita o repone el descuento de cumpleaños de la venta. El total
+           cambia: cada pantalla reacciona en `alCambiarVenta` (el cobro
+           vuelve a repartir los medios de pago). */
+        async cambiarCumpleanos(activo) {
+            try {
+                this.venta = await pedir(`${API_VENTAS}/${this.venta.id}/descuento-cumpleanos`, {
+                    method: 'POST',
+                    body: JSON.stringify({ activo }),
+                });
+                this.alCambiarVenta?.();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
     };
 }
 
@@ -534,6 +549,12 @@ function finalizarVenta() {
             const fijo = Number(this.lineas[indiceFijo].monto) || 0;
             const otro = indiceFijo === 0 ? 1 : 0;
             this.lineas[otro].monto = Math.max(Math.round((total - fijo) * 100) / 100, 0);
+        },
+
+        /* El descuento de cumpleaños cambió el total: los medios se reparten
+           de nuevo sobre lo que falta cubrir. */
+        alCambiarVenta() {
+            this.repartir(0);
         },
 
         recalcular() {

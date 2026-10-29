@@ -14,13 +14,14 @@ quedar viejo, y el historial es justamente lo que permite explicarlo
 """
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -69,6 +70,10 @@ class Cliente(Base):
     localidad: Mapped[str | None] = mapped_column(String(100), nullable=True)
     telefono: Mapped[str | None] = mapped_column(String(30), nullable=True)
     email: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
+    # Opcional. Con fecha y una categoría de fidelización, el cliente recibe
+    # el descuento de su categoría en todas sus compras del mes.
+    fecha_nacimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     activo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true", index=True

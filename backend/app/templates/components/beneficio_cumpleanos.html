@@ -1,0 +1,28 @@
+{# ===========================================================================
+   Macro: aviso del descuento de cumpleaños en la venta mobile.
+
+   Se muestra cuando la venta trae `beneficio_cumpleanos` (cliente con
+   categoría de fidelización en el mes de su cumpleaños). El descuento se
+   aplica solo; el switch lo quita o lo repone llamando a la API
+   (`cambiarCumpleanos()` de `ventaBase` en ventas_mobile.js).
+
+   Uso (dentro de un componente con `...ventaBase()` y `venta` cargada):
+     {% from "components/beneficio_cumpleanos.html" import beneficio_cumpleanos %}
+     {{ beneficio_cumpleanos('cumple-carrito') }}
+   =========================================================================== #}
+
+{% from "components/switch_si_no.html" import switch_si_no %}
+
+{% macro beneficio_cumpleanos(id) %}
+<section x-show="venta?.beneficio_cumpleanos" x-cloak
+         class="mt-3 p-4 rounded-input border-2 border-primary/40" aria-labelledby="{{ id }}-titulo">
+    <h2 id="{{ id }}-titulo" class="text-base font-semibold text-texto"
+        x-text="'🎂 Mes de su cumpleaños · Categoría ' + (venta?.beneficio_cumpleanos?.categoria || '')"></h2>
+    <p class="text-xs text-texto-muted"
+       x-text="venta?.beneficio_cumpleanos?.porcentaje + '% en los productos sin promoción ni otro descuento, hasta el tope por producto.'"></p>
+    <div class="mt-2">
+        {{ switch_si_no('venta.beneficio_cumpleanos.activo', 'Aplicar descuento de cumpleaños', id,
+                        al_cambiar='cambiarCumpleanos(!venta.beneficio_cumpleanos.activo)') }}
+    </div>
+</section>
+{% endmacro %}
