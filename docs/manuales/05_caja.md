@@ -136,6 +136,17 @@ Para cerrarlo tocá la **✕**. Es solo de consulta: desde acá no se modifica l
 
 ---
 
+## Reporte de movimientos de caja (computadora)
+
+En **Reportes → Reportes de Caja → Movimientos de caja por turno** se ve lo mismo que en el celular, pero de todos los locales (o del que elijas en **Local**) para el día que indiques en **Fecha**.
+
+- **Arriba, el total del día por medio de pago**: lo que entró por cada medio (efectivo, tarjetas, transferencias, etc.) sumando **todos los turnos** del día, con la misma barra de colores del celular y, al pie, los **ingresos del día**. No incluye los saldos iniciales de los turnos.
+- **Debajo, cada turno colapsado**: se ve el turno (local y horario), cuántos movimientos tiene y sus totales —ingresos, egresos y efectivo esperado en caja—. Para ver los movimientos uno por uno, hacé clic en la **flecha** al lado del turno; otro clic los oculta.
+
+**"Exportar a Excel"** baja el reporte completo, con el total del día por medio de pago en las primeras filas.
+
+---
+
 ## Cierre de turno y arqueo
 
 El cierre del turno incluye un **arqueo de caja**: comparación entre lo que el sistema esperaba recaudar y lo que la vendedora declara que hay físicamente.
