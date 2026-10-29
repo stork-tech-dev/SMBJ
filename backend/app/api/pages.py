@@ -1653,16 +1653,12 @@ async def ventas_resumen_diario(
 # la barra inferior. Van acá y no en cada plantilla porque el layout mobile
 # los necesita ANTES de entrar a los bloques del hijo.
 _PANTALLAS_MOBILE = {
-    "/ventas/nueva": {
-        "plantilla": "pages/ventas/mobile/busqueda_producto.html",
-        "titulo": "Nueva Venta",
-        "volver": "/ventas",
-        "activa": "venta",
-    },
+    # Buscador y carrito en una sola pantalla: es "Nueva venta" y también
+    # adonde lleva "Tenés una venta sin concluir" del home.
     "/ventas/carrito": {
         "plantilla": "pages/ventas/mobile/carrito.html",
-        "titulo": "Carrito",
-        "volver": "/ventas/nueva",
+        "titulo": "Venta",
+        "volver": "/ventas",
         "activa": "venta",
     },
     "/ventas/finalizar": {
@@ -1776,6 +1772,15 @@ def _registrar_pantallas_mobile() -> None:
 
 
 _registrar_pantallas_mobile()
+
+
+@router.get("/ventas/nueva", include_in_schema=False)
+async def ventas_nueva():
+    """
+    La vieja pantalla de búsqueda, hoy unificada con el carrito. Se redirige
+    para que no se rompa un acceso guardado en el celular.
+    """
+    return RedirectResponse("/ventas/carrito", status_code=303)
 
 
 # ============================================================================

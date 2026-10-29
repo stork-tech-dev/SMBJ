@@ -102,24 +102,33 @@ function homeVentas() {
 }
 
 /* ==========================================================================
-   Pantalla 3 — Búsqueda de producto
+   Pantalla 3 — Venta en curso: buscador + carrito
+
+   Una sola pantalla: arriba se escanea o tipea el código y abajo está el
+   carrito con "Cerrar Venta". Antes eran dos ("Nueva venta" y "Carrito") y
+   el paso entre una y otra no se entendía.
    ========================================================================== */
 
-function nuevaVenta() {
+function carritoVenta(puedeDescontar = false) {
     return {
         ...ventaBase(),
 
+        // --- Buscador ---
         codigo: '',
         producto: null,
         aviso: null,
         buscando: false,
         agregando: false,
 
-        // Sin stock, no se ofrece agregar: el aviso ya dice que puede ser
-        // un error de código, y agregar igual sería vender lo que la
-        // pantalla misma está diciendo que no hay en el local.
-        get sinStock() {
-            return !!this.producto && !this.producto.stock_infinito && this.producto.stock <= 0;
+        // --- Descuentos ---
+        puedeDescontar,
+        motivos: [],
+        porcentajes: [],
+        tope: 50,
+
+        descuento: {
+            abierto: false, item_id: null, descripcion: '',
+            motivo_id: '', porcentaje: null, tenia: false,
         },
 
         async iniciar() {
@@ -127,10 +136,20 @@ function nuevaVenta() {
             // crea nada. La venta nace con el primer producto (`agregar`).
             await this.cargarVenta();
             this.enfocar();
+            if (this.puedeDescontar) await this.cargarOpciones();
 
             // F2 vuelve el foco al campo: el lector escribe donde esté el
             // cursor, y si el foco se perdió el código se pierde con él.
             window.addEventListener('atajo-buscar', () => this.enfocar());
+        },
+
+        /* --- Buscador --- */
+
+        // Sin stock, no se ofrece agregar: el aviso ya dice que puede ser
+        // un error de código, y agregar igual sería vender lo que la
+        // pantalla misma está diciendo que no hay en el local.
+        get sinStock() {
+            return !!this.producto && !this.producto.stock_infinito && this.producto.stock <= 0;
         },
 
         /* `$nextTick` y no un focus directo: cuando esto corre después de
@@ -191,31 +210,8 @@ function nuevaVenta() {
                 this.agregando = false;
             }
         },
-    };
-}
 
-/* ==========================================================================
-   Pantalla 4 — Carrito
-   ========================================================================== */
-
-function carritoVenta(puedeDescontar = false) {
-    return {
-        ...ventaBase(),
-
-        puedeDescontar,
-        motivos: [],
-        porcentajes: [],
-        tope: 50,
-
-        descuento: {
-            abierto: false, item_id: null, descripcion: '',
-            motivo_id: '', porcentaje: null, tenia: false,
-        },
-
-        async cargar() {
-            await this.cargarVenta();
-            if (this.puedeDescontar) await this.cargarOpciones();
-        },
+        /* --- Carrito --- */
 
         /* Los motivos y los porcentajes salen del backend, de la misma
            constante que valida. Una lista copiada acá terminaría ofreciendo
@@ -237,11 +233,11 @@ function carritoVenta(puedeDescontar = false) {
                     `${API_VENTAS}/${this.venta.id}/items/${item.id}`,
                     { method: 'DELETE' }
                 );
-                // Era el último producto: la venta se descartó, no hay
-                // carrito al que volver.
+                // Era el último producto: la venta se descartó. Se queda en
+                // la pantalla, con el buscador listo para empezar otra.
                 if (!this.venta) {
                     window.toast('Venta descartada: no quedaban productos', 'exito');
-                    window.location.href = '/ventas';
+                    this.enfocar();
                 }
             } catch (e) {
                 window.toast(e.message, 'error');
@@ -771,7 +767,7 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
             this.cargar();
         },
 
-        // Mismo criterio que `nuevaVenta().iniciar()`: abre la venta en
+        // Mismo criterio que `carritoVenta().agregar()`: abre la venta en
         // curso de este equipo o recupera la que ya había, nunca una
         // segunda. Se queda en esta pantalla después de agregar — la
         // vendedora puede seguir consultando otros productos sin perder

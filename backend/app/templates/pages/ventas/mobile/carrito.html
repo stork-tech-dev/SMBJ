@@ -1,4 +1,12 @@
-{# Nueva venta — carrito (Figma `293:359`).
+{# Venta en curso (Figma `292:170`, `293:451` y `293:359`): buscador y
+   carrito en una sola pantalla.
+
+   Antes eran dos — "Nueva venta" para escanear y "Carrito" para ver y
+   cerrar— y el paso de una a la otra era un renglón "N productos en el
+   carrito" que no todas las vendedoras reconocían como botón. Acá arriba
+   se escanea y abajo está lo que se lleva, con "Cerrar Venta" siempre a la
+   vista. El aviso del home "Tenés una venta sin concluir" trae a esta misma
+   pantalla.
 
    Cada unidad es una fila propia, sin contador de cantidad: dos anillos
    iguales son dos renglones. No es un capricho del diseño — es lo que la
@@ -7,23 +15,126 @@
 
    El total y sus descuentos vienen calculados del backend. La pantalla no
    suma nada: si sumara por su cuenta y diera distinto, la vendedora vería un
-   número y el cliente pagaría otro. #}
+   número y el cliente pagaría otro.
+
+   Sin stock en el local, "Agregar al carrito" queda deshabilitado: el aviso
+   ya dice que puede ser un error de código, y dejar agregar igual invitaba
+   a vender lo que la pantalla misma está diciendo que no hay. El backend
+   (`POST /ventas/{id}/items`) sigue sin bloquearlo. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/boton_escanear.html" import boton_escanear %}
 {% from "components/venta_item.html" import venta_item_info %}
 
 {% block contenido_mobile %}
-<div x-data="carritoVenta({{ 'true' if puede_descontar else 'false' }})" x-init="cargar()">
+<div x-data="carritoVenta({{ 'true' if puede_descontar else 'false' }})" x-init="iniciar()">
 
-    <p x-show="!venta && !cargando" x-cloak
+    {% if sin_asignacion %}
+    <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+        {{ mensaje_sin_asignacion }}
+    </p>
+    {% elif not puede_vender %}
+    <p class="mt-4 p-5 rounded-input bg-danger/15 text-danger text-base">
+        Tu perfil no tiene permiso para registrar ventas.
+    </p>
+    {% else %}
+
+    {# ---------- Campo de código ----------
+       `x-ref` + foco automático al entrar y después de cada carga: el lector
+       escribe donde esté el cursor, y si el foco se pierde el código se
+       pierde con él. #}
+    <form @submit.prevent="buscar()" class="mt-2">
+        <label for="codigo" class="sr-only">Código del producto</label>
+        <div class="relative">
+            <input id="codigo" x-ref="codigo" x-model="codigo"
+                   type="search" inputmode="text" autocomplete="off"
+                   enterkeyhint="search" placeholder="Ingrese un código"
+                   class="w-full h-[3.25rem] px-24 text-base text-center bg-surface
+                          border-2 border-borde rounded-input placeholder:text-texto-disabled
+                          focus:outline-none focus:border-primary">
+            {# Cámara y lupa juntas a la derecha del campo. #}
+            <div class="absolute right-1 top-1/2 -translate-y-1/2 flex items-center">
+                {{ boton_escanear('codigo', 'buscar()') }}
+                <button type="submit" aria-label="Buscar"
+                        class="grid place-items-center min-h-toque min-w-toque
+                               text-texto-muted hover:text-primary">
+                    {{ icono('lupa', clases='w-5 h-5') }}
+                </button>
+            </div>
+        </div>
+    </form>
+
+    {# ---------- Producto encontrado ---------- #}
+    <section x-show="producto" x-cloak class="mt-6" aria-live="polite">
+        {# Foto: `object-contain` y no `cover` — recortar una cadena para
+           llenar el recuadro puede dejar afuera justo el dije, que es lo que
+           la vendedora está mirando para confirmar que escaneó bien. #}
+        {# La foto va en absoluto sobre el recuadro: dentro de un grid, una
+           foto vertical estiraba la fila más que el 3/2 y se cortaba abajo. #}
+        <div class="relative w-full aspect-[3/2] rounded-input bg-surface-alt overflow-hidden
+                    grid place-items-center">
+            <template x-if="producto && producto.foto">
+                <img :src="producto.foto" :alt="producto.descripcion"
+                     class="absolute inset-0 w-full h-full object-contain">
+            </template>
+            <template x-if="producto && !producto.foto">
+                <span class="text-sm text-texto-disabled">Sin foto cargada</span>
+            </template>
+        </div>
+
+        <h2 class="mt-4 text-lg font-black text-welcome" x-text="producto?.descripcion"></h2>
+
+        <dl class="mt-4 space-y-2 text-base">
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Código</dt>
+                <dd class="font-mono text-sm" x-text="producto?.codigo"></dd>
+            </div>
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Categoría</dt>
+                <dd class="text-right" x-text="producto?.categoria || '—'"></dd>
+            </div>
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Precio</dt>
+                <dd class="font-medium tabular-nums" x-text="pesos(producto?.precio)"></dd>
+            </div>
+            <div class="flex justify-between gap-4">
+                <dt class="text-texto-muted">Stock en este local</dt>
+                {# En rojo cuando es 0: es lo que deshabilita el botón de abajo. #}
+                <dd class="font-medium tabular-nums"
+                    :class="producto && producto.stock <= 0 ? 'text-danger' : 'text-texto'"
+                    x-text="producto?.stock_infinito
+                            ? 'Sin control de stock'
+                            : (producto?.stock ?? 0)"></dd>
+            </div>
+        </dl>
+
+        <p x-show="aviso" x-cloak
+           class="mt-4 flex items-start gap-2 p-3 rounded-input bg-danger/15 text-danger text-sm">
+            {{ icono('alerta', clases='w-5 h-5 shrink-0') }}
+            <span x-text="aviso"></span>
+        </p>
+
+        <button type="button" @click="agregar()" :disabled="agregando || sinStock"
+                class="mt-5 w-full h-[3.25rem] rounded-input bg-primary text-white text-base
+                       font-medium hover:bg-primary-hover disabled:opacity-60"
+                x-text="agregando ? 'Agregando…' : 'Agregar al carrito'"></button>
+    </section>
+
+    <p x-show="!producto && !venta && !cargando" x-cloak
        class="mt-16 text-center text-sm text-texto-disabled">
-        No hay ninguna venta abierta.
-        <a href="/ventas/nueva" class="block mt-2 text-primary font-semibold">Empezar una</a>
+        Escaneá una etiqueta o escribí el código.
     </p>
 
     <template x-if="venta">
-        <div>
+        <div class="mt-6">
+            {# El carrito, debajo del buscador: lo que ya se lleva y, al pie,
+               "Cerrar Venta". #}
+            <h2 class="px-1 text-xs font-semibold text-texto-disabled uppercase tracking-wide">
+                En el carrito
+                (<span x-text="venta.items.length"></span>)
+            </h2>
+
             {# ---------- Promoción aplicada ----------
                La elige el sistema sola, y elige la que más conviene. Se
                muestra para que la vendedora pueda explicarle al cliente por
@@ -93,11 +204,6 @@
                    class="h-[3.25rem] grid place-items-center rounded-input bg-primary text-white
                           text-base font-medium hover:bg-primary-hover">
                     Cerrar Venta
-                </a>
-                <a href="/ventas/nueva"
-                   class="h-boton grid place-items-center rounded-input border border-borde
-                          text-base hover:border-primary hover:text-primary">
-                    Seguir agregando
                 </a>
                 <button type="button" @click="descartar()"
                         class="h-boton rounded-input text-sm text-texto-muted
@@ -199,6 +305,7 @@
             </form>
         </div>
     </div>
+    {% endif %}
     {% endif %}
 </div>
 {% endblock %}
