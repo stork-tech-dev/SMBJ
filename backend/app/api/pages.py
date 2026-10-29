@@ -1502,6 +1502,24 @@ def _es_dispositivo_de_local(dispositivo) -> bool:
     )
 
 
+def _punto_consulta_stock(usuario, dispositivo, scope) -> int:
+    """
+    El local que `/ventas/consulta-stock` trata como "mi sucursal" (0 = ninguno).
+
+    - Vendedor: el de su equipo, el mismo que le acota el scope.
+    - Otro rol CON Punto de Venta asignado en /usuarios: la pantalla funciona
+      igual que la del vendedor, con el local del CELULAR — es desde donde
+      vende el carrito, aunque el asignado sea otro.
+    - Otro rol sin local: 0. La pantalla muestra todos los locales, solo lo
+      que tiene stock.
+    """
+    if scope.restringido:
+        return scope.punto_de_venta_id or 0
+    if usuario.local_asignado_id and _es_dispositivo_de_local(dispositivo):
+        return dispositivo.punto_de_venta_id
+    return 0
+
+
 def _contexto_ventas(request, db, usuario, titulo, **extra):
     """
     Contexto común de todas las pantallas de ventas, mobile y escritorio.
@@ -1543,6 +1561,7 @@ def _contexto_ventas(request, db, usuario, titulo, **extra):
         # Ninguna pantalla distinta al home mobile lo usa, pero agregarlo acá (en
         # vez de en el handler de /ventas) evita pasarlo como `extra` en cada ruta.
         punto_de_venta_id_num=scope.punto_de_venta_id or 0,
+        punto_consulta_stock_id=_punto_consulta_stock(usuario, dispositivo, scope),
         **extra,
     )
 

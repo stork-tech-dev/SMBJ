@@ -8,7 +8,15 @@ pedir la página, y sin estos tests se descubriría recién en el navegador.
 
 import re
 
-from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO, ROL_VENDEDOR, Modulo
+import pytest
+
+from app.core.permisos import (
+    ROL_CUENTA_MAESTRA,
+    ROL_DUENO,
+    ROL_SUPERVISOR,
+    ROL_VENDEDOR,
+    Modulo,
+)
 
 PAGINAS_CON_SESION = ["/", "/usuarios", "/roles"]
 
@@ -2802,3 +2810,30 @@ def test_la_consulta_de_stock_mobile_puede_agregar_varios_con_confirmacion(
     assert 'x-text="textoAgregar"' in html
     assert 'aria-labelledby="titulo-confirmacion"' in html
     assert "confirmacion.advertencia" in html
+
+
+@pytest.mark.parametrize("con_local", [True, False])
+def test_la_consulta_de_stock_mobile_de_otro_perfil_depende_de_su_local(
+    client, db, crear_usuario, crear_punto_de_venta, con_local,
+):
+    """
+    Un perfil que no es vendedor CON local asignado usa como "mi sucursal" el
+    local del celular (aunque el asignado sea otro), igual que la vendedora.
+    Sin local asignado no hay "mía": 0, todos los locales solo con stock.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    otro = crear_punto_de_venta("MNC", "Nuevo Centro", TipoPuntoVenta.LOCAL)
+    supervisor = crear_usuario("super", ROL_SUPERVISOR)
+    supervisor.local_asignado_id = otro.id if con_local else None
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "super", "password": "Test1234!"})
+
+    html = client.get("/ventas/consulta-stock").text
+    esperado = local.id if con_local else 0
+    assert f"consultaStockMobile({esperado}," in html

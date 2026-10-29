@@ -586,8 +586,9 @@ function finalizarVenta() {
 
 function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
     return {
-        // 0 para los roles sin dispositivo de local asignado (ven todo por
-        // defecto): ahí no hay "mi sucursal" que separar del resto.
+        // "Mi sucursal" (`punto_consulta_stock_id` del backend). 0 para un
+        // rol que no es vendedor y no tiene local asignado: ve todos los
+        // locales, solo lo que tiene stock, y no hay "mía" que separar.
         puntoDeVentaId: Number(puntoDeVentaId) || 0,
         puedeVender: Boolean(puedeVender),
         filas: [],
@@ -703,6 +704,9 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
         },
 
         get puedeAgregar() {
+            // Sin "mi sucursal", `misFilas` son las de todos los locales: el
+            // carrito del celular no puede vender lo de otro.
+            if (!this.puntoDeVentaId) return false;
             const n = this.misFilas.length;
             if (n === 1) return this.paraAgregar.length === 1;
             return this.hayFiltro && n <= MAX_AGREGAR_JUNTOS && this.paraAgregar.length > 0;
@@ -719,19 +723,27 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
                 const params = new URLSearchParams({
                     pagina: this.pagina,
                     tamano: this.tamano,
-                    // Lo que está en cero no interesa, salvo que haya en otra
-                    // sucursal: ahí la fila avisa "+Suc" (`hay_en_otros`).
-                    sin_stock_solo_si_hay_en_otros: 'true',
                     // De mayor a menor stock, este local primero.
                     orden: 'stock',
                 });
                 if (this.filtros.busqueda) params.set('busqueda', this.filtros.busqueda);
                 if (this.categoriaId) params.set('categoria_id', this.categoriaId);
 
-                // Sin esto, un vendedor atado a un local por su dispositivo
-                // no puede ver el stock de otro ni del CD: es la única
-                // excepción de solo lectura a ese aislamiento.
-                params.set('todos_los_locales', this.todosLosLocales ? 'true' : 'false');
+                if (this.puntoDeVentaId) {
+                    // Lo que está en cero no interesa, salvo que haya en otra
+                    // sucursal: ahí la fila avisa "+Suc" (`hay_en_otros`).
+                    params.set('sin_stock_solo_si_hay_en_otros', 'true');
+                    // Sin esto, un vendedor atado a un local por su dispositivo
+                    // no puede ver el stock de otro ni del CD: es la única
+                    // excepción de solo lectura a ese aislamiento.
+                    params.set('todos_los_locales', this.todosLosLocales ? 'true' : 'false');
+                    // Al vendedor ya lo acota el scope; a los otros roles (que
+                    // ven todo) los acota este filtro, en el backend.
+                    if (!this.todosLosLocales) params.set('punto_de_venta_id', this.puntoDeVentaId);
+                } else {
+                    // Sin local asignado: todos los locales, solo con stock.
+                    params.set('incluir_sin_stock', 'false');
+                }
                 // Para que `disponible()` descuente lo que ya está en mi
                 // propio carrito en curso.
                 params.set('restar_carrito', 'true');

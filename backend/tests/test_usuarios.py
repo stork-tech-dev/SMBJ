@@ -848,3 +848,74 @@ def test_intento_fallido_no_cambia_el_local(client, db, crear_usuario, local):
     headers = _entrar(client, "admin")
 
     assert _local_en_listado(client, headers, "vendedora") is None
+
+
+# ============================================================================
+# DUEÑO Y CUENTA MAESTRA: SIN LOCAL Y CON EL PERFIL FIJO
+# ============================================================================
+
+
+def test_alta_de_dueno_con_local_es_rechazada(db, crear_usuario, roles, local):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="no tienen local"):
+        servicio_usuarios.crear_usuario(
+            db, autor, username="jefa", nombre="Jefa", password="Test1234!",
+            rol_id=roles[ROL_DUENO].id, local_asignado_id=local.id,
+        )
+
+
+def test_al_dueno_no_se_le_cambia_el_rol(db, crear_usuario, roles):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    dueno = crear_usuario("jefe", ROL_DUENO)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="cambiar el rol"):
+        servicio_usuarios.editar_usuario(
+            db, autor, dueno.id, rol_id=roles[ROL_SUPERVISOR].id
+        )
+
+
+def test_a_la_cuenta_maestra_no_se_le_cambia_el_rol(db, crear_usuario, roles):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="cambiar el rol"):
+        servicio_usuarios.editar_usuario(db, autor, autor.id, rol_id=roles[ROL_DUENO].id)
+
+
+def test_al_dueno_no_se_le_asigna_local(db, crear_usuario, roles, local):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    dueno = crear_usuario("jefe", ROL_DUENO)
+
+    with pytest.raises(servicio_roles.ReglaDeNegocio, match="no tienen local"):
+        servicio_usuarios.editar_usuario(
+            db, autor, dueno.id, local_asignado_id=local.id, editar_local=True
+        )
+
+
+def test_editar_al_dueno_mandando_el_rol_y_local_vacio_funciona(db, crear_usuario, roles):
+    """El formulario manda el mismo rol y local en null: no es un cambio."""
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    dueno = crear_usuario("jefe", ROL_DUENO)
+
+    usuario = servicio_usuarios.editar_usuario(
+        db, autor, dueno.id, nombre="Jefe Nuevo", rol_id=dueno.rol_id,
+        local_asignado_id=None, editar_local=True,
+    )
+
+    assert usuario.nombre == "Jefe Nuevo"
+    assert usuario.local_asignado_id is None
+
+
+def test_pasar_a_dueno_le_limpia_el_local(db, crear_usuario, roles, local):
+    autor = crear_usuario("cm", ROL_CUENTA_MAESTRA)
+    vendedor = servicio_usuarios.crear_usuario(
+        db, autor, username="ana", nombre="Ana", password="Test1234!",
+        rol_id=roles[ROL_VENDEDOR].id, local_asignado_id=local.id,
+    )
+
+    usuario = servicio_usuarios.editar_usuario(
+        db, autor, vendedor.id, rol_id=roles[ROL_DUENO].id
+    )
+
+    assert usuario.local_asignado_id is None
+    assert usuario.local_asignado is None

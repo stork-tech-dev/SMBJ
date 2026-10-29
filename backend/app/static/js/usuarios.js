@@ -6,6 +6,10 @@
    (Principios 1 y 5): acá no se filtra nada sobre datos ya cargados.
    ========================================================================== */
 
+// Perfiles sin Punto de Venta y con el perfil fijo (mismo criterio que
+// `ROLES_SIN_LOCAL` en services/usuarios.py, que es el que manda).
+const ROLES_SIN_LOCAL = ['dueno', 'cuenta_maestra'];
+
 function abmUsuarios() {
     return {
         usuarios: [],
@@ -263,13 +267,15 @@ function abmUsuarios() {
                 const cuerpo = {
                     nombre: this.form.nombre,
                     email: this.form.email || null,
-                    rol_id: Number(this.form.rol_id),
+                    // Con el perfil fijo no se manda: la Cuenta Maestra ni
+                    // está en el selector.
+                    rol_id: this.rolFijo ? undefined : Number(this.form.rol_id),
                     // Los tres campos personales viajan siempre, también
                     // en null: así el backend distingue "vaciar el campo"
                     // de "no lo mandaron" y se pueden borrar desde el form.
                     fecha_nacimiento: this.form.fecha_nacimiento || null,
                     celular: this.form.celular || null,
-                    local_asignado_id: this.form.local_asignado_id
+                    local_asignado_id: this.form.local_asignado_id && !this.sinLocalForm
                         ? Number(this.form.local_asignado_id)
                         : null,
                 };
@@ -314,6 +320,36 @@ function abmUsuarios() {
         },
 
         /* --- Código de retiro de efectivo (solo Cuenta Maestra) --- */
+
+        /* --- Dueño y Cuenta Maestra: sin local y con el perfil fijo --- */
+
+        // Nombre del perfil elegido. La Cuenta Maestra no está entre los
+        // asignables, así que para ella queda el que vino con el usuario.
+        get rolNombreForm() {
+            const rol = this.rolesAsignables.find((r) => r.id === Number(this.form.rol_id));
+            return rol?.nombre || this.form.rol_nombre;
+        },
+
+        // Editando un dueño o la Cuenta Maestra el perfil no se cambia.
+        get rolFijo() {
+            return Boolean(this.form.id) && ROLES_SIN_LOCAL.includes(this.form.rol_nombre);
+        },
+
+        // Opciones del selector de perfil: con el perfil fijo, solo el suyo.
+        get opcionesRol() {
+            return this.rolFijo
+                ? [{ id: Number(this.form.rol_id), nombre: this.form.rol_nombre }]
+                : this.rolesAsignables;
+        },
+
+        get sinLocalForm() {
+            return ROLES_SIN_LOCAL.includes(this.rolNombreForm);
+        },
+
+        cambiarRol() {
+            if (this.sinLocalForm) this.form.local_asignado_id = '';
+            this.cargarAccesos();
+        },
 
         get esVendedorForm() {
             const rol = this.rolesAsignables.find((r) => r.id === Number(this.form.rol_id));
