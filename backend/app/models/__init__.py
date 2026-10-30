@@ -7,7 +7,14 @@ las tablas al autogenerar migraciones.
 
 from app.core.database import Base
 from app.models.auditoria import Auditoria
-from app.models.cambio import Cambio, CambioItemDevuelto, CambioItemNuevo, EstadoCambio, TipoCambio
+from app.models.cambio import (
+    Cambio,
+    CambioItemDevuelto,
+    CambioItemNuevo,
+    CambioOrigen,
+    EstadoCambio,
+    TipoCambio,
+)
 from app.models.compra import Compra, CompraItem, EstadoCompra
 from app.models.auditoria_inventario import (
     AuditoriaInventario,
@@ -18,6 +25,14 @@ from app.models.categoria import NIVEL_MAXIMO, Categoria
 from app.models.cliente import Cliente, ClientePromocion, PuntoCliente, TipoPunto
 from app.models.configuracion import ConfiguracionSistema
 from app.models.dispositivo import Dispositivo
+from app.models.etiqueta import (
+    EtiquetaDiseno,
+    EtiquetaDisenoVersion,
+    EtiquetaFormato,
+    EtiquetaImpresora,
+    GiroFormato,
+)
+from app.models.fidelizacion import CategoriaFidelizacion
 from app.models.medio_pago import MedioDePago, PlanCuotas
 from app.models.motivo_baja import MotivoBaja
 from app.models.operaciones_caja import (
@@ -73,11 +88,13 @@ from app.models.turno import (
 )
 
 __all__ = [
+    "CategoriaFidelizacion",
     "Base",
     "Auditoria",
     "Cambio",
     "CambioItemDevuelto",
     "CambioItemNuevo",
+    "CambioOrigen",
     "EstadoCambio",
     "TipoCambio",
     "Compra",
@@ -106,6 +123,11 @@ __all__ = [
     "PuntoDeVenta",
     "TipoPuntoVenta",
     "Dispositivo",
+    "EtiquetaDiseno",
+    "EtiquetaDisenoVersion",
+    "EtiquetaFormato",
+    "EtiquetaImpresora",
+    "GiroFormato",
     "Stock",
     "MovimientoStock",
     "TipoMovimiento",

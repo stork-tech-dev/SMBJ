@@ -11,11 +11,16 @@
    Cada turno tiene tres secciones bien separadas: el saldo inicial (con lo
    que abrió la caja, aparte para que no se lea como una venta), las ventas
    y movimientos, y los totales. Cada venta se toca para ver su detalle
-   (productos, descuentos, pagos y código de cambio). #}
+   (productos, descuentos, pagos y código de cambio).
+
+   El turno en curso se ve siempre completo: es el que la vendedora está
+   mirando. Los cerrados arrancan colapsados —solo el encabezado— y se
+   abren con la flecha. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
 {% from "components/venta_item.html" import venta_item_info %}
+{% from "components/ingresos_por_medio.html" import barra_medios, filas_medios %}
 
 {% block contenido_mobile %}
 {# Título de cada sección de la tarjeta del turno. #}
@@ -42,9 +47,22 @@
     <template x-if="datos">
         <div class="mt-5 space-y-5">
             <template x-for="t in datos.turnos" :key="t.turno_id">
-                <section class="rounded-input border-2 border-borde overflow-hidden">
-                    <h2 class="px-4 py-3 text-sm font-semibold text-welcome"
-                        x-text="rangoTurno(t)"></h2>
+                <section x-data="{ abierto: !t.fecha_cierre }"
+                         class="rounded-input border-2 border-borde overflow-hidden">
+                    <div class="flex items-center justify-between gap-2 pl-4 pr-1">
+                        <h2 class="py-3 text-sm font-semibold text-welcome" x-text="rangoTurno(t)"></h2>
+                        <button type="button" x-show="t.fecha_cierre" @click="abierto = !abierto"
+                                :aria-expanded="abierto ? 'true' : 'false'"
+                                :aria-label="abierto ? 'Ocultar el turno' : 'Ver el turno'"
+                                class="grid place-items-center shrink-0 min-h-toque min-w-toque
+                                       text-texto-muted hover:text-primary">
+                            <span class="transition-transform" :class="abierto && 'rotate-180'">
+                                {{ icono('chevron', clases='w-5 h-5') }}
+                            </span>
+                        </button>
+                    </div>
+
+                    <div x-show="abierto" x-cloak>
 
                     {# 1. Saldo inicial: el efectivo con el que abrió la caja.
                        Aparte y sin verde: no es una venta ni plata que entró
@@ -121,25 +139,10 @@
                     <div class="px-4 py-3 bg-surface-alt border-t-2 border-borde">
                         {{ titulo_seccion('Totales') }}
 
-                        <div x-show="t.ingresos_por_medio.length" aria-hidden="true"
-                             class="mt-3 flex h-3 gap-[2px] overflow-hidden rounded-full">
-                            <template x-for="f in t.ingresos_por_medio" :key="f.medio_de_pago_id">
-                                <span :class="colorMedio(f.serie)"
-                                      :style="'width: ' + partePorcentual(f, t.ingresos_por_medio) + '%'"></span>
-                            </template>
-                        </div>
+                        {{ barra_medios('t.ingresos_por_medio', clases='mt-3') }}
 
                         <dl class="mt-3 space-y-1 text-sm">
-                            <template x-for="f in t.ingresos_por_medio" :key="f.medio_de_pago_id">
-                                <div class="flex items-center justify-between gap-3">
-                                    <dt class="flex items-center gap-2 min-w-0 text-texto-muted">
-                                        <span class="w-2.5 h-2.5 shrink-0 rounded-full"
-                                              :class="colorMedio(f.serie)"></span>
-                                        <span class="truncate" x-text="f.medio_de_pago"></span>
-                                    </dt>
-                                    <dd class="tabular-nums" x-text="pesos(f.total)"></dd>
-                                </div>
-                            </template>
+                            {{ filas_medios('t.ingresos_por_medio') }}
                             <div class="flex justify-between gap-3 pt-1 mt-1 border-t border-borde font-semibold">
                                 <dt>Ingresos del turno</dt>
                                 <dd class="tabular-nums" x-text="pesos(t.ingresos_sin_saldo_inicial)"></dd>
@@ -154,6 +157,7 @@
                                 <dd class="tabular-nums" x-text="pesos(t.efectivo_esperado)"></dd>
                             </div>
                         </dl>
+                    </div>
                     </div>
                 </section>
             </template>
@@ -194,7 +198,7 @@
                             Venta anulada
                         </p>
                         <p x-show="venta.cliente" class="mt-2 text-sm text-texto"
-                           x-text="'Cliente: ' + (venta.cliente?.nombre || '')"></p>
+                           x-text="'Cliente: ' + (venta.cliente?.nombre_completo || '')"></p>
                         <p x-show="venta.promocion"
                            class="mt-3 px-4 py-2 rounded-input bg-success/15 text-success text-sm"
                            x-text="'Promoción aplicada: ' + (venta.promocion?.nombre || '')"></p>

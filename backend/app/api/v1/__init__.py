@@ -20,6 +20,7 @@ from app.api.v1 import (
     compras,
     configuracion_ventas,
     dispositivos,
+    etiquetas,
     health,
     notificaciones,
     operaciones_caja,
@@ -48,6 +49,7 @@ api_router.include_router(proveedores.router)
 api_router.include_router(clientes.router)
 api_router.include_router(categorias.router)
 api_router.include_router(productos.router)
+api_router.include_router(etiquetas.router)
 api_router.include_router(stock.router)
 api_router.include_router(remitos.router)
 api_router.include_router(compras.router)

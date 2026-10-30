@@ -31,7 +31,7 @@
 <div x-data="{ hayTurno: {{ hay_turno|tojson }} }"
      @turno-cambiado.window="hayTurno = $event.detail.activo"
      class="{{ contenedor }}">
-    <a href="/ventas/nueva" aria-label="{{ etiqueta }}"
+    <a href="/ventas/carrito" aria-label="{{ etiqueta }}"
        x-show="hayTurno" {% if not hay_turno %}style="display: none"{% endif %}
        class="{{ clases }} hover:bg-primary-hover">
         {{ caller() }}

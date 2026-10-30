@@ -8,7 +8,15 @@ pedir la página, y sin estos tests se descubriría recién en el navegador.
 
 import re
 
-from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO, ROL_VENDEDOR, Modulo
+import pytest
+
+from app.core.permisos import (
+    ROL_CUENTA_MAESTRA,
+    ROL_DUENO,
+    ROL_SUPERVISOR,
+    ROL_VENDEDOR,
+    Modulo,
+)
 
 PAGINAS_CON_SESION = ["/", "/usuarios", "/roles"]
 
@@ -2547,8 +2555,7 @@ def test_las_pantallas_del_flujo_son_solo_mobile(client, crear_usuario):
     crear_usuario("admin", ROL_CUENTA_MAESTRA)
     client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
 
-    for ruta in ("/ventas/nueva", "/ventas/carrito", "/ventas/finalizar",
-                 "/ventas/consulta-stock"):
+    for ruta in ("/ventas/carrito", "/ventas/finalizar", "/ventas/consulta-stock"):
         resp = client.get(ruta, follow_redirects=False)
         assert resp.status_code == 303, ruta
         assert resp.headers["location"] == "/ventas", ruta
@@ -2576,7 +2583,7 @@ def test_el_layout_mobile_no_arrastra_el_sidebar(client, db, crear_usuario,
     assert 'id="sidebar-nav"' not in html
     assert 'aria-label="Navegación del punto de venta"' in html
     # Los tres destinos de la barra.
-    for destino in ("/ventas", "/ventas/nueva", "/ventas/consulta-stock"):
+    for destino in ("/ventas", "/ventas/carrito", "/ventas/consulta-stock"):
         assert f'href="{destino}"' in html, destino
 
 
@@ -2602,8 +2609,8 @@ def test_sin_turno_el_boton_de_nueva_venta_se_ve_apagado(
     client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
 
     def visibles(html):
-        """Los enlaces a /ventas/nueva que el servidor dibuja visibles."""
-        etiquetas = re.findall(r'<a href="/ventas/nueva"[^>]*>', html)
+        """Los enlaces a "Nueva venta" que el servidor dibuja visibles."""
+        etiquetas = re.findall(r'<a href="/ventas/carrito" aria-label[^>]*>', html)
         return [e for e in etiquetas if "display: none" not in e]
 
     html = client.get("/ventas").text
@@ -2802,3 +2809,93 @@ def test_la_consulta_de_stock_mobile_puede_agregar_varios_con_confirmacion(
     assert 'x-text="textoAgregar"' in html
     assert 'aria-labelledby="titulo-confirmacion"' in html
     assert "confirmacion.advertencia" in html
+
+
+@pytest.mark.parametrize("con_local", [True, False])
+def test_la_consulta_de_stock_mobile_de_otro_perfil_depende_de_su_local(
+    client, db, crear_usuario, crear_punto_de_venta, con_local,
+):
+    """
+    Un perfil que no es vendedor CON local asignado usa como "mi sucursal" el
+    local del celular (aunque el asignado sea otro), igual que la vendedora.
+    Sin local asignado no hay "mía": 0, todos los locales solo con stock.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    otro = crear_punto_de_venta("MNC", "Nuevo Centro", TipoPuntoVenta.LOCAL)
+    supervisor = crear_usuario("super", ROL_SUPERVISOR)
+    supervisor.local_asignado_id = otro.id if con_local else None
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "super", "password": "Test1234!"})
+
+    html = client.get("/ventas/consulta-stock").text
+    esperado = local.id if con_local else 0
+    assert f"consultaStockMobile({esperado}," in html
+
+
+def test_nueva_venta_redirige_al_carrito(client, crear_usuario):
+    """Buscador y carrito son una sola pantalla: el acceso viejo no se rompe."""
+    crear_usuario("admin", ROL_CUENTA_MAESTRA)
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "Test1234!"})
+
+    resp = client.get("/ventas/nueva", follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/ventas/carrito"
+
+
+def test_el_carrito_tiene_el_buscador_y_no_seguir_agregando(
+    client, db, crear_usuario, crear_punto_de_venta, dar_permiso, roles,
+):
+    """
+    Arriba se escanea y abajo está el carrito con "Cerrar Venta": no hay
+    otra pantalla a la que ir a "seguir agregando".
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/ventas/carrito").text
+    assert 'x-ref="codigo"' in html
+    assert "Agregar al carrito" in html
+    assert "Cerrar Venta" in html
+    assert "Seguir agregando" not in html
+
+
+def test_el_carrito_deja_agregar_sin_stock_pidiendo_confirmacion(
+    client, db, crear_usuario, crear_punto_de_venta, dar_permiso, roles,
+):
+    """
+    Sin stock en el local el botón no se apaga: pasa a "Agregar igual" y abre
+    el diálogo del sistema, que pide controlar el código.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/ventas/carrito").text
+    assert "agregando || sinStock" not in html
+    assert "agregarConControl()" in html
+    assert "Agregar igual" in html
+    assert 'aria-labelledby="titulo-confirmacion"' in html

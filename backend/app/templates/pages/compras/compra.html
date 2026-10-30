@@ -228,17 +228,11 @@
                     <span class="font-semibold text-texto" x-text="nombrePunto()"></span>.
                 </p>
                 <div class="flex flex-wrap gap-3">
-                    <button type="button" @click="imprimirEtiquetasCompra('rectangular')"
-                            class="h-boton px-5 rounded-input bg-primary text-white text-base
-                                   font-medium hover:bg-primary-hover inline-flex items-center gap-2">
-                        {{ icono('imprimir', clases='w-4 h-4') }} Etiquetas rectangulares
-                    </button>
-                    <button type="button" @click="imprimirEtiquetasCompra('colita')"
-                            class="h-boton px-5 rounded-input border-2 border-primary text-primary
-                                   text-base font-medium hover:bg-primary hover:text-white
-                                   inline-flex items-center gap-2">
-                        {{ icono('imprimir', clases='w-4 h-4') }} Etiquetas con colita
-                    </button>
+                    <a :href="'/etiquetas?compra_id=' + compraId"
+                       class="h-boton px-5 rounded-input bg-primary text-white text-base
+                              font-medium hover:bg-primary-hover inline-flex items-center gap-2">
+                        {{ icono('imprimir', clases='w-4 h-4') }} Imprimir etiquetas
+                    </a>
                     <a href="/compras"
                        class="h-boton px-5 rounded-input border border-borde text-base
                               text-texto-muted hover:border-primary hover:text-primary

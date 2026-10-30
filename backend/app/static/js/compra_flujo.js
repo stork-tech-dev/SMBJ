@@ -405,33 +405,6 @@ function flujoCompra({ compraId = null, estadoInicial = 'borrador' } = {}) {
         },
 
         /* ================================================================
-           Etiquetas (imprimir después de cerrar la compra)
-           ================================================================ */
-
-        async imprimirEtiquetasCompra(tipo) {
-            try {
-                const itemsPayload = this.items.map((i) => ({
-                    variante_id: i.variante?.id || i.variante_id,
-                    cantidad: Number(i.cantidad) || 1,
-                }));
-                const resp = await fetch('/api/v1/productos/etiquetas', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ tipo, items: itemsPayload }),
-                });
-                if (!resp.ok) {
-                    const err = await resp.json().catch(() => ({}));
-                    throw new Error(err.detail || 'Error al generar etiquetas');
-                }
-                const blob = await resp.blob();
-                window.open(URL.createObjectURL(blob), '_blank');
-            } catch (e) {
-                window.toast(e.message, 'error');
-            }
-        },
-
-        /* ================================================================
            Variantes (crear producto con variantes desde la compra)
            ================================================================ */
 

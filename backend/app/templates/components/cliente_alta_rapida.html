@@ -1,0 +1,69 @@
+{# ===========================================================================
+   Macro: alta rápida de cliente en el mostrador (pantallas mobile).
+
+   Apellido, nombre y email obligatorios —los de toda alta—, y fecha de
+   nacimiento, DNI y teléfono opcionales. El estado (`nuevo`) y las
+   validaciones los pone `window.altaRapidaCliente()` (app.js); el backend
+   lo recibe como `cliente_nuevo` (`ClienteAltaRapida`). Lo usan el alta de
+   señas y el cobro de la venta: un solo formulario para los dos.
+
+   Parámetros:
+     prefijo  prefijo de los id de los campos (ej. "sena", "venta").
+     Los botones de acción van en el cuerpo del `{% call %}`.
+
+   Uso:
+     {% from "components/cliente_alta_rapida.html" import cliente_alta_rapida %}
+     {% call cliente_alta_rapida('venta') %}
+         <button ...>Guardar y asociar</button>
+     {% endcall %}
+   =========================================================================== #}
+
+{% macro cliente_alta_rapida(prefijo) %}
+<div class="p-4 rounded-input border-2 border-borde space-y-4">
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label for="{{ prefijo }}-apellido" class="text-sm font-semibold text-texto-header">
+                Apellido <span class="text-danger">*</span>
+            </label>
+            <input id="{{ prefijo }}-apellido" x-model="nuevo.apellido" maxlength="100"
+                   autocomplete="off" class="campo-linea mt-1">
+        </div>
+        <div>
+            <label for="{{ prefijo }}-nombre" class="text-sm font-semibold text-texto-header">
+                Nombre <span class="text-danger">*</span>
+            </label>
+            <input id="{{ prefijo }}-nombre" x-model="nuevo.nombre" maxlength="150"
+                   autocomplete="off" class="campo-linea mt-1">
+        </div>
+    </div>
+    <div>
+        <label for="{{ prefijo }}-email" class="text-sm font-semibold text-texto-header">
+            Email <span class="text-danger">*</span>
+        </label>
+        <input id="{{ prefijo }}-email" x-model="nuevo.email" type="email" inputmode="email"
+               maxlength="150" autocomplete="off" class="campo-linea mt-1">
+    </div>
+    {# Con fecha y categoría de fidelización, el cliente tiene descuento en
+       sus compras del mes de su cumpleaños. #}
+    <div>
+        <label for="{{ prefijo }}-nacimiento" class="text-sm font-semibold text-texto-header">
+            Fecha de nacimiento
+        </label>
+        <input id="{{ prefijo }}-nacimiento" x-model="nuevo.fecha_nacimiento" type="date"
+               :max="hoyISO()" class="campo-linea mt-1">
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label for="{{ prefijo }}-dni" class="text-sm font-semibold text-texto-header">DNI</label>
+            <input id="{{ prefijo }}-dni" x-model="nuevo.dni" maxlength="15" inputmode="numeric"
+                   autocomplete="off" class="campo-linea mt-1">
+        </div>
+        <div>
+            <label for="{{ prefijo }}-telefono" class="text-sm font-semibold text-texto-header">Teléfono</label>
+            <input id="{{ prefijo }}-telefono" x-model="nuevo.telefono" maxlength="30" inputmode="tel"
+                   autocomplete="off" class="campo-linea mt-1">
+        </div>
+    </div>
+    {{ caller() }}
+</div>
+{% endmacro %}

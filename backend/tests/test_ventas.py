@@ -178,7 +178,9 @@ def venta(db, autor, dispositivo, asegurar_turno):
 
 @pytest.fixture
 def cliente(db, autor):
-    return servicio_clientes.crear_cliente(db, autor, nombre="Leandra Carballo", dni="39059158")
+    return servicio_clientes.crear_cliente(
+        db, autor, apellido="Carballo", nombre="Leandra", email="leandra@prueba.com", dni="39059158"
+    )
 
 
 def _cobrar_todo(db, autor, venta, medio):
@@ -257,7 +259,7 @@ def test_el_descuento_nunca_deja_el_precio_en_cero(db):
 def test_descuento_en_venta_respeta_motivo_y_tope(db, autor, venta, crear_variante):
     """El motivo es obligatorio y el tope suma el descuento propio del producto."""
     motivo = servicio_descuentos.crear_motivo(
-        db, autor, nombre="Cumpleaños", porcentaje_sugerido=Decimal("20")
+        db, autor, nombre="Aniversario", porcentaje_sugerido=Decimal("20")
     )
     # El producto ya trae 40% propio: con 20% más suman 60% y no entra.
     variante = crear_variante("Anillo", "10000", descuento_producto="40")
@@ -388,7 +390,7 @@ def test_promocion_bloquea_descuento_en_el_item(
     categoria, _ = catalogo
     _promo(db, autor, categoria, TipoPromocion.DOS_X_UNO)
     motivo = servicio_descuentos.crear_motivo(
-        db, autor, nombre="Cumpleaños", porcentaje_sugerido=Decimal("10")
+        db, autor, nombre="Aniversario", porcentaje_sugerido=Decimal("10")
     )
 
     for precio in ("1000", "800"):
@@ -1093,7 +1095,7 @@ def test_el_descuento_exige_su_propio_permiso(
     variante = crear_variante("Anillo", "10000")
     item, _ = servicio.agregar_item(db, autor, venta, variante_id=variante.id)
     motivo = servicio_descuentos.crear_motivo(
-        db, autor, nombre="Cumpleaños", porcentaje_sugerido=Decimal("10")
+        db, autor, nombre="Aniversario", porcentaje_sugerido=Decimal("10")
     )
     db.commit()
 

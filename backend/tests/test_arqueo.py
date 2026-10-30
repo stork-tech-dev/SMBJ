@@ -355,6 +355,57 @@ def test_credito_y_debito_se_arquean_en_un_solo_renglon(
 # ── Notificación de diferencia ──────────────────────────────────────────────
 
 
+def _notificaciones_de_apertura(db):
+    from sqlalchemy import select
+
+    from app.models.turno import Notificacion, TipoNotificacion
+
+    return db.execute(
+        select(Notificacion).where(Notificacion.tipo == TipoNotificacion.DIFERENCIA_APERTURA)
+    ).scalars().all()
+
+
+@pytest.mark.parametrize(
+    "apertura,palabra,diferencia",
+    [(14000, "Faltante", "-1000"), (15500, "Sobrante", "500")],
+)
+def test_abrir_con_otro_efectivo_que_el_cierre_notifica_a_duenos(
+    db, autor, local, crear_usuario, apertura, palabra, diferencia,
+):
+    from app.core.permisos import ROL_DUENO, ROL_VENDEDOR
+
+    dueno = crear_usuario("dueno1", ROL_DUENO)
+    inactivo = crear_usuario("dueno2", ROL_DUENO)
+    inactivo.activo = False
+    vende = crear_usuario("vende", ROL_VENDEDOR)
+    _cerrar_declarando_efectivo(db, autor, _turno(db, autor, local), "15000")
+
+    nuevo = _turno(db, autor, local, efectivo_apertura=apertura)
+
+    notifs = _notificaciones_de_apertura(db)
+    assert {n.usuario_id for n in notifs} == {autor.id, dueno.id}  # autor = Cuenta Maestra
+    assert vende.id not in {n.usuario_id for n in notifs}
+    n = notifs[0]
+    assert n.titulo.startswith(f"{palabra} al abrir el turno — Patio Olmos")
+    assert f"{palabra}: $" in n.cuerpo
+    assert n.metadata_["turno_id"] == nuevo.id
+    assert Decimal(n.metadata_["diferencia"]) == Decimal(diferencia)
+
+
+def test_abrir_con_el_mismo_efectivo_que_el_cierre_no_notifica(db, autor, local):
+    _cerrar_declarando_efectivo(db, autor, _turno(db, autor, local), "15000")
+    _turno(db, autor, local, efectivo_apertura=15000)
+
+    assert _notificaciones_de_apertura(db) == []
+
+
+def test_primer_turno_del_local_no_notifica(db, autor, local):
+    """Sin cierre anterior no hay con qué comparar."""
+    _turno(db, autor, local, efectivo_apertura=5000)
+
+    assert _notificaciones_de_apertura(db) == []
+
+
 def test_la_diferencia_notifica_a_duenos_y_maestra_con_el_nombre_del_medio(
     db, autor, local, crear_usuario,
 ):

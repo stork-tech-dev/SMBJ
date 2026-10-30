@@ -103,7 +103,7 @@ class MovimientoCaja(BaseModel):
 
 
 class IngresoPorMedio(BaseModel):
-    """Lo que entró en el turno por un medio de pago (sin el saldo inicial)."""
+    """Lo que entró por un medio de pago (sin el saldo inicial), en un turno o en el día."""
 
     medio_de_pago_id: int
     medio_de_pago: str
@@ -128,6 +128,10 @@ class MovimientosTurno(_Turno):
 
 class ReporteMovimientos(_ConLocales):
     turnos: list[MovimientosTurno]
+    # Totalizador del día: los ingresos de todos los turnos por medio de
+    # pago (sin saldos iniciales), y su suma.
+    ingresos_por_medio_dia: list[IngresoPorMedio] = []
+    ingresos_dia: Decimal = Decimal("0")
 
 
 class MovimientosCajaLocal(BaseModel):

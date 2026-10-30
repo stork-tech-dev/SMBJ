@@ -16,7 +16,7 @@ Mostrá el stock disponible de todos los artículos en cada ubicación.
 
 | Filtro | Cómo funciona |
 |---|---|
-| Texto libre | Busca en descripción, SKU y SKU proveedor |
+| Texto libre | Busca por código de etiqueta, SKU o descripción. En la descripción busca cada palabra por separado, en cualquier orden |
 | Categoría | Filtra por rama del árbol de categorías |
 | Proveedor | Filtra por proveedor |
 | Local | Filtra por punto de venta (si tenés acceso a varios) |
@@ -28,6 +28,8 @@ Hacé clic en **"Exportar XLS"** para descargar el listado en Excel.
 ### Desde el celular del local
 
 En el celular, tocá **"Consultar stock"** en la pantalla de inicio (o **"Stock"** en la barra inferior). Buscá por código, SKU o descripción, o tocá el **ícono de la cámara** para leer el código cuadrado de la etiqueta (centralo dentro del recuadro).
+
+En la descripción no hace falta escribirla completa ni en orden: se buscan **todas las palabras que escribas, en cualquier orden** y sin importar tildes ni mayúsculas. Por ejemplo, **"cruz equilibrio"** encuentra "Anillo Cruz del Equilibrio". Si escribís una palabra que el producto no tiene ("cruz plata"), no aparece.
 
 Cada producto se muestra así:
 
@@ -41,6 +43,13 @@ Por defecto se ve solo el stock de **tu local**. Marcá **"Ver todos los locales
 
 Con **"Filtros"** podés acotar por categoría, eligiendo nivel por nivel.
 
+#### Si no sos vendedora (supervisora, dueño, etc.)
+
+Depende de si tu usuario tiene un **Punto de Venta asignado** (se carga en **Usuarios**):
+
+- **Con Punto de Venta asignado**: la pantalla funciona igual que para la vendedora. "Tu local" es **el del celular** desde el que estás consultando, aunque tu usuario tenga asignado otro: es desde ese local que se vende.
+- **Sin Punto de Venta asignado** (por ejemplo, el dueño): se ven **todos los locales a la vez**, solo los productos que **tienen stock**, con el nombre del local en cada uno. No aparece "Ver todos los locales" y no se pueden agregar productos al carrito desde esta pantalla.
+
 #### Agregar un producto al carrito desde la consulta
 
 No hace falta filtrar: **deslizá la fila del producto hacia un costado** (izquierda o derecha). Aparece un fondo azul con **"Agregar"** y, al soltar, el sistema pregunta **"¿Agregar al carrito?"** mostrando el producto y su precio:
@@ -48,7 +57,11 @@ No hace falta filtrar: **deslizá la fila del producto hacia un costado** (izqui
 - **Agregar**: lo suma al carrito y te deja en la consulta de stock, en el mismo lugar de la lista. Las unidades disponibles de ese producto bajan en 1.
 - **Cancelar**: no agrega nada.
 
-Si la deslizás poco, la fila vuelve a su lugar sin preguntar. Solo se pueden deslizar los productos de **tu local** que tienen unidades disponibles: los que están en 0 y los de otras sucursales no se agregan desde acá.
+Si la deslizás poco, la fila vuelve a su lugar sin preguntar. Solo se pueden deslizar los productos de **tu local**: los de otras sucursales no se agregan desde acá.
+
+Si el producto está **en 0**, igual se puede agregar: la pregunta pasa a ser **"¿Agregar sin stock?"**, con un aviso para que controles que el código sea el del producto que tenés en la mano. Al confirmar la venta, el stock queda en negativo.
+
+Si la búsqueda deja un solo producto de tu local y está en 0, el botón dice **"Agregar igual (sin stock)"** y pasa por la misma confirmación. Con varios productos, el botón agrega solo los que tienen stock; los que están en 0 se agregan de a uno, deslizándolos.
 
 ---
 

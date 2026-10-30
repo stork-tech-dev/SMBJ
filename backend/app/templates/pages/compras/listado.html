@@ -88,6 +88,7 @@
                     <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Fecha carga</th>
                     <th class="px-4 pt-8 pb-4 text-left text-base font-semibold text-texto-disabled">Usuario</th>
                     <th class="px-4 pt-8 pb-4 text-right text-base font-semibold text-texto-disabled">Items</th>
+                    <th class="px-4 pt-8 pb-4"><span class="sr-only">Imprimir etiquetas</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -107,10 +108,20 @@
                             x-text="c.usuario_carga?.nombre"></td>
                         <td class="px-4 py-3 align-middle text-right font-medium"
                             x-text="c.total_items"></td>
+                        {# Lo mismo que entrar a la compra y tocar "Imprimir etiquetas".
+                           `.stop`: sin él, el clic también abriría el detalle (la fila). #}
+                        <td class="px-4 py-3 align-middle text-right">
+                            <a :href="'/etiquetas?compra_id=' + c.id" @click.stop
+                               title="Imprimir Etiquetas" aria-label="Imprimir Etiquetas"
+                               class="inline-flex items-center justify-center p-1 min-h-toque min-w-toque
+                                      text-primary hover:opacity-70">
+                                {{ icono('imprimir', clases='w-[22px] h-[22px]') }}
+                            </a>
+                        </td>
                     </tr>
                 </template>
                 <tr x-show="!filas.length && !cargando">
-                    <td colspan="6" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
+                    <td colspan="7" class="px-8 py-16 text-center text-texto-muted">Sin resultados.</td>
                 </tr>
             </tbody>
         </table>

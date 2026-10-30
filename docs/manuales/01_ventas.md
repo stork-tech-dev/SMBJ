@@ -53,45 +53,51 @@ El cierre del turno incluye el arqueo de caja (ver módulo Caja).
 
 ### Nueva venta
 
-1. Tocá **"Nueva venta"** en la pantalla de inicio. Si está apagado, primero iniciá el turno (o sumate al del día).
-2. Aparece la pantalla para escanear o buscar productos.
+1. Tocá **"Nueva venta"** en la pantalla de inicio (o el botón del carrito en la barra de abajo). Si está apagado, primero iniciá el turno (o sumate al del día).
+2. Se abre la pantalla de la **venta**: arriba, el campo para escanear o escribir el código; abajo, **"En el carrito"**, con lo que ya agregaste, el total y el botón **"Cerrar Venta"**. Todo se hace desde esta misma pantalla.
 
-> **La venta se crea recién con el primer producto.** Si entrás a "Nueva venta" y volvés sin agregar nada, no queda ninguna venta guardada y en el inicio no aparece el aviso de "venta sin concluir". Si escaneás un código que no existe, tampoco se crea la venta.
+> **La venta se crea recién con el primer producto.** Si entrás y volvés sin agregar nada, no queda ninguna venta guardada y en el inicio no aparece el aviso de "venta sin concluir". Si escaneás un código que no existe, tampoco se crea la venta.
+
+Si en el inicio aparece **"Tenés una venta sin concluir"**, tocalo: te lleva a esta misma pantalla, con los productos que ya tenía.
 
 #### Agregar productos
 
-- **Con la cámara**: tocá el **ícono de la cámara** al lado del campo y centrá el código cuadrado de la etiqueta dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo. También podés tipear el código o usar un lector.
-- **Por búsqueda**: escribí el nombre o parte del código y seleccioná de la lista.
-- Si el código corresponde a una única variante, se agrega sola. Si hay ambigüedad, el sistema pide que elijas.
+- Escaneá la etiqueta con el lector o escribí el código y tocá la lupa.
+- **Con la cámara**: tocá el **ícono de la cámara** al lado del campo y centrá el código cuadrado de la etiqueta dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo.
+- Aparece el producto con su foto, precio y stock en el local. Revisalo y tocá **"Agregar al carrito"**: se suma a la lista de abajo y el campo queda listo para el siguiente.
+- Si no hay stock en el local, aparece un aviso en rojo y el botón dice **"Agregar igual"**. Al tocarlo, el sistema pregunta **"¿Agregar sin stock?"** y te pide que controles que el código sea el del producto que tenés en la mano (lo más común es un código mal escaneado). Si es correcto, tocá **"Agregar igual"**.
 
-#### Modificar cantidades
+> Al confirmar la venta, el stock de ese producto en el local queda **en negativo**: es la señal para que se revise ese artículo en la próxima auditoría.
 
-- Tocá el producto en el carrito para cambiar la cantidad.
-- Deslizá a la derecha para eliminarlo.
-- Si quitás el **último** producto, la venta se descarta sola (una venta sin productos no existe) y volvés a la pantalla de inicio con el aviso *"Venta descartada: no quedaban productos"*.
+#### Quitar productos
+
+- Cada unidad es un renglón propio: dos productos iguales son dos renglones.
+- Tocá el **ícono de la papelera** del renglón para quitarlo.
+- Si quitás el **último** producto, la venta se descarta sola (una venta sin productos no existe) con el aviso *"Venta descartada: no quedaban productos"*, y la pantalla queda lista para empezar otra.
 
 #### Aplicar descuento
 
 Si tenés permiso:
 
-1. Tocá el ícono de descuento.
-2. Ingresá el porcentaje o monto de descuento.
-3. Confirmá.
+1. Tocá el **%** del renglón.
+2. Elegí el **motivo** (es obligatorio). Si el motivo tiene un porcentaje fijo, se aplica ese; si no, elegilo de la lista.
+3. Tocá **"Aplicar"**.
 
 #### Cobrar
 
 1. En el carrito, tocá **"Cerrar Venta"**.
-2. Seleccioná el medio de pago (efectivo, tarjeta, transferencia, etc.).
-3. Si el pago es en cuotas, elegí el plan.
-4. Si usás señas, podés aplicar el saldo disponible del cliente.
-5. Ingresá el monto para cada medio si la venta es mixta.
-6. Tocá **"Confirmar venta"**.
+2. **Cliente** (opcional): buscalo por DNI, apellido o nombre. Si no está cargado, tocá **"+ Cliente nuevo"**, completá **apellido, nombre y email** (obligatorios) y, si los tenés, fecha de nacimiento, DNI y teléfono, y tocá **"Guardar y asociar"**: queda dado de alta y asociado a la venta, sin salir del cobro.
+3. Seleccioná el medio de pago (efectivo, tarjeta, transferencia, etc.).
+4. Si el pago es en cuotas, elegí el plan.
+5. Si usás señas, podés aplicar el saldo disponible del cliente.
+6. Ingresá el monto para cada medio si la venta es mixta.
+7. Tocá **"Confirmar venta"**.
 
 > El sistema descuenta el stock automáticamente al confirmar la venta.
 
 #### Cancelar una venta en curso
 
-Tocá la flecha de retorno. Si la venta ya tiene productos, queda guardada como "en curso" por si querés retomar (es la alerta roja del inicio). Para descartarla definitivamente, usá el botón de eliminar del carrito o quitá todos sus productos. Si todavía no agregaste ningún producto, no hay nada que cancelar: la venta no llegó a crearse.
+Tocá la flecha de retorno. Si la venta ya tiene productos, queda guardada como "en curso" por si querés retomar (es la alerta roja del inicio). Para descartarla definitivamente, tocá **"Descartar la venta"** al pie del carrito o quitá todos sus productos. Si todavía no agregaste ningún producto, no hay nada que cancelar: la venta no llegó a crearse.
 
 ---
 
@@ -113,7 +119,7 @@ Si tenés permiso, en la pantalla de inicio aparece la tarjeta **"Anulaciones"**
 ### Dejar una seña
 
 1. En la pantalla de inicio, tocá **"Señas"**.
-2. Buscá al cliente o cargalo como nuevo (nombre, y si querés DNI y teléfono).
+2. Buscá al cliente o tocá **"+ Cliente nuevo"** para cargarlo: **apellido, nombre y email** son obligatorios; fecha de nacimiento, DNI y teléfono, opcionales. Es el mismo formulario que al cobrar una venta.
 3. Indicá el monto, el medio de pago y, si hace falta, una nota (por ejemplo, qué producto reserva).
 4. Tocá **"Registrar seña"**.
 
@@ -195,6 +201,19 @@ Permite que un cliente devuelva uno o varios productos y se lleve otros distinto
    - Si el cliente se lleva algo más caro, paga la diferencia con el medio de pago que elijas.
    - Si se lleva algo más barato, la diferencia queda **a favor del cliente pero no se le devuelve en dinero** — puede usarla para llevarse más productos en el momento, o la pierde.
 6. Confirmá. El sistema entrega un **código de cambio nuevo** para los productos que se lleva, por si en el futuro los quiere cambiar también.
+
+#### Si el cliente trae más de un ticket
+
+Se pueden juntar varios tickets en un mismo cambio: **lo que devuelve de todos se suma**, y la diferencia se calcula contra ese total. Así, con dos tickets de $1.000 y $500 puede llevarse algo de $2.000 pagando solo $500.
+
+- **En el celular**: después de cargar el primer ticket, tocá **"+ Agregar otro ticket"** e ingresá el código. Cada ticket aparece con sus productos para tildar qué devuelve, y abajo se ve cuánto suma lo devuelto. Un ticket cargado por error se saca con **"Quitar"**.
+- **En la computadora**: en el primer paso agregá cada código con **"+ Agregar"**; ya en "Ítems devueltos", podés sumar otro con **"+ Agregar ticket"**.
+
+Reglas:
+
+- Todos los tickets van con el **mismo tipo de cambio** (común, promoción o gift card). Un código de retiro de mercadería de empleada se puede sumar en un cambio común.
+- Tienen que ser compras **del mismo cliente**. Una compra sin cliente se puede juntar con cualquiera.
+- El aviso de plazo vencido sale por cada ticket que lo pasó (avisa, no bloquea).
 
 ### Cómo se calcula lo que vale el producto devuelto
 

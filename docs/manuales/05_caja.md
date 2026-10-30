@@ -18,10 +18,16 @@ Desde la pantalla de inicio del celular del local:
 
 1. Tocá el área del turno (muestra "Sin turno activo").
 2. Se abre el panel de apertura.
-3. Ingresá el **efectivo inicial en caja** (el dinero físico que hay al abrir).
+3. Revisá el **efectivo inicial en caja** (el dinero físico que hay al abrir). Viene completado con lo que se contó al cerrar el turno anterior del local; si contás otra cosa, corregilo.
 4. Tocá **"Confirmar"**.
 
 El turno queda abierto y podés empezar a vender.
+
+#### Si el efectivo no coincide con el cierre anterior
+
+Si el efectivo que ingresás es distinto de lo que se contó al cerrar el turno anterior, aparece un cartel en rojo: **"Estás generando un faltante de $…"** (hay menos plata) o **"…un sobrante de $…"** (hay más). Igual podés confirmar, pero antes volvé a contar.
+
+Al confirmar, el sistema les manda una **notificación a los dueños** (la campanita del sistema) con el local, quién abrió el turno, lo que había al cierre anterior, lo que se declaró y la diferencia.
 
 ### Unirte a un turno ya abierto
 
@@ -38,6 +44,12 @@ Quedás registrada como parte del turno sin modificar el efectivo inicial.
 Si el turno anterior quedó abierto, el sistema **bloquea todas las operaciones** hasta cerrarlo. Aparece un aviso en rojo en la pantalla de inicio.
 
 > Cerrá siempre el turno al terminar el día.
+
+### Cómo se escriben los montos
+
+En todos los montos de caja (efectivo inicial, retiros, novedades, cobro de joyero y cierre de turno) el número se muestra con **puntos de miles** mientras escribís: `125000` se ve **125.000**. Así es más difícil errarle por un cero.
+
+Para los centavos usá la **coma** (`1.250,50`). Si tu teclado solo tiene punto, el punto que tipeás se toma como coma.
 
 ---
 
@@ -95,6 +107,8 @@ Muestra todo lo que entró y salió de la caja en cada turno del día, para cont
 
 Los turnos se muestran del más reciente al más antiguo: el **turno en curso aparece primero** y, si ese día hubo turnos anteriores, quedan debajo (bajá para verlos).
 
+El **turno en curso** se ve siempre completo. Los **turnos cerrados** aparecen **colapsados**: solo se ve su horario. Para ver el detalle, tocá la **flecha** de la derecha; tocala de nuevo para ocultarlo.
+
 Cada turno aparece como una tarjeta con su horario y tres secciones bien separadas:
 
 - **Saldo inicial**: el efectivo con el que se abrió la caja, con la hora de apertura. Va aparte y en negro (no en verde) porque no es una venta ni plata que entró durante el turno: es con lo que se arrancó.
@@ -119,6 +133,17 @@ Las ventas de la lista tienen una flechita (›): tocá una para abrir su detall
 Para cerrarlo tocá la **✕**. Es solo de consulta: desde acá no se modifica la venta.
 
 > Para ver el detalle hace falta también permiso de **Ventas** para ver. Las señas, novedades, retiros y cobros de joyero no tienen detalle.
+
+---
+
+## Reporte de movimientos de caja (computadora)
+
+En **Reportes → Reportes de Caja → Movimientos de caja por turno** se ve lo mismo que en el celular, pero de todos los locales (o del que elijas en **Local**) para el día que indiques en **Fecha**.
+
+- **Arriba, el total del día por medio de pago**: lo que entró por cada medio (efectivo, tarjetas, transferencias, etc.) sumando **todos los turnos** del día, con la misma barra de colores del celular y, al pie, los **ingresos del día**. No incluye los saldos iniciales de los turnos.
+- **Debajo, cada turno colapsado**: se ve el turno (local y horario), cuántos movimientos tiene y sus totales —ingresos, egresos y efectivo esperado en caja—. Para ver los movimientos uno por uno, hacé clic en la **flecha** al lado del turno; otro clic los oculta.
+
+**"Exportar a Excel"** baja el reporte completo, con el total del día por medio de pago en las primeras filas.
 
 ---
 

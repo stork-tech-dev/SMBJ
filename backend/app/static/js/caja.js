@@ -74,9 +74,16 @@ function cajaTurno(puntoDeVentaId) {
             }
         },
 
-        get distintoDelCierre() {
-            return this.cierreAnterior !== null && this.efectivoApertura !== ''
-                && Number(this.efectivoApertura) !== Number(this.cierreAnterior.efectivo);
+        /**
+         * Efectivo inicial − lo contado al cerrar el turno anterior: negativo
+         * es faltante, positivo sobrante. 0 (sin cartel) si no hubo cierre
+         * anterior o el campo está vacío. Redondeado a centavos para que
+         * 0.1 + 0.2 no dé un "sobrante" de $0.
+         */
+        get diferenciaApertura() {
+            if (this.cierreAnterior === null || this.efectivoApertura === '') return 0;
+            const d = Number(this.efectivoApertura) - Number(this.cierreAnterior.efectivo);
+            return Math.round(d * 100) / 100;
         },
 
         /**

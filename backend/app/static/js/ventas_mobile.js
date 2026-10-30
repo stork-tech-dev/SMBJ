@@ -24,6 +24,12 @@ const API_STOCK = '/api/v1/stock';
 // consulta de stock (con un filtro aplicado). Más que eso ya no es "estos
 // que encontré", es agregar a ciegas.
 const MAX_AGREGAR_JUNTOS = 4;
+// Lo que se le pide a la vendedora antes de agregar algo sin stock en el
+// local. Se puede vender —si lo tiene en la mano, el que está mal es el
+// sistema, y el stock queda en negativo para auditarlo—, pero lo más común
+// es un código mal escaneado. Lo usan el carrito y la consulta de stock.
+const AVISO_SIN_STOCK = 'No hay stock de este producto en el local. Controlá que el '
+    + 'código sea el del producto que tenés en la mano antes de agregarlo.';
 const API_TURNOS = '/api/v1/turnos';
 
 // Implementación compartida en app.js (Principio 2): la usa también
@@ -74,6 +80,21 @@ function ventaBase() {
                 this.cargando = false;
             }
         },
+
+        /* Quita o repone el descuento de cumpleaños de la venta. El total
+           cambia: cada pantalla reacciona en `alCambiarVenta` (el cobro
+           vuelve a repartir los medios de pago). */
+        async cambiarCumpleanos(activo) {
+            try {
+                this.venta = await pedir(`${API_VENTAS}/${this.venta.id}/descuento-cumpleanos`, {
+                    method: 'POST',
+                    body: JSON.stringify({ activo }),
+                });
+                this.alCambiarVenta?.();
+            } catch (e) {
+                window.toast(e.message, 'error');
+            }
+        },
     };
 }
 
@@ -102,24 +123,33 @@ function homeVentas() {
 }
 
 /* ==========================================================================
-   Pantalla 3 — Búsqueda de producto
+   Pantalla 3 — Venta en curso: buscador + carrito
+
+   Una sola pantalla: arriba se escanea o tipea el código y abajo está el
+   carrito con "Cerrar Venta". Antes eran dos ("Nueva venta" y "Carrito") y
+   el paso entre una y otra no se entendía.
    ========================================================================== */
 
-function nuevaVenta() {
+function carritoVenta(puedeDescontar = false) {
     return {
         ...ventaBase(),
 
+        // --- Buscador ---
         codigo: '',
         producto: null,
         aviso: null,
         buscando: false,
         agregando: false,
 
-        // Sin stock, no se ofrece agregar: el aviso ya dice que puede ser
-        // un error de código, y agregar igual sería vender lo que la
-        // pantalla misma está diciendo que no hay en el local.
-        get sinStock() {
-            return !!this.producto && !this.producto.stock_infinito && this.producto.stock <= 0;
+        // --- Descuentos ---
+        puedeDescontar,
+        motivos: [],
+        porcentajes: [],
+        tope: 50,
+
+        descuento: {
+            abierto: false, item_id: null, descripcion: '',
+            motivo_id: '', porcentaje: null, tenia: false,
         },
 
         async iniciar() {
@@ -127,10 +157,19 @@ function nuevaVenta() {
             // crea nada. La venta nace con el primer producto (`agregar`).
             await this.cargarVenta();
             this.enfocar();
+            if (this.puedeDescontar) await this.cargarOpciones();
 
             // F2 vuelve el foco al campo: el lector escribe donde esté el
             // cursor, y si el foco se perdió el código se pierde con él.
             window.addEventListener('atajo-buscar', () => this.enfocar());
+        },
+
+        /* --- Buscador --- */
+
+        // Sin stock en el local: se puede agregar igual, pero pasando por una
+        // confirmación (`agregarConControl`).
+        get sinStock() {
+            return !!this.producto && !this.producto.stock_infinito && this.producto.stock <= 0;
         },
 
         /* `$nextTick` y no un focus directo: cuando esto corre después de
@@ -165,6 +204,28 @@ function nuevaVenta() {
             }
         },
 
+        confirmacion: { abierta: false, titulo: '', mensaje: '', advertencia: '', accion: () => {} },
+
+        /* Con stock agrega directo; sin stock, primero pide controlar el
+           código: lo más común es haber escaneado otra cosa. */
+        agregarConControl() {
+            if (!this.producto) return;
+            if (!this.sinStock) {
+                this.agregar();
+                return;
+            }
+            this.confirmacion = {
+                abierta: true,
+                titulo: '¿Agregar sin stock?',
+                mensaje: `${this.producto.codigo} ${this.producto.descripcion}\n${this.pesos(this.producto.precio)}`,
+                advertencia: AVISO_SIN_STOCK,
+                accion: () => {
+                    this.confirmacion.abierta = false;
+                    this.agregar();
+                },
+            };
+        },
+
         async agregar() {
             if (!this.producto) return;
 
@@ -191,31 +252,8 @@ function nuevaVenta() {
                 this.agregando = false;
             }
         },
-    };
-}
 
-/* ==========================================================================
-   Pantalla 4 — Carrito
-   ========================================================================== */
-
-function carritoVenta(puedeDescontar = false) {
-    return {
-        ...ventaBase(),
-
-        puedeDescontar,
-        motivos: [],
-        porcentajes: [],
-        tope: 50,
-
-        descuento: {
-            abierto: false, item_id: null, descripcion: '',
-            motivo_id: '', porcentaje: null, tenia: false,
-        },
-
-        async cargar() {
-            await this.cargarVenta();
-            if (this.puedeDescontar) await this.cargarOpciones();
-        },
+        /* --- Carrito --- */
 
         /* Los motivos y los porcentajes salen del backend, de la misma
            constante que valida. Una lista copiada acá terminaría ofreciendo
@@ -237,11 +275,11 @@ function carritoVenta(puedeDescontar = false) {
                     `${API_VENTAS}/${this.venta.id}/items/${item.id}`,
                     { method: 'DELETE' }
                 );
-                // Era el último producto: la venta se descartó, no hay
-                // carrito al que volver.
+                // Era el último producto: la venta se descartó. Se queda en
+                // la pantalla, con el buscador listo para empezar otra.
                 if (!this.venta) {
                     window.toast('Venta descartada: no quedaban productos', 'exito');
-                    window.location.href = '/ventas';
+                    this.enfocar();
                 }
             } catch (e) {
                 window.toast(e.message, 'error');
@@ -342,6 +380,9 @@ function finalizarVenta() {
     return {
         ...ventaBase(),
         ...window.buscadorClientes(),
+        // "+ Cliente nuevo": el alta en el momento, la misma que en señas.
+        ...window.altaRapidaCliente(),
+        guardandoCliente: false,
 
         medios: [],
         senas: [],
@@ -402,10 +443,28 @@ function finalizarVenta() {
         /* --- Cliente --- */
 
         async asociarCliente(clienteId) {
+            await this.enviarCliente({ cliente_id: clienteId });
+        },
+
+        /* Da de alta el cliente y lo asocia a la venta, en un solo pedido:
+           si el alta falla (email inválido, DNI repetido) no queda nada a
+           medias y el formulario sigue abierto para corregir. */
+        async crearYAsociarCliente() {
+            if (!this.nuevoCompleto()) return;
+            this.guardandoCliente = true;
+            const ok = await this.enviarCliente({ cliente_nuevo: this.clienteNuevoParaApi() });
+            this.guardandoCliente = false;
+            if (ok) {
+                this.cancelarAltaCliente();
+                window.toast('Cliente creado y asociado a la venta', 'exito');
+            }
+        },
+
+        async enviarCliente(cuerpo) {
             try {
                 this.venta = await pedir(`${API_VENTAS}/${this.venta.id}/cliente`, {
                     method: 'POST',
-                    body: JSON.stringify({ cliente_id: clienteId }),
+                    body: JSON.stringify(cuerpo),
                 });
                 this.limpiarBusquedaCliente();
 
@@ -415,8 +474,10 @@ function finalizarVenta() {
                 await this.cargarMedios();
                 await this.cargarSenas();
                 this.repartir(0);
+                return true;
             } catch (e) {
                 window.toast(e.message, 'error');
+                return false;
             }
         },
 
@@ -540,6 +601,12 @@ function finalizarVenta() {
             this.lineas[otro].monto = Math.max(Math.round((total - fijo) * 100) / 100, 0);
         },
 
+        /* El descuento de cumpleaños cambió el total: los medios se reparten
+           de nuevo sobre lo que falta cubrir. */
+        alCambiarVenta() {
+            this.repartir(0);
+        },
+
         recalcular() {
             // Cambiar el plan no mueve montos: solo el recargo, que se
             // recalcula solo por ser un getter.
@@ -586,8 +653,9 @@ function finalizarVenta() {
 
 function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
     return {
-        // 0 para los roles sin dispositivo de local asignado (ven todo por
-        // defecto): ahí no hay "mi sucursal" que separar del resto.
+        // "Mi sucursal" (`punto_consulta_stock_id` del backend). 0 para un
+        // rol que no es vendedor y no tiene local asignado: ve todos los
+        // locales, solo lo que tiene stock, y no hay "mía" que separar.
         puntoDeVentaId: Number(puntoDeVentaId) || 0,
         puedeVender: Boolean(puedeVender),
         filas: [],
@@ -703,12 +771,20 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
         },
 
         get puedeAgregar() {
+            // Sin "mi sucursal", `misFilas` son las de todos los locales: el
+            // carrito del celular no puede vender lo de otro.
+            if (!this.puntoDeVentaId) return false;
             const n = this.misFilas.length;
-            if (n === 1) return this.paraAgregar.length === 1;
+            // Un solo producto de mi local: se ofrece aunque esté en 0
+            // (pasa por la confirmación de `agregarAlCarrito`).
+            if (n === 1) return true;
             return this.hayFiltro && n <= MAX_AGREGAR_JUNTOS && this.paraAgregar.length > 0;
         },
 
         get textoAgregar() {
+            if (this.misFilas.length === 1 && this.disponible(this.misFilas[0]) === 0) {
+                return 'Agregar igual (sin stock)';
+            }
             const n = this.paraAgregar.length;
             return n > 1 ? `Agregar ${n} productos al carrito` : 'Agregar al carrito de compra';
         },
@@ -719,19 +795,27 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
                 const params = new URLSearchParams({
                     pagina: this.pagina,
                     tamano: this.tamano,
-                    // Lo que está en cero no interesa, salvo que haya en otra
-                    // sucursal: ahí la fila avisa "+Suc" (`hay_en_otros`).
-                    sin_stock_solo_si_hay_en_otros: 'true',
                     // De mayor a menor stock, este local primero.
                     orden: 'stock',
                 });
                 if (this.filtros.busqueda) params.set('busqueda', this.filtros.busqueda);
                 if (this.categoriaId) params.set('categoria_id', this.categoriaId);
 
-                // Sin esto, un vendedor atado a un local por su dispositivo
-                // no puede ver el stock de otro ni del CD: es la única
-                // excepción de solo lectura a ese aislamiento.
-                params.set('todos_los_locales', this.todosLosLocales ? 'true' : 'false');
+                if (this.puntoDeVentaId) {
+                    // Lo que está en cero no interesa, salvo que haya en otra
+                    // sucursal: ahí la fila avisa "+Suc" (`hay_en_otros`).
+                    params.set('sin_stock_solo_si_hay_en_otros', 'true');
+                    // Sin esto, un vendedor atado a un local por su dispositivo
+                    // no puede ver el stock de otro ni del CD: es la única
+                    // excepción de solo lectura a ese aislamiento.
+                    params.set('todos_los_locales', this.todosLosLocales ? 'true' : 'false');
+                    // Al vendedor ya lo acota el scope; a los otros roles (que
+                    // ven todo) los acota este filtro, en el backend.
+                    if (!this.todosLosLocales) params.set('punto_de_venta_id', this.puntoDeVentaId);
+                } else {
+                    // Sin local asignado: todos los locales, solo con stock.
+                    params.set('incluir_sin_stock', 'false');
+                }
                 // Para que `disponible()` descuente lo que ya está en mi
                 // propio carrito en curso.
                 params.set('restar_carrito', 'true');
@@ -759,7 +843,7 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
             this.cargar();
         },
 
-        // Mismo criterio que `nuevaVenta().iniciar()`: abre la venta en
+        // Mismo criterio que `carritoVenta().agregar()`: abre la venta en
         // curso de este equipo o recupera la que ya había, nunca una
         // segunda. Se queda en esta pantalla después de agregar — la
         // vendedora puede seguir consultando otros productos sin perder
@@ -778,7 +862,8 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
         deslizando: { id: null, x0: 0, y0: 0, dx: 0, eje: null, ancho: 0 },
 
         sePuedeDeslizar(f) {
-            return this.puedeVender && !this.mostrarLocal(f) && this.disponible(f) > 0;
+            // Las de mi local, aunque estén en 0: sin stock pide confirmar.
+            return this.puedeVender && !this.mostrarLocal(f);
         },
 
         inicioDeslizar(f, e) {
@@ -833,11 +918,12 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
         },
 
         confirmarAgregar(f) {
+            const sinStock = this.disponible(f) === 0;
             this.confirmacion = {
                 abierta: true,
-                titulo: '¿Agregar al carrito?',
+                titulo: sinStock ? '¿Agregar sin stock?' : '¿Agregar al carrito?',
                 mensaje: `${this.nombreFila(f)}\n${this.pesos(f.precio_con_descuento)}`,
-                advertencia: '',
+                advertencia: sinStock ? AVISO_SIN_STOCK : '',
                 accion: () => {
                     this.confirmacion.abierta = false;
                     this.agregarFilas([f]);
@@ -852,11 +938,14 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
          */
         agregarAlCarrito() {
             if (!this.puedeAgregar) return;
-            const filas = this.paraAgregar;
-            if (filas.length === 1) {
-                this.agregarFilas(filas);
+            if (this.misFilas.length === 1) {
+                // Uno solo: directo, o con confirmación si está en 0.
+                const [f] = this.misFilas;
+                if (this.disponible(f) === 0) this.confirmarAgregar(f);
+                else this.agregarFilas([f]);
                 return;
             }
+            const filas = this.paraAgregar;
 
             const sinStock = this.misFilas.length - filas.length;
             this.confirmacion = {

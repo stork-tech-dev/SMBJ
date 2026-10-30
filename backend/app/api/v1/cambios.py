@@ -26,6 +26,7 @@ from app.core.utils import ahora_db, ip_de_request
 from app.models.cambio import Cambio, CambioItemDevuelto, CambioItemNuevo
 from app.models.venta import Venta
 from app.schemas.cambios import (
+    AgregarOrigenRequest,
     BuscarVentaCambioRequest,
     CambioResponse,
     ConfirmarCambioRequest,
@@ -35,6 +36,7 @@ from app.schemas.cambios import (
     ItemDevueltoResponse,
     ItemNuevoRequest,
     ItemNuevoResponse,
+    OrigenCambioResponse,
     TicketCambioResponse,
     VentaParaCambioResponse,
 )
@@ -99,10 +101,14 @@ def _respuesta_cambio(cambio: Cambio) -> CambioResponse:
         id=cambio.id,
         tipo=cambio.tipo,
         estado=cambio.estado,
-        venta_origen_id=cambio.venta_origen_id,
-        codigo_venta_origen=(
-            cambio.venta_origen.codigo_cambio if cambio.venta_origen else None
-        ),
+        origenes=[
+            OrigenCambioResponse(
+                venta_id=o.venta_id,
+                retiro_mercaderia_id=o.retiro_mercaderia_id,
+                codigo=o.codigo,
+            )
+            for o in cambio.origenes
+        ],
         punto_de_venta_id=cambio.punto_de_venta_id,
         punto_de_venta_nombre=cambio.punto_de_venta.nombre,
         usuario_id=cambio.usuario_id,
@@ -183,7 +189,8 @@ def iniciar(
 ):
     """
     Crea un cambio en estado 'pendiente'. Validaciones:
-    - comun/promocion/gift_card_fisica: requiere codigo_cambio válido y activo.
+    - comun/promocion/gift_card_fisica: requiere uno o más códigos de cambio
+      válidos y activos, de compras del mismo cliente; lo devuelto suma.
     - falla: requiere autorizador_id.
 
     El response incluye una lista `avisos` si hay alertas (plazo vencido, etc.)
@@ -195,7 +202,7 @@ def iniciar(
             autor,
             tipo=datos.tipo,
             punto_de_venta_id=datos.punto_de_venta_id,
-            codigo_cambio=datos.codigo_cambio,
+            codigos_cambio=datos.codigos_cambio,
             autorizador_id=datos.autorizador_id,
             ip_origen=ip_de_request(request),
         )
@@ -234,7 +241,7 @@ def agregar_item_devuelto(
     cambio = _obtener(db, cambio_id)
     try:
         item, avisos = servicio.agregar_item_devuelto(
-            db, cambio, datos.variante_id, datos.venta_item_id
+            db, cambio, datos.variante_id, datos.venta_item_id, datos.retiro_mercaderia_id
         )
     except (NoEncontrado, ReglaDeNegocio) as exc:
         db.rollback()
@@ -246,6 +253,39 @@ def agregar_item_devuelto(
     db.refresh(item)
 
     return _item_devuelto_response(item)
+
+
+@router.post(
+    "/{cambio_id}/origenes",
+    response_model=CambioResponse,
+    summary="Sumar otro ticket al cambio",
+)
+def agregar_origen(
+    cambio_id: int,
+    datos: AgregarOrigenRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    autor=Depends(requiere_permiso(Modulo.VENTAS, "crear")),
+):
+    """
+    Otro código de cambio para el mismo cambio pendiente: lo devuelto de
+    todos los tickets suma. Mismas validaciones que al iniciar (código
+    activo, mismo tipo, mismo cliente).
+    """
+    cambio = _obtener(db, cambio_id)
+    try:
+        servicio.agregar_origen(
+            db, autor, cambio, datos.codigo_cambio, ip_origen=ip_de_request(request)
+        )
+    except NoEncontrado as exc:
+        db.rollback()
+        raise _404(exc) from exc
+    except ReglaDeNegocio as exc:
+        db.rollback()
+        raise _409(exc) from exc
+
+    db.commit()
+    return _respuesta_cambio(servicio.obtener_cambio(db, cambio_id))
 
 
 @router.post(

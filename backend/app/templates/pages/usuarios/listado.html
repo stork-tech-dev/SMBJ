@@ -294,13 +294,17 @@
                         {# El perfil sí va en caja, como en el diseño. Al
                            cambiarlo se recargan los accesos heredados. #}
                         <div class="relative w-full sm:w-auto">
+                            {# Dueño y Cuenta Maestra no cambian de perfil: se
+                               muestra el suyo, bloqueado. #}
                             <select id="u-rol" x-model="form.rol_id" required
-                                    @change="cargarAccesos()"
+                                    @change="cambiarRol()" :disabled="rolFijo"
                                     class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
                                            border-[0.5px] border-texto-disabled rounded-input
-                                           appearance-none focus:outline-none focus:border-primary">
-                                <template x-for="r in rolesAsignables" :key="r.id">
-                                    <option :value="r.id" x-text="r.nombre"></option>
+                                           appearance-none focus:outline-none focus:border-primary
+                                           disabled:opacity-60">
+                                <template x-for="r in opcionesRol" :key="r.id">
+                                    <option :value="r.id" x-text="r.nombre"
+                                            :selected="Number(form.rol_id) === r.id"></option>
                                 </template>
                             </select>
                             <span class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -320,10 +324,11 @@
                             Punto de Venta
                         </label>
                         <div class="relative w-full sm:w-auto">
-                            <select id="u-local" x-model="form.local_asignado_id"
+                            <select id="u-local" x-model="form.local_asignado_id" :disabled="sinLocalForm"
                                     class="w-full h-control pl-3 pr-9 text-base font-light bg-surface
                                            border-[0.5px] border-texto-disabled rounded-input
-                                           appearance-none focus:outline-none focus:border-primary"
+                                           appearance-none focus:outline-none focus:border-primary
+                                           disabled:opacity-60"
                                     :class="form.local_asignado_id ? 'text-texto' : 'text-texto-disabled'">
                                 <option value="">Seleccionar</option>
                                 <template x-for="l in puntosDeVentaAsignables" :key="l.id">
@@ -334,6 +339,9 @@
                                 {{ icono('chevron') }}
                             </span>
                         </div>
+                        <p x-show="sinLocalForm" x-cloak class="text-xs text-texto-muted">
+                            Dueño y Cuenta Maestra no tienen local.
+                        </p>
                     </div>
 
                     {# Dupla "Fecha de Nacimiento" / "Mail" del diseño.

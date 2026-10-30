@@ -10,16 +10,14 @@
 const API_SENAS = '/api/v1/senas';
 
 function senaNueva() {
-    const nuevoVacio = () => ({ nombre: '', dni: '', telefono: '' });
-
     return {
         ...window.buscadorClientes(),
+        // Alta en el momento: `creandoCliente`, `nuevo` y sus validaciones.
+        ...window.altaRapidaCliente(),
 
         medios: [],
         cliente: null,
         senaVigente: null,
-        creandoCliente: false,
-        nuevo: nuevoVacio(),
         monto: '',
         medioId: null,
         descripcion: '',
@@ -52,19 +50,8 @@ function senaNueva() {
             this.senaVigente = null;
         },
 
-        nuevoCliente() {
-            this.creandoCliente = true;
-            // Lo que se escribió en el buscador suele ser el DNI o el nombre:
-            // se aprovecha para no tipearlo dos veces.
-            const texto = this.clienteBusqueda.trim();
-            this.nuevo = nuevoVacio();
-            if (/^\d+$/.test(texto)) this.nuevo.dni = texto;
-            else this.nuevo.nombre = texto;
-            this.limpiarBusquedaCliente();
-        },
-
         get tieneCliente() {
-            return this.creandoCliente ? this.nuevo.nombre.trim().length > 0 : !!this.cliente;
+            return this.creandoCliente ? this.nuevoCompleto() : !!this.cliente;
         },
 
         get puedeRegistrar() {
@@ -84,11 +71,7 @@ function senaNueva() {
                     descripcion: this.descripcion.trim() || null,
                 };
                 if (this.creandoCliente) {
-                    cuerpo.cliente_nuevo = {
-                        nombre: this.nuevo.nombre.trim(),
-                        dni: this.nuevo.dni.trim() || null,
-                        telefono: this.nuevo.telefono.trim() || null,
-                    };
+                    cuerpo.cliente_nuevo = this.clienteNuevoParaApi();
                 } else {
                     cuerpo.cliente_id = this.cliente.id;
                 }
@@ -143,8 +126,7 @@ function senaNueva() {
         reiniciar() {
             this.hecha = null;
             this.quitarCliente();
-            this.creandoCliente = false;
-            this.nuevo = nuevoVacio();
+            this.cancelarAltaCliente();
             this.monto = '';
             this.medioId = null;
             this.descripcion = '';

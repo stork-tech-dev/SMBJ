@@ -6,6 +6,8 @@ reconocido del ítem devuelto — ver calcular_precio_reconocido(). No mezclar.
 
 Reglas globales:
 - El cambio puede hacerse en cualquier local de la empresa.
+- Puede juntar varios tickets (`cambio_origenes`): lo devuelto de todos suma.
+  Todos del mismo tipo de cambio y de compras del mismo cliente.
 - Si pasaron 30 días desde la venta: aviso pero NO bloqueo.
 - Si el producto ya fue cambiado antes: aviso con contador pero NO bloqueo.
 - La diferencia a favor del cliente NO se devuelve en dinero.
@@ -15,7 +17,7 @@ Reglas globales:
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_FLOOR
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auditoria import registrar_auditoria, snapshot
@@ -24,6 +26,7 @@ from app.models.cambio import (
     Cambio,
     CambioItemDevuelto,
     CambioItemNuevo,
+    CambioOrigen,
     EstadoCambio,
     TipoCambio,
     TipoPromo,
@@ -95,7 +98,7 @@ def _retiro_ya_devuelto(db: Session, retiro_id: int, excepto_cambio_id: int | No
         select(CambioItemDevuelto.id)
         .join(Cambio, CambioItemDevuelto.cambio_id == Cambio.id)
         .where(
-            Cambio.retiro_mercaderia_origen_id == retiro_id,
+            CambioItemDevuelto.retiro_mercaderia_id == retiro_id,
             Cambio.estado == EstadoCambio.CONFIRMADO,
         )
     )
@@ -118,16 +121,38 @@ def _en_este_cambio(db: Session, cambio: Cambio) -> set[int]:
     ).scalars())
 
 
-def _tiene_devueltos(db: Session, cambio: Cambio) -> bool:
+def _retiro_en_este_cambio(db: Session, cambio: Cambio, retiro_id: int) -> bool:
     return db.execute(
-        select(CambioItemDevuelto.id).where(CambioItemDevuelto.cambio_id == cambio.id).limit(1)
+        select(CambioItemDevuelto.id).where(
+            CambioItemDevuelto.cambio_id == cambio.id,
+            CambioItemDevuelto.retiro_mercaderia_id == retiro_id,
+        ).limit(1)
     ).first() is not None
+
+
+def _ids_ventas_origen(db: Session, cambio: Cambio) -> list[int]:
+    """Las ventas de los tickets del cambio. Consulta la base: un origen
+    recién agregado en la misma sesión no está en `cambio.origenes`."""
+    return list(db.execute(
+        select(CambioOrigen.venta_id).where(
+            CambioOrigen.cambio_id == cambio.id, CambioOrigen.venta_id.is_not(None)
+        )
+    ).scalars())
+
+
+def _ids_retiros_origen(db: Session, cambio: Cambio) -> list[int]:
+    return list(db.execute(
+        select(CambioOrigen.retiro_mercaderia_id).where(
+            CambioOrigen.cambio_id == cambio.id,
+            CambioOrigen.retiro_mercaderia_id.is_not(None),
+        )
+    ).scalars())
 
 
 def _venta_item_disponible(db: Session, cambio: Cambio, variante_id: int) -> int:
     """
-    El ítem de la venta de origen para esta variante que todavía no se
-    devolvió en un cambio confirmado ni está ya en este mismo cambio.
+    El ítem de alguna de las ventas de origen para esta variante que todavía
+    no se devolvió en un cambio confirmado ni está ya en este mismo cambio.
 
     El frontend nunca manda `venta_item_id`: el buscador de producto del
     wizard es el catálogo general (`/productos/variantes`), que no sabe
@@ -141,7 +166,7 @@ def _venta_item_disponible(db: Session, cambio: Cambio, variante_id: int) -> int
     disponible = db.execute(
         select(VentaItem.id)
         .where(
-            VentaItem.venta_id == cambio.venta_origen_id,
+            VentaItem.venta_id.in_(_ids_ventas_origen(db, cambio)),
             VentaItem.variante_id == variante_id,
             VentaItem.id.not_in(ya_usados),
             *([VentaItem.id.not_in(en_este)] if en_este else []),
@@ -151,7 +176,7 @@ def _venta_item_disponible(db: Session, cambio: Cambio, variante_id: int) -> int
     ).scalar_one_or_none()
     if disponible is None:
         raise ReglaDeNegocio(
-            "No se encontró en la venta de origen un ítem de esa variante "
+            "No se encontró en los tickets del cambio un ítem de esa variante "
             "disponible para devolver (puede que ya se haya devuelto)."
         )
     return disponible
@@ -308,7 +333,8 @@ def obtener_cambio(db: Session, cambio_id: int) -> Cambio:
             .joinedload(Variante.producto),
             joinedload(Cambio.items_nuevos).joinedload(CambioItemNuevo.variante)
             .joinedload(Variante.producto),
-            joinedload(Cambio.venta_origen),
+            joinedload(Cambio.origenes).joinedload(CambioOrigen.venta),
+            joinedload(Cambio.origenes).joinedload(CambioOrigen.retiro_mercaderia),
             joinedload(Cambio.punto_de_venta),
             joinedload(Cambio.usuario),
             joinedload(Cambio.autorizador),
@@ -376,9 +402,10 @@ def items_del_ticket(db: Session, codigo_cambio: str) -> dict:
     """
     venta, retiro = _origen_por_codigo(db, codigo_cambio)
 
-    def _item(variante, venta_item_id, precio, disponible):
+    def _item(variante, venta_item_id, precio, disponible, retiro_id=None):
         return {
             "venta_item_id": venta_item_id,
+            "retiro_mercaderia_id": retiro_id,
             "variante_id": variante.id,
             "descripcion": _descripcion(variante),
             "codigo": variante.codigo_con_verificador,
@@ -392,7 +419,7 @@ def items_del_ticket(db: Session, codigo_cambio: str) -> dict:
         return {
             "origen": "retiro",
             "items": [_item(variante, None, retiro.precio_lista,
-                            not _retiro_ya_devuelto(db, retiro.id))],
+                            not _retiro_ya_devuelto(db, retiro.id), retiro.id)],
         }
 
     _validar_venta_origen(venta)
@@ -406,68 +433,108 @@ def items_del_ticket(db: Session, codigo_cambio: str) -> dict:
     }
 
 
+def _cliente_de_ventas(ventas: list[Venta]) -> int | None:
+    """
+    El cliente de los tickets del cambio. No se juntan compras de clientes
+    distintos: los puntos de lo que se lleva tienen que ir a alguien. Las
+    compras sin cliente se juntan con cualquiera.
+    """
+    clientes = {v.cliente_id for v in ventas if v.cliente_id is not None}
+    if len(clientes) > 1:
+        raise ReglaDeNegocio(
+            "Los tickets son de compras de clientes distintos: no se pueden juntar "
+            "en un mismo cambio"
+        )
+    return next(iter(clientes), None)
+
+
+def _sumar_origen(
+    db: Session, cambio: Cambio, codigo_cambio: str, plazo: int
+) -> list[str]:
+    """
+    Suma un ticket al cambio, con todas sus validaciones, y devuelve los
+    avisos de plazo (no bloquean). La regla de mismo cliente se controla
+    contra los tickets que el cambio ya tiene.
+    """
+    if not (codigo_cambio or "").strip():
+        raise ReglaDeNegocio("Ingresá el código de cambio del ticket")
+    if cambio.tipo == TipoCambio.FALLA:
+        raise ReglaDeNegocio("El cambio por falla no lleva ticket")
+
+    codigo = codigo_cambio.strip().upper()
+    venta, retiro = _origen_por_codigo(db, codigo)
+    avisos: list[str] = []
+
+    if retiro is not None:
+        if cambio.tipo != TipoCambio.COMUN:
+            raise ReglaDeNegocio(
+                "Ese código es de un retiro de mercadería: se cambia como cambio común"
+            )
+        if retiro.id in _ids_retiros_origen(db, cambio):
+            raise ReglaDeNegocio(f"El ticket {codigo} ya está en este cambio")
+        dias = (ahora_db().date() - retiro.timestamp.date()).days
+        if dias > plazo:
+            avisos.append(
+                f"{codigo}: pasaron {dias} días desde el retiro (el plazo habitual es "
+                f"{plazo} días). Podés continuar igual o cancelar."
+            )
+        db.add(CambioOrigen(cambio_id=cambio.id, retiro_mercaderia_id=retiro.id,
+                            created_at=ahora_db()))
+    else:
+        _validar_venta_origen(venta)
+        ids = _ids_ventas_origen(db, cambio)
+        if venta.id in ids:
+            raise ReglaDeNegocio(f"El ticket {codigo} ya está en este cambio")
+        otras = list(db.execute(select(Venta).where(Venta.id.in_(ids))).scalars()) if ids else []
+        _cliente_de_ventas([*otras, venta])
+        dias = (ahora_db().date() - venta.created_at.date()).days
+        if dias > plazo:
+            avisos.append(
+                f"{codigo}: pasaron {dias} días desde la venta (el plazo habitual es "
+                f"{plazo} días). Podés continuar igual o cancelar."
+            )
+        db.add(CambioOrigen(cambio_id=cambio.id, venta_id=venta.id, created_at=ahora_db()))
+
+    db.flush()
+    return avisos
+
+
 def iniciar_cambio(
     db: Session,
     autor: Usuario,
     tipo: TipoCambio,
     punto_de_venta_id: int,
-    codigo_cambio: str | None = None,
+    codigos_cambio: list[str] | None = None,
     autorizador_id: int | None = None,
     ip_origen: str | None = None,
 ) -> tuple[Cambio, list[str]]:
     """
-    Crea un cambio en estado 'pendiente'.
+    Crea un cambio en estado 'pendiente' con sus tickets.
+
+    Común, promoción y gift card llevan uno o más códigos de cambio: lo
+    devuelto de todos suma, para que el cliente pueda llevarse algo de más
+    valor. Falla no lleva ticket y sí un autorizador.
 
     Retorna (cambio, avisos): los avisos son mensajes informativos (plazo
-    vencido, cambios previos) que el frontend debe mostrar pero no bloquean.
+    vencido) que el frontend debe mostrar pero no bloquean.
     """
-    avisos: list[str] = []
-    venta_origen = None
-    retiro_origen = None
-    # Plazo habitual de cambio, de "Ajustes". Pasado, avisa: no bloquea.
-    plazo = servicio_configuracion.dias_plazo_cambio(db)
+    codigos = [c.strip().upper() for c in (codigos_cambio or []) if c and c.strip()]
+    if len(set(codigos)) != len(codigos):
+        raise ReglaDeNegocio("Hay un código de cambio repetido")
 
-    if tipo in (TipoCambio.COMUN, TipoCambio.PROMOCION, TipoCambio.GIFT_CARD_FISICA):
-        if not codigo_cambio:
-            raise ReglaDeNegocio(
-                "Ingresá el código de cambio del ticket"
-            )
-        venta_origen, retiro_origen = _origen_por_codigo(db, codigo_cambio)
-
-    if retiro_origen is not None:
-        if tipo != TipoCambio.COMUN:
-            raise ReglaDeNegocio(
-                "Ese código es de un retiro de mercadería: se cambia como cambio común"
-            )
-        dias = (ahora_db().date() - retiro_origen.timestamp.date()).days
-        if dias > plazo:
-            avisos.append(
-                f"Pasaron {dias} días desde el retiro (el plazo habitual es {plazo} días). "
-                "Podés continuar igual o cancelar."
-            )
-    elif venta_origen is not None:
-        _validar_venta_origen(venta_origen)
-
-        # Aviso de plazo
-        dias = (ahora_db().date() - venta_origen.created_at.date()).days
-        if dias > plazo:
-            avisos.append(
-                f"Pasaron {dias} días desde la venta (el plazo habitual es {plazo} días). "
-                "Podés continuar igual o cancelar."
-            )
-
-    elif tipo == TipoCambio.FALLA:
+    if tipo == TipoCambio.FALLA:
+        if codigos:
+            raise ReglaDeNegocio("El cambio por falla no lleva ticket")
         if autorizador_id is None:
             raise ReglaDeNegocio("El cambio por falla requiere un autorizador")
-        autorizador = db.get(Usuario, autorizador_id)
-        if autorizador is None:
+        if db.get(Usuario, autorizador_id) is None:
             raise NoEncontrado("Autorizador no encontrado")
+    elif not codigos:
+        raise ReglaDeNegocio("Ingresá el código de cambio del ticket")
 
     ahora = ahora_db()
     cambio = Cambio(
         tipo=tipo,
-        venta_origen_id=venta_origen.id if venta_origen else None,
-        retiro_mercaderia_origen_id=retiro_origen.id if retiro_origen else None,
         punto_de_venta_id=punto_de_venta_id,
         usuario_id=autor.id,
         autorizador_id=autorizador_id,
@@ -478,6 +545,12 @@ def iniciar_cambio(
     db.add(cambio)
     db.flush()
 
+    # Plazo habitual de cambio, de "Ajustes". Pasado, avisa: no bloquea.
+    plazo = servicio_configuracion.dias_plazo_cambio(db)
+    avisos: list[str] = []
+    for codigo in codigos:
+        avisos += _sumar_origen(db, cambio, codigo, plazo)
+
     registrar_auditoria(
         db,
         usuario_id=autor.id,
@@ -485,14 +558,36 @@ def iniciar_cambio(
         entidad="cambios",
         entidad_id=cambio.id,
         estado_anterior=None,
-        estado_nuevo={
-            "tipo": tipo.value,
-            "venta_origen_id": cambio.venta_origen_id,
-            "retiro_mercaderia_origen_id": cambio.retiro_mercaderia_origen_id,
-        },
+        estado_nuevo={"tipo": tipo.value, "codigos_cambio": codigos},
         ip_origen=ip_origen,
     )
 
+    return cambio, avisos
+
+
+def agregar_origen(
+    db: Session,
+    autor: Usuario,
+    cambio: Cambio,
+    codigo_cambio: str,
+    ip_origen: str | None = None,
+) -> tuple[Cambio, list[str]]:
+    """Suma otro ticket a un cambio pendiente (mismas validaciones que al iniciar)."""
+    if cambio.estado != EstadoCambio.PENDIENTE:
+        raise ReglaDeNegocio("Solo se pueden agregar tickets a un cambio pendiente")
+
+    avisos = _sumar_origen(
+        db, cambio, codigo_cambio, servicio_configuracion.dias_plazo_cambio(db)
+    )
+    registrar_auditoria(
+        db,
+        usuario_id=autor.id,
+        accion="cambio.ticket_agregado",
+        entidad="cambios",
+        entidad_id=cambio.id,
+        estado_nuevo={"codigo_cambio": codigo_cambio.strip().upper()},
+        ip_origen=ip_origen,
+    )
     return cambio, avisos
 
 
@@ -501,15 +596,18 @@ def agregar_item_devuelto(
     cambio: Cambio,
     variante_id: int,
     venta_item_id: int | None = None,
+    retiro_mercaderia_id: int | None = None,
 ) -> tuple[CambioItemDevuelto, list[str]]:
     """
     Agrega un ítem devuelto al cambio pendiente.
 
-    Para tipos comun/promocion/gift_card_fisica: hace falta el ítem de venta
-    original. Si no llega `venta_item_id` (el buscador de producto del
-    wizard no lo conoce, ver `_venta_item_disponible`), se resuelve solo
-    buscándolo en la venta de origen. Para falla: siempre None, no hay
-    venta de origen.
+    Para tipos comun/promocion/gift_card_fisica: hace falta el ítem de una de
+    las ventas de los tickets. Si no llega `venta_item_id` (el buscador de
+    producto del wizard no lo conoce, ver `_venta_item_disponible`), se
+    resuelve solo buscándolo en esas ventas. La unidad de un retiro de
+    mercadería llega con `retiro_mercaderia_id` (o, si el cambio tiene un
+    solo retiro y ninguna venta con esa variante, se toma ese). Para falla:
+    siempre None, no hay ticket.
 
     Retorna (item, avisos) — avisos incluye "ya fue cambiado N veces" si aplica.
     """
@@ -520,8 +618,22 @@ def agregar_item_devuelto(
     variante = _variante(db, variante_id)
     venta_item = None
 
-    if cambio.retiro_mercaderia_origen_id is not None:
-        return _agregar_devuelto_de_retiro(db, cambio, variante)
+    retiros = _ids_retiros_origen(db, cambio)
+    if retiro_mercaderia_id is not None:
+        return _agregar_devuelto_de_retiro(db, cambio, variante, retiro_mercaderia_id)
+    if retiros and venta_item_id is None:
+        # Sin indicar de qué ticket es: si la variante es la de un retiro del
+        # cambio, es esa unidad (el buscador de producto no sabe de tickets).
+        # Primero uno todavía no devuelto en este cambio; si todos ya están,
+        # el primero, para que el error diga eso.
+        del_producto = [
+            r for r in retiros if db.get(RetiroMercaderia, r).variante_id == variante_id
+        ]
+        libres = [r for r in del_producto if not _retiro_en_este_cambio(db, cambio, r)]
+        if del_producto:
+            return _agregar_devuelto_de_retiro(db, cambio, variante, (libres or del_producto)[0])
+        if not _ids_ventas_origen(db, cambio):
+            raise ReglaDeNegocio("Ese producto no es el de ningún retiro de mercadería del cambio")
 
     if cambio.tipo in (TipoCambio.COMUN, TipoCambio.PROMOCION, TipoCambio.GIFT_CARD_FISICA):
         if venta_item_id is None:
@@ -529,8 +641,8 @@ def agregar_item_devuelto(
         venta_item = db.get(VentaItem, venta_item_id)
         if venta_item is None:
             raise NoEncontrado("Ítem de venta no encontrado")
-        if cambio.venta_origen_id and venta_item.venta_id != cambio.venta_origen_id:
-            raise ReglaDeNegocio("El ítem no pertenece a la venta de origen del cambio")
+        if venta_item.venta_id not in _ids_ventas_origen(db, cambio):
+            raise ReglaDeNegocio("El ítem no pertenece a ninguno de los tickets del cambio")
         if venta_item.variante_id != variante_id:
             raise ReglaDeNegocio("El ítem de venta no corresponde a la variante indicada")
         if venta_item.id in _en_este_cambio(db, cambio):
@@ -594,7 +706,7 @@ def agregar_item_devuelto(
 
 
 def _agregar_devuelto_de_retiro(
-    db: Session, cambio: Cambio, variante: Variante
+    db: Session, cambio: Cambio, variante: Variante, retiro_id: int
 ) -> tuple[CambioItemDevuelto, list[str]]:
     """
     Ítem devuelto de un cambio cuyo origen es un retiro de mercadería.
@@ -603,13 +715,15 @@ def _agregar_devuelto_de_retiro(
     reconoce el precio de lista del momento del retiro —no lo que pagó la
     empleada con su descuento—, igual que un cambio común.
     """
-    retiro = db.get(RetiroMercaderia, cambio.retiro_mercaderia_origen_id)
+    if retiro_id not in _ids_retiros_origen(db, cambio):
+        raise ReglaDeNegocio("Ese retiro de mercadería no es uno de los tickets del cambio")
+    retiro = db.get(RetiroMercaderia, retiro_id)
     if retiro is None:
         raise NoEncontrado("Retiro de mercadería no encontrado")
     if retiro.variante_id != variante.id:
         raise ReglaDeNegocio("Ese producto no es el del retiro de mercadería del código")
 
-    if _tiene_devueltos(db, cambio):
+    if _retiro_en_este_cambio(db, cambio, retiro.id):
         raise ReglaDeNegocio("Ese producto ya está entre los devueltos de este cambio")
     if _retiro_ya_devuelto(db, retiro.id):
         raise ReglaDeNegocio("El producto de ese retiro de mercadería ya se devolvió")
@@ -618,6 +732,7 @@ def _agregar_devuelto_de_retiro(
     item = CambioItemDevuelto(
         cambio_id=cambio.id,
         venta_item_id=None,
+        retiro_mercaderia_id=retiro.id,
         variante_id=variante.id,
         precio_reconocido=Decimal(retiro.precio_lista),
         en_promocion=False,
@@ -703,12 +818,13 @@ def _controlar_que_no_se_devolvio_antes(db: Session, cambio: Cambio) -> None:
     confirmado. Pasa si dos cambios pendientes tomaron la misma unidad (los
     pendientes no reservan) y el otro se confirmó primero.
     """
-    if cambio.retiro_mercaderia_origen_id is not None:
-        if _retiro_ya_devuelto(db, cambio.retiro_mercaderia_origen_id, excepto_cambio_id=cambio.id):
+    for item in cambio.items_devueltos:
+        if item.retiro_mercaderia_id is not None and _retiro_ya_devuelto(
+            db, item.retiro_mercaderia_id, excepto_cambio_id=cambio.id
+        ):
             raise ReglaDeNegocio(
                 "El producto de ese retiro de mercadería ya se devolvió en otro cambio confirmado"
             )
-        return
     ids = _en_este_cambio(db, cambio)
     if not ids:
         return
@@ -759,11 +875,14 @@ def confirmar_cambio(
     antes = snapshot(cambio)
 
     # ── Stock: devolver ítems entregados por el cliente ─────────────────────
-    conteo_devueltos: dict[int, int] = {}
+    # Agrupado por (variante, venta de la unidad): con varios tickets, cada
+    # devolución queda referida a la venta de la que salió.
+    conteo_devueltos: dict[tuple[int, int | None], int] = {}
     for item in cambio.items_devueltos:
-        conteo_devueltos[item.variante_id] = conteo_devueltos.get(item.variante_id, 0) + 1
+        clave = (item.variante_id, item.venta_item.venta_id if item.venta_item else None)
+        conteo_devueltos[clave] = conteo_devueltos.get(clave, 0) + 1
 
-    for variante_id, cantidad in conteo_devueltos.items():
+    for (variante_id, venta_id), cantidad in conteo_devueltos.items():
         servicio_stock.aplicar_movimiento(
             db,
             autor,
@@ -771,7 +890,7 @@ def confirmar_cambio(
             variante_id=variante_id,
             cantidad=cantidad,
             punto_venta_destino_id=cambio.punto_de_venta_id,
-            referencia_venta_id=cambio.venta_origen_id,
+            referencia_venta_id=venta_id,
             notas=f"Cambio #{cambio.id}: devolución",
             ip_origen=ip_origen,
         )
@@ -794,31 +913,47 @@ def confirmar_cambio(
             ip_origen=ip_origen,
         )
 
-    # ── Puntos: restar los de los ítems devueltos, sumar los de los nuevos ──
-    venta_origen = cambio.venta_origen
-    if venta_origen and venta_origen.cliente_id:
-        # Estimación proporcional de puntos a restar (por el valor devuelto)
-        puntos_a_restar = servicio_clientes.puntos_por_venta(db, calculo["total_devuelto"])
-        if puntos_a_restar > 0:
-            servicio_clientes.registrar_movimiento_puntos(
-                db,
-                autor,
-                cliente_id=venta_origen.cliente_id,
-                tipo=__import__("app.models.cliente", fromlist=["TipoPunto"]).TipoPunto.AJUSTE,
-                cantidad=-puntos_a_restar,
-                venta_id=venta_origen.id,
-                descripcion=f"Cambio #{cambio.id}: ítems devueltos",
-                ip_origen=ip_origen,
+    # ── Puntos: restar los de lo devuelto, sumar los de lo nuevo ────────────
+    # Por la regla de mismo cliente, todos los tickets con cliente son del
+    # mismo: se le restan los puntos de lo devuelto de cada venta (referidos
+    # a esa venta) y se le suman los de lo nuevo.
+    from app.models.cliente import TipoPunto
+
+    ventas_origen = cambio.ventas_origen
+    cliente_id = _cliente_de_ventas(ventas_origen)
+    if cliente_id is not None:
+        devuelto_por_venta: dict[int, Decimal] = {}
+        for item in cambio.items_devueltos:
+            if item.venta_item is not None:
+                vid = item.venta_item.venta_id
+                devuelto_por_venta[vid] = devuelto_por_venta.get(vid, Decimal("0")) + item.precio_reconocido
+        for venta in ventas_origen:
+            if venta.cliente_id is None:
+                continue
+            puntos_a_restar = servicio_clientes.puntos_por_venta(
+                db, devuelto_por_venta.get(venta.id, Decimal("0"))
             )
+            if puntos_a_restar > 0:
+                servicio_clientes.registrar_movimiento_puntos(
+                    db,
+                    autor,
+                    cliente_id=cliente_id,
+                    tipo=TipoPunto.AJUSTE,
+                    cantidad=-puntos_a_restar,
+                    venta_id=venta.id,
+                    descripcion=f"Cambio #{cambio.id}: ítems devueltos",
+                    ip_origen=ip_origen,
+                )
         puntos_nuevos = servicio_clientes.puntos_por_venta(db, calculo["total_nuevo"])
         if puntos_nuevos > 0:
+            primera = next(v for v in ventas_origen if v.cliente_id is not None)
             servicio_clientes.registrar_movimiento_puntos(
                 db,
                 autor,
-                cliente_id=venta_origen.cliente_id,
-                tipo=__import__("app.models.cliente", fromlist=["TipoPunto"]).TipoPunto.ACUMULACION,
+                cliente_id=cliente_id,
+                tipo=TipoPunto.ACUMULACION,
                 cantidad=puntos_nuevos,
-                venta_id=venta_origen.id,
+                venta_id=primera.id,
                 descripcion=f"Cambio #{cambio.id}: ítems nuevos",
                 ip_origen=ip_origen,
             )
@@ -829,15 +964,18 @@ def confirmar_cambio(
     codigo_nuevo = generar_codigo_cambio(db)
 
     # ── Actualizar contador de cambios previos en la venta origen ───────────
+    # Cambios confirmados que comparten alguno de los tickets de este.
+    ids_ventas = [v.id for v in ventas_origen]
     previos = db.execute(
-        select(Cambio)
+        select(func.count(func.distinct(Cambio.id)))
+        .join(CambioOrigen, CambioOrigen.cambio_id == Cambio.id)
         .where(
-            Cambio.venta_origen_id == cambio.venta_origen_id,
+            CambioOrigen.venta_id.in_(ids_ventas),
             Cambio.estado == EstadoCambio.CONFIRMADO,
             Cambio.id != cambio.id,
         )
-    ).scalars().all()
-    cambio.contador_cambios_previos = len(previos)
+    ).scalar_one() if ids_ventas else 0
+    cambio.contador_cambios_previos = previos
 
     # ── Cerrar el cambio ────────────────────────────────────────────────────
     cambio.diferencia = diferencia
@@ -906,7 +1044,8 @@ def listar_cambios(
         .options(
             joinedload(Cambio.punto_de_venta),
             joinedload(Cambio.usuario),
-            joinedload(Cambio.venta_origen),
+            joinedload(Cambio.origenes).joinedload(CambioOrigen.venta),
+            joinedload(Cambio.origenes).joinedload(CambioOrigen.retiro_mercaderia),
         )
         .order_by(Cambio.created_at.desc())
     )

@@ -1,0 +1,319 @@
+{# Imprimir etiquetas en las Zebra, por Zebra Browser Print.
+
+   Basada en la pantalla "Imprimir etiquetas" del prototipo del cliente y en
+   su documento de requisitos. Se llega desde un producto
+   (`?variante_id=&copias=`) o desde una compra cerrada (`?compra_id=`), y se
+   agregan más productos escaneando o tipeando su código.
+
+   El servidor arma el ZPL, los avisos y la vista previa
+   (/api/v1/etiquetas/preparar); esta pantalla solo se los pasa a Browser
+   Print (`static/js/browserprint.js`). Cada rollo tiene UNA impresora
+   asignada en Ajustes → Impresoras: acá no se elige impresora. #}
+{% extends "base.html" %}
+
+{% from "components/encabezado.html" import encabezado %}
+{% from "components/icons.html" import icono %}
+{% from "components/miniatura.html" import miniatura %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
+
+{% set _input = 'h-control px-3 text-base bg-surface border border-borde rounded-input
+                 text-texto focus:outline-none focus:border-primary' %}
+{% set _secundario = 'h-boton px-4 rounded-input border border-borde text-base whitespace-nowrap
+                      hover:border-primary hover:text-primary disabled:opacity-50' %}
+{% set _primario = 'h-boton px-5 rounded-input bg-primary text-white text-base font-medium whitespace-nowrap
+                    hover:bg-primary-hover disabled:opacity-60' %}
+
+{# Título de cada bloque de la pantalla, con su ícono: lista (qué imprimir),
+   información (tipo de etiqueta e impresora) y advertencia (avisos). La de
+   información es solo la "i" (`info-i`): la `info` con su círculo, adentro
+   del círculo del fondo, quedaba chica y no se notaba. #}
+{% macro titulo_seccion(simbolo, texto) %}
+<h2 class="flex items-center gap-2 text-lg font-semibold text-texto">
+    <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary text-white">
+        {{ icono(simbolo, clases='w-4 h-4') }}
+    </span>
+    {{ texto }}
+</h2>
+{% endmacro %}
+
+{# Título de un bloque que se expande: el ícono, el texto y un botón con
+   chevron. `estado` es la variable de Alpine que dice si está abierto. #}
+{% macro titulo_expandible(simbolo, texto, estado) %}
+<div class="flex items-center justify-between gap-3">
+    {{ titulo_seccion(simbolo, texto) }}
+    <button type="button" @click="{{ estado }} = !{{ estado }}"
+            class="p-1 min-h-toque min-w-toque inline-flex items-center justify-center rounded-input
+                   text-texto-muted hover:text-primary"
+            :aria-expanded="{{ estado }}" aria-controls="detalle-{{ estado }}"
+            :aria-label="{{ estado }} ? 'Ver menos de {{ texto }}' : 'Ver más de {{ texto }}'">
+        <span class="transition-transform" :class="{{ estado }} ? 'rotate-90' : ''">
+            {{ icono('chevron-derecha', clases='w-6 h-6') }}
+        </span>
+    </button>
+</div>
+{% endmacro %}
+
+{% block contenido %}
+{% call encabezado('Imprimir etiquetas', volver_url='/productos', volver_texto='Productos') %}{% endcall %}
+
+<div x-data='etiquetasImprimir({{ es_maestra | tojson }})' x-init="iniciar()" class="mt-6 space-y-6">
+
+    {# Arriba, en una fila: el tipo de etiqueta y a qué impresora va,
+       colapsados. Debajo, a todo el ancho: qué imprimir y los avisos.
+       Sin `items-start`: los dos bloques se estiran al alto de la fila y
+       quedan parejos aunque su contenido no mida lo mismo. #}
+    <div class="grid gap-6 lg:grid-cols-2">
+        {# --- Tipo de etiqueta y diseño ---
+           Colapsado deja elegir el tipo (lo de todos los días); expandido suma
+           el tilde de "otra etiqueta" y el diseño. #}
+        <section class="p-5 sm:p-6 rounded-input bg-surface tarjeta">
+            {{ titulo_expandible('info-i', 'Tipo de etiqueta', 'abiertoTipo') }}
+            <div class="mt-4 flex flex-wrap gap-2" role="group" aria-label="Tipo de etiqueta">
+                <template x-for="f in formatos" :key="f.id">
+                    <button type="button" class="h-boton px-4 rounded-pill border text-base"
+                            :class="formatoId === f.id ? 'bg-primary text-white border-primary' : 'border-borde hover:border-primary'"
+                            :aria-pressed="formatoId === f.id" @click="cambiarFormato(f.id)" x-text="f.nombre"></button>
+                </template>
+            </div>
+            <div id="detalle-abiertoTipo" x-show="abiertoTipo" x-cloak>
+                {# El tilde va acá y no a la vista: colapsados, los dos bloques
+                   de arriba quedan del mismo alto. #}
+                <label class="mt-4 flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" x-model="distinto" @change="cambiarDistinto()" class="mt-1 w-5 h-5 accent-primary">
+                    <span>
+                        <span class="font-medium">Algunos productos llevan otra etiqueta</span>
+                        <span class="block text-sm text-texto-muted">
+                            Aparece el tipo en cada renglón, con este ya puesto: cambiás solo los distintos.
+                        </span>
+                    </span>
+                </label>
+                <div class="mt-4 flex flex-wrap items-end gap-3">
+                    <label class="flex-1 sm:min-w-[12rem] flex flex-col gap-1">
+                        <span class="text-base font-medium">Diseño</span>
+                        <select x-model.number="disenoId" class="{{ _input }}">
+                            <template x-for="d in disenos" :key="d.id">
+                                <option :value="d.id" :selected="d.id === disenoId" x-text="d.nombre"></option>
+                            </template>
+                        </select>
+                    </label>
+                    <a x-show="esMaestra" x-cloak href="/etiquetas/disenos"
+                       class="{{ _secundario }} inline-flex items-center">Editar diseños</a>
+                </div>
+            </div>
+        </section>
+
+        {# --- A qué impresora va cada etiqueta ---
+           Colapsado informa a qué impresora va cada rollo y si está lista;
+           expandido suma la cantidad, la vista previa, la prueba y calibrar. #}
+        <section class="p-5 sm:p-6 rounded-input bg-surface tarjeta">
+            {{ titulo_expandible('info-i', 'A qué impresora va', 'abiertoImpresora') }}
+            <p x-show="!(resultado?.grupos || []).length" class="mt-4 text-texto-muted">Todavía no hay etiquetas.</p>
+            <div class="mt-4 space-y-3">
+                <template x-for="g in (resultado?.grupos || [])" :key="g.formato_id">
+                    <article :class="abiertoImpresora ? 'p-4 rounded-input border border-borde' : ''">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <p class="font-semibold" :class="g.impresora ? '' : 'text-danger'"
+                                   x-text="g.formato_nombre + ' → ' + (g.impresora?.nombre || 'sin impresora')"></p>
+                                <p x-show="abiertoImpresora" x-cloak class="text-sm text-texto-muted"
+                                   x-text="cantidad(g.total_etiquetas, 'etiqueta', 'etiquetas') + (g.filas && g.filas !== g.total_etiquetas ? ' · ' + cantidad(g.filas, 'fila', 'filas') : '')"></p>
+                            </div>
+                            <span x-show="g.impresora" class="px-3 py-0.5 rounded-pill text-xs font-medium whitespace-nowrap"
+                                  :class="estados[g.formato_id] ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'"
+                                  x-text="estados[g.formato_id] ? 'Lista' : 'No responde'"></span>
+                        </div>
+                        <div x-show="abiertoImpresora" x-cloak>
+                            <button type="button" class="mt-2 text-sm underline text-texto-muted hover:text-primary"
+                                    @click="g._ver = !g._ver" x-text="g._ver ? 'Ocultar cómo sale' : 'Ver cómo sale'"></button>
+                            <div x-show="g._ver" x-cloak class="mt-2 p-2 space-y-2 rounded-input border border-dashed border-borde">
+                                <template x-for="svg in g.vista_previa"><div x-html="svg"></div></template>
+                            </div>
+                            <div x-show="g.impresora && esMaestra" x-cloak class="mt-3 flex flex-wrap gap-2">
+                                <button type="button" class="{{ _secundario }} text-sm" :disabled="imprimiendo"
+                                        @click="prueba(g)">Etiqueta de prueba</button>
+                                <button type="button" class="{{ _secundario }} text-sm" :disabled="imprimiendo"
+                                        @click="calibrar(g)">Calibrar rollo</button>
+                            </div>
+                        </div>
+                    </article>
+                </template>
+            </div>
+            <p id="detalle-abiertoImpresora" x-show="abiertoImpresora" x-cloak class="mt-3 text-sm text-texto-muted">
+                Sale sola según el tipo de etiqueta{% if es_maestra %} (se cambia en
+                <a href="/ajustes/impresoras" class="underline hover:text-primary">Ajustes → Impresoras</a>){% endif %}.
+            </p>
+        </section>
+    </div>
+
+    {# --- Qué imprimir --- #}
+    <section class="p-5 sm:p-6 rounded-input bg-surface tarjeta">
+        {{ titulo_seccion('list', 'Qué imprimir') }}
+
+        {# Buscador de producto, como el del Historial del Producto: a
+           medida que se tipea muestra las variantes que coinciden (código,
+           SKU o descripción) con su foto. El lector entrega el código +
+           Enter: Enter agrega el código exacto. #}
+        <div class="mt-4 flex flex-wrap items-start gap-3">
+            <div class="relative flex-1 sm:min-w-[12rem]">
+                <label for="etq-codigo" class="sr-only">Buscar producto</label>
+                <input id="etq-codigo" type="search" x-ref="buscador" x-model="buscar" autocomplete="off"
+                       @input.debounce.300ms="buscarProductos()"
+                       @keydown.enter.prevent="agregar()"
+                       @keydown.escape="resultados = []"
+                       placeholder="Escanear o tipear código, SKU o descripción"
+                       class="h-control w-full pl-4 pr-4 text-sm bg-surface text-texto border-2
+                              border-borde rounded-input placeholder:text-texto-disabled
+                              focus:outline-none focus:border-primary">
+                <ul x-show="resultados.length" x-cloak @click.outside="resultados = []"
+                    class="absolute z-10 mt-1 w-full max-h-72 overflow-y-auto bg-surface border
+                           border-borde rounded-input shadow-lg">
+                    <template x-for="v in resultados" :key="v.id">
+                        <li>
+                            <button type="button" @click="elegir(v)"
+                                    class="w-full text-left px-4 py-3 min-h-toque hover:bg-surface-alt
+                                           flex items-center gap-3">
+                                {{ miniatura('v.foto_url', tamano='w-10 h-10') }}
+                                <span class="min-w-0">
+                                    <span class="block text-base"
+                                          x-text="v.producto.descripcion + (v.descripcion_sufijo ? ' — ' + v.descripcion_sufijo : '')"></span>
+                                    <span class="block text-xs text-texto-muted font-mono"
+                                          x-text="v.codigo_completo + v.verificador + (v.activo ? '' : ' · inactivo')"></span>
+                                </span>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+                <p x-show="sinResultados" x-cloak class="mt-2 text-sm text-texto-muted">
+                    No hay productos con ese texto.
+                </p>
+            </div>
+            <button type="button" class="{{ _secundario }}" @click="agregarTexto()">+ Solo texto</button>
+            {# Oculto a pedido: la carga por compra sigue funcionando (desde la
+               compra cerrada se llega con `?compra_id=`), solo no se ofrece acá. #}
+            <button type="button" class="hidden {{ _secundario }}" @click="verCompra = !verCompra"
+                    x-text="verCompra ? 'Ocultar compra' : 'Cargar una compra…'"></button>
+        </div>
+
+        {# La compra va escondida: lo normal es llegar desde la compra cerrada. #}
+        <form x-show="verCompra" x-cloak @submit.prevent="cargarCompra(numeroCompra)"
+              class="mt-3 flex flex-wrap items-center gap-3 p-3 rounded-input bg-surface-alt">
+            <label for="etq-compra" class="text-base">Compra N.º</label>
+            <input id="etq-compra" type="number" min="1" x-model="numeroCompra" class="{{ _input }} w-32">
+            <button type="submit" class="{{ _secundario }}">Cargar</button>
+        </form>
+
+        <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-base">
+                <thead class="text-sm text-texto-header">
+                    <tr class="border-b border-borde">
+                        <th class="p-2"><span class="sr-only">Incluir</span></th>
+                        <th class="p-2 text-left">Código</th>
+                        <th class="p-2 text-left">Producto</th>
+                        <th class="p-2 text-left" x-show="distinto" x-cloak>Etiqueta</th>
+                        <th class="p-2 text-left">Copias</th>
+                        <th class="p-2 text-left">Texto</th>
+                        <th class="p-2" title="1 = solo código, 2 = código + texto, 3 = solo texto">Op.</th>
+                        <th class="p-2"><span class="sr-only">Quitar</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(r, i) in renglones" :key="r.id">
+                        <tr class="border-b border-borde align-middle">
+                            <td class="p-2">
+                                <input type="checkbox" x-model="r.incluir" class="w-5 h-5 accent-primary"
+                                       :aria-label="'Incluir ' + (r.codigo || 'etiqueta de texto')">
+                            </td>
+                            <td class="p-2 font-mono font-semibold whitespace-nowrap" x-text="r.codigo || '—'"></td>
+                            <td class="p-2 sm:min-w-[10rem]">
+                                <span x-text="r.producto"></span>
+                                <span x-show="r.variante" class="text-sm text-texto-muted" x-text="' · ' + r.variante"></span>
+                            </td>
+                            <td class="p-2" x-show="distinto" x-cloak>
+                                <select x-model.number="r.formato_id" class="{{ _input }} text-sm"
+                                        :class="r.formato_id !== formatoId ? 'border-primary font-semibold' : ''"
+                                        aria-label="Tipo de etiqueta del renglón">
+                                    <template x-for="f in formatos" :key="f.id">
+                                        <option :value="f.id" :selected="f.id === r.formato_id" x-text="f.nombre"></option>
+                                    </template>
+                                </select>
+                            </td>
+                            <td class="p-2">
+                                <input type="number" min="0" max="999" x-model.number="r.copias"
+                                       class="{{ _input }} w-20" aria-label="Copias">
+                            </td>
+                            <td class="p-2">
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" x-model="r.conTexto" :disabled="!r.variante_id"
+                                           class="w-5 h-5 accent-primary" title="Escribir texto" aria-label="Escribir texto">
+                                    <input x-model="r.texto" :disabled="!r.conTexto" maxlength="60"
+                                           class="{{ _input }} sm:min-w-[8rem] w-full disabled:bg-surface-alt"
+                                           placeholder="(sin texto)" aria-label="Texto">
+                                </div>
+                            </td>
+                            <td class="p-2 text-center" x-text="opcion(r)"></td>
+                            <td class="p-2">
+                                <button type="button" class="p-1 min-h-toque min-w-toque text-danger hover:opacity-70"
+                                        @click="renglones.splice(i, 1)" aria-label="Quitar renglón">
+                                    {{ icono('papelera', clases='w-[22px] h-[22px]') }}
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="!renglones.length">
+                        <td colspan="8" class="p-6 text-center text-texto-muted">
+                            Escaneá un código o buscá un producto. Desde un producto o una compra, el botón
+                            "Imprimir etiqueta" lo trae ya cargado.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-3 text-sm text-texto-muted">
+            Si escaneás un código que ya está, le suma una copia. La opción sale sola: 1 sin texto,
+            2 con texto, 3 sin código.
+        </p>
+    </section>
+
+    {# --- Antes de imprimir --- #}
+    <section class="p-5 sm:p-6 rounded-input bg-surface tarjeta">
+        {{ titulo_seccion('alerta', 'Antes de imprimir') }}
+        <ul class="mt-3 space-y-1">
+            <template x-for="a in avisos()">
+                <li class="text-base"
+                    :class="{ 'text-danger': a.nivel === 'error', 'text-primary': a.nivel === 'ojo', 'text-success': a.nivel === 'bien' }"
+                    x-text="(a.nivel === 'error' ? '✖ ' : a.nivel === 'bien' ? '✔ ' : '⚠ ') + a.texto"></li>
+            </template>
+        </ul>
+    </section>
+
+    {# --- Pie: total e imprimir --- #}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-base">
+            Total: <strong class="text-lg" x-text="cantidad(resultado?.total_etiquetas, 'etiqueta', 'etiquetas')"></strong>
+            <span x-show="(resultado?.grupos || []).length > 1" x-cloak class="text-sm text-texto-muted"
+                  x-text="'· en ' + resultado?.grupos.length + ' impresoras'"></span>
+        </p>
+        <div class="flex flex-wrap gap-3">
+            <button type="button" class="{{ _secundario }}" @click="verZpl = !verZpl"
+                    x-text="verZpl ? 'Ocultar ZPL' : 'Ver ZPL'"></button>
+            <button type="button" class="{{ _primario }}" @click="imprimirTodo()"
+                    :disabled="!resultado?.puede_imprimir || !todasListas() || imprimiendo"
+                    x-text="imprimiendo ? 'Imprimiendo…' : 'Imprimir ' + cantidad(resultado?.total_etiquetas, 'etiqueta', 'etiquetas')"></button>
+        </div>
+    </div>
+    <ul x-show="mensajes.length" x-cloak class="space-y-1">
+        <template x-for="m in mensajes">
+            <li class="text-base font-medium" :class="m.ok ? 'text-success' : 'text-danger'" x-text="m.texto"></li>
+        </template>
+    </ul>
+    <pre x-show="verZpl" x-cloak class="p-3 rounded-input bg-surface-alt text-sm overflow-auto max-h-[20rem]"
+         x-text="textoZpl()"></pre>
+
+    {{ modal_confirmacion() }}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('/js/browserprint.js') }}"></script>
+<script src="{{ estatico('/js/etiquetas_imprimir.js') }}"></script>
+{% endblock %}

@@ -5,6 +5,8 @@ Un cambio registra la devolución de uno o más ítems de una venta y la entrega
 de productos nuevos al cliente. Hay cuatro tipos con reglas de valuación
 distintas — ver services/cambios.py.
 
+`cambio_origenes` son los tickets que trae el cliente: uno o varios códigos
+de cambio (ventas o retiros de mercadería) cuyo valor se suma.
 `cambio_items_devueltos` y `cambio_items_nuevos` son los dos lados del
 intercambio. La diferencia entre sus totales determina si el cliente paga
 (diferencia > 0) o si queda a favor (diferencia < 0, que no se devuelve
@@ -19,6 +21,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -26,6 +29,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -68,22 +72,6 @@ class Cambio(Base):
     tipo: Mapped[TipoCambio] = mapped_column(
         Enum(TipoCambio, name="tipo_cambio", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
-    )
-
-    # NULL solo en tipo='falla': no hay venta original
-    venta_origen_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("ventas.id", ondelete="RESTRICT"),
-        nullable=True,
-        index=True,
-    )
-
-    # Origen alternativo: el código de cambio de un retiro de mercadería de
-    # empleada (sesión 09). Se cambia como un cambio común, al precio de lista.
-    retiro_mercaderia_origen_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("retiros_mercaderia.id", ondelete="RESTRICT"),
-        nullable=True,
     )
 
     punto_de_venta_id: Mapped[int] = mapped_column(
@@ -149,9 +137,9 @@ class Cambio(Base):
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
 
-    venta_origen: Mapped["Venta | None"] = relationship(foreign_keys=[venta_origen_id])
-    retiro_mercaderia_origen: Mapped["RetiroMercaderia | None"] = relationship(
-        foreign_keys=[retiro_mercaderia_origen_id]
+    # Los tickets que trae el cliente (ninguno en un cambio por falla).
+    origenes: Mapped[list["CambioOrigen"]] = relationship(
+        back_populates="cambio", cascade="all, delete-orphan", order_by="CambioOrigen.id"
     )
     punto_de_venta: Mapped["PuntoDeVenta"] = relationship()
     usuario: Mapped["Usuario"] = relationship(foreign_keys=[usuario_id])
@@ -170,6 +158,67 @@ class Cambio(Base):
         back_populates="cambio", cascade="all, delete-orphan"
     )
 
+    @property
+    def ventas_origen(self) -> list["Venta"]:
+        return [o.venta for o in self.origenes if o.venta is not None]
+
+    @property
+    def retiros_origen(self) -> list["RetiroMercaderia"]:
+        return [o.retiro_mercaderia for o in self.origenes if o.retiro_mercaderia is not None]
+
+
+class CambioOrigen(Base):
+    """
+    Un ticket que el cliente trae al cambio: el código de cambio de una venta
+    o el de un retiro de mercadería de empleada. Un cambio puede juntar
+    varios —lo devuelto de todos suma— para llevarse algo de más valor.
+
+    Exactamente uno de los dos orígenes por fila, y el mismo ticket no entra
+    dos veces en el mismo cambio.
+    """
+
+    __tablename__ = "cambio_origenes"
+    __table_args__ = (
+        CheckConstraint(
+            "(venta_id IS NULL) <> (retiro_mercaderia_id IS NULL)",
+            name="ck_cambio_origenes_un_origen",
+        ),
+        UniqueConstraint("cambio_id", "venta_id", name="uq_cambio_origenes_venta"),
+        UniqueConstraint(
+            "cambio_id", "retiro_mercaderia_id", name="uq_cambio_origenes_retiro"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cambio_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("cambios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    venta_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("ventas.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    # Retiro de mercadería de empleada (sesión 09): se cambia como un cambio
+    # común, al precio de lista.
+    retiro_mercaderia_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("retiros_mercaderia.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+
+    cambio: Mapped["Cambio"] = relationship(back_populates="origenes")
+    venta: Mapped["Venta | None"] = relationship()
+    retiro_mercaderia: Mapped["RetiroMercaderia | None"] = relationship()
+
+    @property
+    def codigo(self) -> str | None:
+        """El código de cambio del ticket."""
+        if self.venta is not None:
+            return self.venta.codigo_cambio
+        return self.retiro_mercaderia.codigo_cambio if self.retiro_mercaderia else None
+
 
 class CambioItemDevuelto(Base):
     __tablename__ = "cambio_items_devueltos"
@@ -183,10 +232,19 @@ class CambioItemDevuelto(Base):
         index=True,
     )
 
-    # NULL solo en tipo='falla': no hay item de venta original
+    # NULL en tipo='falla' (no hay venta original) y en la unidad de un
+    # retiro de mercadería, que va en `retiro_mercaderia_id`.
     venta_item_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("venta_items.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+    # De qué retiro de mercadería es la unidad devuelta: con varios tickets
+    # en el cambio, hace falta saber de cuál salió.
+    retiro_mercaderia_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("retiros_mercaderia.id", ondelete="RESTRICT"),
         nullable=True,
     )
 

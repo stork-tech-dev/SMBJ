@@ -20,7 +20,7 @@
     <label for="{{ id }}" class="sr-only">Buscar cliente</label>
     <input id="{{ id }}" type="search" x-model="clienteBusqueda"
            @input.debounce.300ms="buscarCliente()"
-           placeholder="DNI o nombre" autocomplete="off"
+           placeholder="DNI, apellido o nombre" autocomplete="off"
            class="w-full h-[3.25rem] px-4 text-base bg-surface border-2
                   border-borde rounded-input
                   placeholder:text-texto-disabled
@@ -35,7 +35,7 @@
                 <button type="button" @click="{{ al_elegir }}"
                         class="w-full text-left px-4 py-3 min-h-toque
                                hover:bg-surface-alt">
-                    <span class="block text-base" x-text="c.nombre"></span>
+                    <span class="block text-base" x-text="c.nombre_completo"></span>
                     <span class="block text-xs text-texto-muted"
                           x-text="c.dni || 'Sin DNI'"></span>
                 </button>

@@ -9,10 +9,10 @@ separadores de miles y el redondeo de pantalla los pone el frontend
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.venta import EstadoVenta
-from app.schemas.clientes import ClienteResumen
+from app.schemas.clientes import ClienteAltaRapida, ClienteResumen
 from app.schemas.stock import PuntoResumen
 from app.schemas.promociones import PromocionResumen
 from app.schemas.stock import PuntoResumen, VarianteEnStock
@@ -165,9 +165,21 @@ class ItemAgregar(BaseModel):
 
 
 class ClienteAsociar(BaseModel):
-    """`cliente_id` en NULL desasocia: la venta vuelve a ser sin cliente."""
+    """
+    El cliente de la venta: uno existente (`cliente_id`) o uno que se da de
+    alta en el momento (`cliente_nuevo`, igual que al dejar una seña).
+    Sin ninguno de los dos —`cliente_id` en NULL— desasocia: la venta
+    vuelve a ser sin cliente.
+    """
 
     cliente_id: int | None = None
+    cliente_nuevo: ClienteAltaRapida | None = None
+
+    @model_validator(mode="after")
+    def _no_los_dos(self):
+        if self.cliente_id is not None and self.cliente_nuevo is not None:
+            raise ValueError("Indicá un cliente existente o los datos de uno nuevo, no los dos")
+        return self
 
 
 class DescuentoAplicar(BaseModel):
@@ -308,6 +320,19 @@ class VentaResumen(BaseModel):
     medios_pago: list[str]
 
 
+class CumpleanosCambiar(BaseModel):
+    """Quitar (`false`) o reponer (`true`) el descuento de cumpleaños de la venta."""
+
+    activo: bool
+
+
+class BeneficioCumpleanosResponse(BaseModel):
+    categoria: str
+    porcentaje: Decimal
+    # False si la vendedora lo quitó en esta venta.
+    activo: bool
+
+
 class VentaResponse(VentaResumen):
     """El detalle completo, que es lo que dibuja el carrito y el cobro."""
 
@@ -321,6 +346,11 @@ class VentaResponse(VentaResumen):
     # SIN recargos. Es el número contra el que se validan los pagos, y va
     # calculado para que la pantalla no tenga que sumar la lista de ítems.
     a_cobrar: Decimal = Decimal("0")
+
+    # Fidelización del cliente de la venta: su categoría y, si está en el mes
+    # de su cumpleaños, el descuento que le corresponde y si está aplicado.
+    categoria_cliente: str | None = None
+    beneficio_cumpleanos: BeneficioCumpleanosResponse | None = None
 
 
 class ItemAgregadoResponse(BaseModel):

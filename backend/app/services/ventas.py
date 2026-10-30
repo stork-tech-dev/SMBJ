@@ -43,10 +43,11 @@ from app.models.punto_de_venta import PuntoDeVenta
 from app.models.stock import TipoMovimiento
 from app.models.turno import Turno
 from app.models.usuario import Usuario
-from app.models.venta import EstadoVenta, Venta, VentaItem, VentaPago
+from app.models.venta import EstadoVenta, MotivoDescuento, Venta, VentaItem, VentaPago
 from app.services import clientes as servicio_clientes
 from app.services import configuracion as servicio_configuracion
 from app.services import descuentos as servicio_descuentos
+from app.services import fidelizacion as servicio_fidelizacion
 from app.services import medios_pago as servicio_medios
 from app.services import promociones as servicio_promociones
 from app.services import senas as servicio_senas
@@ -542,24 +543,40 @@ def asociar_cliente(
     venta: Venta,
     cliente_id: int | None,
     ip_origen: str | None = None,
+    cliente_nuevo: dict | None = None,
 ) -> Venta:
     """
     Asocia (o desasocia, con None) el cliente de la venta.
+
+    Con `cliente_nuevo` lo da de alta en el momento y lo asocia, en la
+    misma transacción: el cliente que no estaba cargado se carga sin salir
+    del cobro (igual que al dejar una seña). El alta queda auditada como
+    `cliente.crear`.
 
     Vuelve a calcular porque el cliente puede traer promociones propias: la
     misma bolsa de productos puede valer distinto según quién compre.
     """
     _exigir_en_curso(venta)
 
-    if cliente_id is None:
-        venta.cliente_id = None
+    if cliente_nuevo is not None:
+        venta.cliente = servicio_clientes.crear_cliente(
+            db, autor, ip_origen=ip_origen, **cliente_nuevo
+        )
+    elif cliente_id is None:
+        venta.cliente = None
     else:
         cliente = servicio_clientes.obtener_cliente(db, cliente_id)
         if not cliente.activo:
             raise ReglaDeNegocio(
-                f"{cliente.nombre} está dado de baja: no se le puede facturar"
+                f"{cliente.nombre_completo} está dado de baja: no se le puede facturar"
             )
-        venta.cliente_id = cliente.id
+        # La relación y no solo el id: el recálculo lee `venta.cliente` para
+        # el descuento de cumpleaños, y con el id solo seguiría viendo el
+        # cliente anterior hasta el próximo refresh.
+        venta.cliente = cliente
+    # Otro cliente, otra decisión: si se había quitado el descuento de
+    # cumpleaños, era para el anterior.
+    venta.sin_descuento_cumpleanos = False
 
     db.flush()
     _recalcular(db, venta)
@@ -593,6 +610,11 @@ def aplicar_descuento_item(
     item = next((i for i in venta.items if i.id == item_id), None)
     if item is None:
         raise NoEncontrado("Ese ítem no está en esta venta")
+
+    # Un descuento manual reemplaza al automático de cumpleaños en este
+    # ítem. Sacarlo lo deja sin manual, y el recálculo vuelve a poner el de
+    # cumpleaños: para quitarlo de la venta está `cambiar_descuento_cumpleanos`.
+    item.descuento_automatico = False
 
     if motivo_id is None:
         item.motivo_descuento_id = None
@@ -704,13 +726,24 @@ def _recalcular(
          de cada uno con sus descuentos. Sin este reset, sacar un producto
          del carrito dejaría regalado uno que ya no completa ningún grupo.
       2. Se elige la promoción y se ponen en $0 las unidades que van gratis.
-      3. Se suman los importes.
+      3. Descuento de cumpleaños (fidelización) en lo que quedó sin promoción
+         ni descuento manual.
+      4. Se suman los importes.
     """
     redondeo = _redondeo(db)
+    motivo_cumple = servicio_fidelizacion.motivo_cumpleanos(db)
 
     # ---- 1. Precio de cada unidad, sin promoción -------------------------
     for item in venta.items:
         item.en_promocion = False
+        # El descuento automático de cumpleaños se recalcula siempre desde
+        # cero (paso 3): si quedara puesto, sacaría al ítem de la elección de
+        # promoción. Uno manual —aunque use el mismo motivo— no se toca.
+        if item.descuento_automatico:
+            item.motivo_descuento_id = None
+            item.descuento_item = Decimal("0")
+            item.porcentaje_modificado = False
+            item.descuento_automatico = False
         descuento_producto = Decimal(item.variante.producto.descuento_producto)
         item.precio_unitario = servicio_descuentos.aplicar_descuentos(
             Decimal(item.precio_lista), descuento_producto, Decimal("0"), redondeo
@@ -744,7 +777,10 @@ def _recalcular(
                 item.en_promocion = True
                 item.precio_final = Decimal("0")
 
-    # ---- 3. Importes -----------------------------------------------------
+    # ---- 3. Cumpleaños ---------------------------------------------------
+    _aplicar_cumpleanos(db, venta, motivo_cumple, redondeo)
+
+    # ---- 4. Importes -----------------------------------------------------
     venta.subtotal = redondear(sum((Decimal(i.precio_lista) for i in venta.items), Decimal("0")))
     cobrable = redondear(sum((Decimal(i.precio_final) for i in venta.items), Decimal("0")))
     venta.descuento_total = venta.subtotal - cobrable
@@ -762,6 +798,66 @@ def _recalcular(
     venta.total = cobrable + venta.recargo_total
     venta.updated_at = ahora_db()
     db.flush()
+    return venta
+
+
+def _aplicar_cumpleanos(
+    db: Session, venta: Venta, motivo: MotivoDescuento | None, redondeo: Decimal
+) -> None:
+    """
+    En el mes del cumpleaños del cliente, el % de su categoría de fidelización
+    en cada ítem sin promoción ni descuento manual (la vendedora puede
+    quitarlo en la venta con `sin_descuento_cumpleanos`).
+
+    Se encadena con el descuento del producto y respeta el tope de la venta:
+    si la suma lo pasa, en ese ítem se aplica hasta el tope. No pasa por la
+    lista de porcentajes de la vendedora: lo fijó la Cuenta Maestra en
+    Ajustes, y la vendedora no lo elige.
+    """
+    if motivo is None or venta.sin_descuento_cumpleanos:
+        return
+    beneficio = servicio_fidelizacion.beneficio_cumpleanos(db, venta.cliente)
+    if beneficio is None:
+        return
+
+    tope = servicio_configuracion.tope_descuento_venta(db)
+    for item in venta.items:
+        if item.en_promocion or Decimal(item.descuento_item) > 0:
+            continue
+        descuento_producto = Decimal(item.variante.producto.descuento_producto)
+        porcentaje = min(beneficio.porcentaje, tope - descuento_producto)
+        if porcentaje <= 0:
+            continue
+        item.motivo_descuento_id = motivo.id
+        item.descuento_item = porcentaje
+        item.porcentaje_modificado = False
+        item.descuento_automatico = True
+        item.precio_final = servicio_descuentos.aplicar_descuentos(
+            Decimal(item.precio_lista), descuento_producto, porcentaje, redondeo
+        )
+
+
+def cambiar_descuento_cumpleanos(
+    db: Session,
+    autor: Usuario,
+    venta: Venta,
+    activo: bool,
+    ip_origen: str | None = None,
+) -> Venta:
+    """La vendedora quita (o vuelve a poner) el descuento de cumpleaños de esta venta."""
+    _exigir_en_curso(venta)
+    venta.sin_descuento_cumpleanos = not activo
+    db.flush()
+    _recalcular(db, venta)
+    registrar_auditoria(
+        db,
+        usuario_id=autor.id,
+        accion="venta.cumpleanos",
+        entidad="ventas",
+        entidad_id=venta.id,
+        estado_nuevo={"venta": venta.numero, "descuento_cumpleanos": activo},
+        ip_origen=ip_origen,
+    )
     return venta
 
 
@@ -1358,17 +1454,9 @@ def analisis_por_producto(
     if proveedor_id is not None:
         consulta = consulta.where(Producto.proveedor_id == proveedor_id)
     if busqueda:
-        from app.services.productos import condiciones_codigo_variante
+        from app.services.productos import condicion_busqueda_variante
 
-        texto = busqueda.strip().upper()
-        patron = f"%{texto}%"
-        consulta = consulta.where(
-            or_(
-                *condiciones_codigo_variante(texto),
-                Producto.sku.ilike(patron),
-                Producto.descripcion.ilike(patron),
-            )
-        )
+        consulta = consulta.where(condicion_busqueda_variante(busqueda))
 
     consulta = consulta.group_by(
         VentaItem.variante_id,

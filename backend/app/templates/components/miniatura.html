@@ -1,7 +1,7 @@
 {# ===========================================================================
    Macro: miniatura de producto con zoom al hacer hover.
 
-   Muestra un thumbnail pequeño que, al pasar el mouse, despliega una
+   Muestra la foto entera (`object-contain`, sin recortar) en un thumbnail pequeño que, al pasar el mouse, despliega una
    versión ampliada usando posición fija para evitar recortes por
    overflow-hidden de contenedores padre.
 
@@ -26,10 +26,10 @@
      "
      @mouseleave="hover = false">
     <img :src="{{ src }}" alt=""
-         class="{{ tamano }} rounded object-cover cursor-pointer flex-shrink-0">
+         class="{{ tamano }} rounded object-contain bg-surface-alt cursor-pointer flex-shrink-0">
     <template x-teleport="body">
         <img x-show="hover" x-cloak :src="{{ src }}" alt=""
-             class="fixed z-[100] w-48 h-48 rounded-lg object-cover
+             class="fixed z-[100] w-48 h-48 rounded-lg object-contain bg-surface
                     shadow-xl border-2 border-surface pointer-events-none"
              :style="`top:${pos.top}px; left:${pos.left}px`">
     </template>

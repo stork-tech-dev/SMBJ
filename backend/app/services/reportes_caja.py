@@ -294,7 +294,7 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
         condicion = and_(condicion, Venta.created_at <= turno.fecha_cierre)
     filas = db.execute(
         select(Venta.id, Venta.created_at, Venta.numero, MedioDePago.nombre, VentaPago.monto_total,
-               VentaPago.sena_id, Cliente.nombre)
+               VentaPago.sena_id, Cliente)
         .join(VentaPago, VentaPago.venta_id == Venta.id)
         .join(MedioDePago, MedioDePago.id == VentaPago.medio_de_pago_id)
         .outerjoin(Sena, Sena.id == VentaPago.sena_id)
@@ -314,7 +314,7 @@ def _ventas_del_turno(db: Session, turno: Turno) -> list[dict]:
             # que la venta se lea completa, pero no suma. Mismo criterio que
             # el arqueo, que trata al medio de las señas como informativo.
             movimientos.append(_movimiento(
-                creada, "venta", f"Venta {numero} (seña de {cliente})", medio,
+                creada, "venta", f"Venta {numero} (seña de {cliente.nombre_completo})", medio,
                 informativo=monto, venta_id=venta_id,
             ))
     return movimientos
@@ -327,7 +327,8 @@ SERIES_MEDIOS = 6
 
 def _ingresos_por_medio(db: Session, lista: list[dict]) -> list[dict]:
     """
-    Suma de los ingresos del turno por medio de pago, de mayor a menor.
+    Suma de los ingresos por medio de pago, de mayor a menor: de un turno, o
+    del día con los movimientos de todos sus turnos.
 
     Sin el saldo inicial (la pantalla lo muestra aparte) y sin los importes
     informativos, que ya tienen `ingreso` en cero: así saldo inicial + la
@@ -405,7 +406,7 @@ def movimientos(
             select(Sena).options(joinedload(Sena.medio_de_pago), joinedload(Sena.cliente))
             .where(Sena.turno_id == turno.id, Sena.medio_de_pago_id.is_not(None))
         ).unique().scalars():
-            lista.append(_movimiento(sena.created_at, "sena", f"Seña — {sena.cliente.nombre}",
+            lista.append(_movimiento(sena.created_at, "sena", f"Seña — {sena.cliente.nombre_completo}",
                                      sena.medio_de_pago.nombre, ingreso=sena.monto))
 
         for n in db.execute(
@@ -443,7 +444,14 @@ def movimientos(
             "efectivo_esperado": servicio_arqueo.efectivo_esperado(turno.id, db),
         })
 
-    return {"turnos": grupos}
+    # Lo que entró en el día por cada medio, sumando todos los turnos: la
+    # misma cuenta que la de cada turno, sobre todos sus movimientos juntos.
+    ingresos_dia = _ingresos_por_medio(db, [m for g in grupos for m in g["movimientos"]])
+    return {
+        "turnos": grupos,
+        "ingresos_por_medio_dia": ingresos_dia,
+        "ingresos_dia": sum((f["total"] for f in ingresos_dia), CERO),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -562,7 +570,7 @@ def senas(db: Session, fecha: date, estado: str | None = None) -> dict:
     )
 
     consulta = (
-        select(Sena, Cliente.nombre, vencimiento.label("vencimiento"), estado_sql.label("estado"))
+        select(Sena, Cliente, vencimiento.label("vencimiento"), estado_sql.label("estado"))
         .join(Cliente, Cliente.id == Sena.cliente_id)
         .where(func.date(Sena.created_at) == fecha)
         .order_by(Sena.created_at, Sena.id)
@@ -577,7 +585,7 @@ def senas(db: Session, fecha: date, estado: str | None = None) -> dict:
             {
                 "id": s.id,
                 "created_at": s.created_at,
-                "cliente_nombre": cliente,
+                "cliente_nombre": cliente.nombre_completo,
                 "monto": s.monto,
                 "saldo": s.saldo,
                 "fecha_vencimiento": venc,

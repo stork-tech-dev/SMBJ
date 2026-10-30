@@ -1,4 +1,4 @@
-{# Ajustes: parámetros globales del negocio, exclusivos de la Cuenta Maestra.
+{# Ajustes → Parámetros generales: parámetros globales del negocio, exclusivos de la Cuenta Maestra.
 
    Cada valor cambia reglas de todo el sistema (precios, descuentos, puntos,
    plazos), así que guardar pide DOS confirmaciones: primero se revisa qué
@@ -11,6 +11,7 @@
 
 {% from "components/encabezado.html" import encabezado %}
 {% from "components/modal_confirmacion.html" import modal_confirmacion %}
+{% from "components/icons.html" import icono %}
 
 {% set _input = 'w-full h-control px-3 text-base bg-surface border border-borde rounded-input
                  text-texto focus:outline-none focus:border-primary' %}
@@ -32,7 +33,7 @@
 {% endmacro %}
 
 {% block contenido %}
-{% call encabezado('Ajustes') %}{% endcall %}
+{% call encabezado('Parámetros generales', volver_url='/ajustes', volver_texto='Ajustes') %}{% endcall %}
 
 <div x-data="ajustesSistema()" x-init="cargar()" class="mt-4 max-w-5xl">
     <p class="text-base text-texto-muted">
@@ -92,6 +93,49 @@
                     {{ ajuste('dias_plazo_cambio', 'Plazo habitual', 'días',
                               'Pasado este plazo, el cambio avisa (no se bloquea).', minimo='1') }}
                 </div>
+            </div>
+        </section>
+
+        {# Fidelización: rangos de puntos acumulados (sin restar canjes) y el
+           descuento de cada categoría en el mes del cumpleaños del cliente. #}
+        <section class="p-6 rounded-input bg-surface tarjeta">
+            <h2 class="text-lg font-semibold text-texto">Fidelización</h2>
+            <p class="mt-1 text-sm text-texto-muted">
+                Cada cliente cae en la categoría más alta que alcanzan sus puntos acumulados
+                (canjear no le baja la categoría). En el mes de su cumpleaños, el descuento de su
+                categoría se aplica solo en todas sus compras, respetando el tope de la venta.
+            </p>
+
+            <div class="mt-4 space-y-3">
+                <div class="hidden sm:grid grid-cols-[1fr_10rem_10rem_2.75rem] gap-3
+                            text-sm font-semibold text-texto-header">
+                    <span>Categoría</span><span>Desde (puntos)</span><span>Cumpleaños (%)</span><span></span>
+                </div>
+                <template x-for="(c, i) in categorias" :key="i">
+                    <div class="grid gap-3 sm:grid-cols-[1fr_10rem_10rem_2.75rem] items-center
+                                p-3 sm:p-0 rounded-input border border-borde sm:border-0">
+                        <input x-model="c.nombre" maxlength="50" placeholder="Ej.: Oro"
+                               :aria-label="'Nombre de la categoría ' + (i + 1)" class="{{ _input }}">
+                        <input x-model.number="c.puntos_desde" type="number" min="0" step="1"
+                               :aria-label="'Puntos desde, categoría ' + (i + 1)" class="{{ _input }}">
+                        <input x-model.number="c.porcentaje_cumpleanos" type="number" min="0" max="100" step="0.01"
+                               :aria-label="'Descuento de cumpleaños, categoría ' + (i + 1)" class="{{ _input }}">
+                        <button type="button" @click="quitarCategoria(i)" aria-label="Quitar categoría"
+                                class="grid place-items-center min-h-toque min-w-toque text-texto-muted hover:text-danger">
+                            {{ icono('papelera', clases='w-5 h-5') }}
+                        </button>
+                    </div>
+                </template>
+                <p x-show="!categorias.length" class="text-sm text-texto-disabled">
+                    Sin categorías: nadie recibe descuento de cumpleaños.
+                </p>
+                <button type="button" @click="agregarCategoria()"
+                        class="h-boton px-4 rounded-input border border-borde text-sm
+                               hover:border-primary hover:text-primary">
+                    + Agregar categoría
+                </button>
+                <p x-show="cambioCategorias" x-cloak class="text-sm text-primary"
+                   x-text="'Antes: ' + textoCategorias(categoriasOriginales)"></p>
             </div>
         </section>
 

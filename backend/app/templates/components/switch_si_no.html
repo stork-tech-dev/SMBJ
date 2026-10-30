@@ -9,19 +9,22 @@
      modelo     expresión Alpine booleana (ej. `minimos.todos_los_locales`).
      etiqueta   texto de la pregunta, a la izquierda del switch.
      id         id del botón (y `{id}-label` del texto).
+     al_cambiar expresión Alpine que se ejecuta en lugar de invertir el
+                modelo (opcional): para cuando cambiar es una llamada a la API
+                y el modelo se actualiza con su respuesta.
 
    Uso:
      {% from "components/switch_si_no.html" import switch_si_no %}
      {{ switch_si_no('minimos.todos_los_locales', 'Aplica a todos los locales', 'mi-todos') }}
    =========================================================================== #}
 
-{% macro switch_si_no(modelo, etiqueta, id) %}
+{% macro switch_si_no(modelo, etiqueta, id, al_cambiar=None) %}
 <div class="flex items-center gap-3">
     <span id="{{ id }}-label" class="text-sm font-semibold text-texto-muted">{{ etiqueta }}</span>
     <button type="button" role="switch" id="{{ id }}"
             aria-labelledby="{{ id }}-label"
             :aria-checked="{{ modelo }} ? 'true' : 'false'"
-            @click="{{ modelo }} = !{{ modelo }}"
+            @click="{{ al_cambiar or (modelo ~ ' = !' ~ modelo) }}"
             class="inline-flex items-center min-h-toque focus:outline-none
                    focus-visible:ring-2 focus-visible:ring-primary rounded-input">
         <span class="relative inline-flex items-center w-11 h-6 rounded-full transition-colors"

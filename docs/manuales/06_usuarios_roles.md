@@ -56,11 +56,13 @@ La tabla muestra todos los usuarios del sistema.
 | Email | No | Para notificaciones |
 | Fecha de nacimiento | No | Opcional, informativo |
 | Celular | No | Opcional, informativo |
-| Punto de venta asignado | No | Local donde trabaja (necesario para vendedoras) |
+| Punto de venta asignado | No | Local donde trabaja (necesario para vendedoras). Dueño y Cuenta Maestra no llevan |
 
 3. Hacé clic en **"Crear"**.
 
 > Si el usuario va a trabajar en un local específico, **asignale el punto de venta**. Sin esta asignación, el sistema no sabe a qué local pertenece y no puede abrir turnos ni ver stock del local.
+
+> Los usuarios **Dueño** y **Cuenta Maestra** nunca tienen punto de venta: trabajan sobre todos los locales. Al elegir el rol Dueño, el campo se vacía y queda bloqueado.
 
 ---
 
@@ -71,6 +73,8 @@ La tabla muestra todos los usuarios del sistema.
 3. Guardá los cambios.
 
 > No se puede cambiar el nombre de usuario (username). Si hace falta cambiarlo, crear un nuevo usuario.
+
+> A un usuario **Dueño** o **Cuenta Maestra** no se le puede cambiar el rol: el campo aparece bloqueado. Sí se puede pasar a otro usuario **a** Dueño; en ese caso pierde el punto de venta que tenía.
 
 ---
 

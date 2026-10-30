@@ -50,11 +50,15 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
             autorizador_id: null,
         },
 
-        // Productos del ticket del código ({origen, items}) y los elegidos
-        // para devolver (claves de `claveItem`).
-        ticket: null,
+        // Los tickets que trae el cliente ({codigo, origen, items}): pueden
+        // ser varios y lo devuelto de todos suma. `elegidos` son las claves
+        // (`claveItem`) de lo que se devuelve, de cualquiera de los tickets.
+        tickets: [],
         elegidos: [],
         buscando: false,
+        // Con un ticket ya cargado, el campo del código aparece de nuevo
+        // solo al tocar "+ Agregar otro ticket".
+        agregandoTicket: false,
 
         pesos: (v) => window.pesos(v),
 
@@ -69,8 +73,20 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
             return this.form.tipo === 'falla' || this.elegidos.length > 0;
         },
 
+        get verCampoCodigo() {
+            return this.form.tipo !== 'falla' && (!this.tickets.length || this.agregandoTicket);
+        },
+
+        // Lo que suma lo elegido de todos los tickets.
+        get totalElegido() {
+            return this.tickets.flatMap((t) => t.items)
+                .filter((i) => this.elegido(i))
+                .reduce((s, i) => s + Number(i.precio), 0);
+        },
+
         claveItem(it) {
-            return it.venta_item_id ?? `v${it.variante_id}`;
+            if (it.venta_item_id) return it.venta_item_id;
+            return it.retiro_mercaderia_id ? `r${it.retiro_mercaderia_id}` : `v${it.variante_id}`;
         },
 
         elegido(it) {
@@ -84,6 +100,12 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
                 : [...this.elegidos, clave];
         },
 
+        quitarTicket(ticket) {
+            const claves = ticket.items.map((i) => this.claveItem(i));
+            this.elegidos = this.elegidos.filter((c) => !claves.includes(c));
+            this.tickets = this.tickets.filter((t) => t !== ticket);
+        },
+
         // Si el código ya tiene el largo de uno completo: 4 caracteres, u 8
         // los de antes de que se acortaran (siguen siendo válidos).
         get codigoCompleto() {
@@ -91,14 +113,12 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
             return largo === LARGO_CODIGO_CAMBIO || largo === LARGO_CODIGO_CAMBIO_VIEJO;
         },
 
-        // Otro código: lo elegido ya no corresponde. Completo, busca solo
-        // sin tener que tocar la lupa, pero recién cuando se deja de
-        // escribir: así uno viejo de 8 no se busca (y falla) a los 4.
+        // Completo, busca solo sin tener que tocar la lupa, pero recién
+        // cuando se deja de escribir: así uno viejo de 8 no se busca (y
+        // falla) a los 4.
         esperaBusqueda: null,
 
         codigoCambiado() {
-            this.ticket = null;
-            this.elegidos = [];
             clearTimeout(this.esperaBusqueda);
             if (this.codigoCompleto) {
                 this.esperaBusqueda = setTimeout(() => this.buscarTicket(), ESPERA_BUSQUEDA_MS);
@@ -109,18 +129,25 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
             clearTimeout(this.esperaBusqueda);
             const codigo = this.form.codigo_cambio.trim().toUpperCase();
             if (!codigo) return;
+            if (this.tickets.some((t) => t.codigo === codigo)) {
+                window.toast(`El ticket ${codigo} ya está cargado`, 'error');
+                return;
+            }
             this.buscando = true;
             try {
                 const params = new URLSearchParams({ codigo });
-                this.ticket = await pedir(`${URL_CAMBIOS}/ticket?${params}`);
-                // Un solo producto posible (retiro, o ticket de un ítem): ya elegido.
-                const disponibles = this.ticket.items.filter((i) => i.disponible);
-                this.elegidos = disponibles.length === 1 ? [this.claveItem(disponibles[0])] : [];
+                const ticket = await pedir(`${URL_CAMBIOS}/ticket?${params}`);
+                const disponibles = ticket.items.filter((i) => i.disponible);
                 if (!disponibles.length) {
                     window.toast('Todos los productos de ese ticket ya se devolvieron', 'error');
+                    return;
                 }
+                this.tickets = [...this.tickets, { codigo, ...ticket }];
+                // Un solo producto posible (retiro, o ticket de un ítem): ya elegido.
+                if (disponibles.length === 1) this.elegidos = [...this.elegidos, this.claveItem(disponibles[0])];
+                this.form.codigo_cambio = '';
+                this.agregandoTicket = false;
             } catch (e) {
-                this.ticket = null;
                 window.toast(e.message, 'error');
             } finally {
                 this.buscando = false;
@@ -128,12 +155,12 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
         },
 
         async iniciar() {
-            if (this.form.tipo !== 'falla' && !this.form.codigo_cambio.trim()) {
+            if (this.form.tipo !== 'falla' && !this.tickets.length) {
                 window.toast('Ingresá el código de cambio del ticket', 'error');
                 return;
             }
             if (this.form.tipo !== 'falla' && !this.elegidos.length) {
-                window.toast('Elegí qué productos del ticket devuelve el cliente', 'error');
+                window.toast('Elegí qué productos de los tickets devuelve el cliente', 'error');
                 return;
             }
             if (this.form.tipo === 'falla' && !this.form.autorizador_id) {
@@ -148,8 +175,8 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
                     body: JSON.stringify({
                         tipo: this.form.tipo,
                         punto_de_venta_id: this.puntoDeVentaId,
-                        codigo_cambio: this.form.tipo !== 'falla'
-                            ? this.form.codigo_cambio.trim().toUpperCase() : null,
+                        codigos_cambio: this.form.tipo !== 'falla'
+                            ? this.tickets.map((t) => t.codigo) : [],
                         autorizador_id: this.form.tipo === 'falla' ? this.form.autorizador_id : null,
                     }),
                 });
@@ -158,10 +185,10 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
                     return;
                 }
 
-                // Lo elegido del ticket entra como devuelto y se sigue directo
-                // a los ítems nuevos. Si alguno no entra, se va a "Ítems
-                // devueltos" (el cambio ya existe) para corregirlo ahí.
-                const seleccion = this.ticket.items.filter((i) => this.elegido(i));
+                // Lo elegido de los tickets entra como devuelto y se sigue
+                // directo a los ítems nuevos. Si alguno no entra, se va a
+                // "Ítems devueltos" (el cambio ya existe) para corregirlo ahí.
+                const seleccion = this.tickets.flatMap((t) => t.items).filter((i) => this.elegido(i));
                 let fallo = false;
                 for (const it of seleccion) {
                     try {
@@ -170,6 +197,7 @@ function cambioTipo(puntoDeVentaId, codigoInicial = '') {
                             body: JSON.stringify({
                                 variante_id: it.variante_id,
                                 venta_item_id: it.venta_item_id,
+                                retiro_mercaderia_id: it.retiro_mercaderia_id,
                             }),
                         });
                     } catch (e) {

@@ -221,6 +221,47 @@ def test_movimientos_en_orden_y_cuadran_con_el_arqueo(
     assert grupo["efectivo_esperado"] == servicio_arqueo.efectivo_esperado(turno.id, db)
 
 
+def test_movimientos_totaliza_el_dia_por_medio_sumando_los_turnos(
+    db, autor, local, otro_local, turno,
+):
+    """
+    El totalizador del día suma los ingresos de todos los turnos por medio
+    de pago, sin los saldos iniciales.
+    """
+    servicio_turnos.abrir_turno(
+        punto_de_venta_id=otro_local.id, usuario_id=autor.id,
+        efectivo_apertura=5000, notas=None, db=db,
+    )
+    efectivo, credito = _medio(db, "Efectivo"), _medio(db, "Tarjeta de Crédito")
+    servicio_joyero.registrar_cobro(
+        db, autor, punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
+        monto_efectivo=Decimal("500"), monto_otros=Decimal("600"),
+    )
+    servicio_joyero.registrar_cobro(
+        db, autor, punto_de_venta_id=otro_local.id, medio_de_pago_id=efectivo.id,
+        monto_efectivo=Decimal("200"), monto_otros=Decimal("300"),
+    )
+    servicio_joyero.registrar_cobro(
+        db, autor, punto_de_venta_id=otro_local.id, medio_de_pago_id=credito.id,
+        monto_efectivo=Decimal("0"), monto_otros=Decimal("400"),
+    )
+
+    datos = servicio.movimientos(db, _hoy())
+    por_medio = {f["medio_de_pago"]: f for f in datos["ingresos_por_medio_dia"]}
+
+    assert len(datos["turnos"]) == 2
+    assert por_medio["Efectivo"]["total"] == Decimal("700")
+    assert por_medio["Efectivo"]["medio_de_pago_id"] == efectivo.id
+    assert por_medio["Tarjeta de Crédito"]["total"] == Decimal("400")
+    # Es la suma de los desgloses de cada turno, sin los saldos iniciales.
+    assert datos["ingresos_dia"] == Decimal("1100") == sum(
+        g["ingresos_sin_saldo_inicial"] for g in datos["turnos"]
+    )
+    # Con un local elegido, solo ese.
+    solo = servicio.movimientos(db, _hoy(), otro_local.id)
+    assert solo["ingresos_dia"] == Decimal("600")
+
+
 # ── Retiros de efectivo y cobros de joyero ──────────────────────────────────
 
 
@@ -262,7 +303,7 @@ def test_senas_activa_usada_y_vencida(db, autor, config, local, turno):
     efectivo = _medio(db, "Efectivo")
 
     def dejar(nombre, dni, monto):
-        cliente = servicio_clientes.crear_cliente(db, autor, nombre=nombre, dni=dni)
+        cliente = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre=nombre, dni=dni)
         return servicio_senas.registrar_sena(
             db, autor, cliente_id=cliente.id, monto=Decimal(monto),
             punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
@@ -292,7 +333,7 @@ def test_senas_activa_usada_y_vencida(db, autor, config, local, turno):
 def test_la_sena_recibida_aparece_en_movimientos_y_suma_al_arqueo(db, autor, local, turno):
     efectivo = _medio(db, "Efectivo")
     antes = servicio_arqueo.efectivo_esperado(turno.id, db)
-    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Leandra", dni="39059158")
+    cliente = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Leandra", dni="39059158")
     servicio_senas.registrar_sena(
         db, autor, cliente_id=cliente.id, monto=Decimal("7000"),
         punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
@@ -445,7 +486,7 @@ def test_el_pago_con_sena_de_una_venta_no_suma_a_la_caja(db, autor, local, turno
     La plata de la seña entra cuando se deja. Usarla en una venta —el mismo
     día o después— no es plata nueva: se muestra, pero no suma.
     """
-    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    cliente = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Sergio G", dni="30111222")
     servicio_senas.registrar_sena(
         db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
         punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,
@@ -454,7 +495,7 @@ def test_el_pago_con_sena_de_una_venta_no_suma_a_la_caja(db, autor, local, turno
 
     grupo = servicio.movimientos(db, _hoy(), local.id)["turnos"][0]
     con_sena = next(m for m in grupo["movimientos"] if "seña de" in m["detalle"])
-    assert con_sena["detalle"] == f"Venta {venta.numero} (seña de Sergio G)"
+    assert con_sena["detalle"] == f"Venta {venta.numero} (seña de Prueba, Sergio G)"
     assert (con_sena["ingreso"], con_sena["informativo"]) == (Decimal("0"), Decimal("2500"))
 
     # Apertura 1000 + seña dejada 2500 + efectivo de la venta 7500: la seña
@@ -473,7 +514,7 @@ def test_cada_pago_de_venta_trae_su_venta_para_abrir_el_detalle(
     """
     from app.api.v1.ventas import _respuesta
 
-    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    cliente = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Sergio G", dni="30111222")
     servicio_senas.registrar_sena(
         db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
         punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,
@@ -498,7 +539,7 @@ def test_ingresos_por_medio_sin_saldo_inicial_ni_lo_pagado_con_sena(
     afuera el saldo inicial (Totales no lo incluye) y la parte pagada con
     seña (no suma).
     """
-    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    cliente = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Sergio G", dni="30111222")
     servicio_senas.registrar_sena(
         db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
         punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,
@@ -531,7 +572,7 @@ def test_ingresos_por_medio_sin_saldo_inicial_ni_lo_pagado_con_sena(
 
 def test_sena_de_otro_dia_solo_suma_lo_cobrado_aparte(db, autor, local, turno, variante):
     """Venta de 10.000 con 2.500 de una seña anterior: a la caja entran 7.500."""
-    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Sergio G", dni="30111222")
+    cliente = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Sergio G", dni="30111222")
     sena = servicio_senas.registrar_sena(
         db, autor, cliente_id=cliente.id, monto=Decimal("2500"),
         punto_de_venta_id=local.id, medio_de_pago_id=_medio(db, "Efectivo").id,

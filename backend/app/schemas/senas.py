@@ -5,18 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.clientes import ClienteResumen
-
-
-class ClienteNuevoEnSena(BaseModel):
-    """
-    El cliente que se crea en el momento de dejar la seña. Lo mínimo del
-    mostrador: el nombre, y el DNI para encontrarlo al cobrar.
-    """
-
-    nombre: str = Field(min_length=1, max_length=150)
-    dni: str | None = Field(default=None, max_length=15)
-    telefono: str | None = Field(default=None, max_length=30)
+from app.schemas.clientes import ClienteAltaRapida, ClienteResumen
 
 
 class SenaCrear(BaseModel):
@@ -30,7 +19,7 @@ class SenaCrear(BaseModel):
     """
 
     cliente_id: int | None = None
-    cliente_nuevo: ClienteNuevoEnSena | None = None
+    cliente_nuevo: ClienteAltaRapida | None = None
     medio_de_pago_id: int
     monto: Decimal = Field(gt=0)
     descripcion: str | None = None

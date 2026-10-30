@@ -217,7 +217,7 @@
                         x-text="'Venta ' + (detalle.venta?.numero || '')"></h2>
                     <p class="text-sm text-texto-muted"
                        x-text="fecha(detalle.venta?.created_at) + ' · '
-                               + (detalle.venta?.cliente?.nombre || 'Sin cliente')"></p>
+                               + (detalle.venta?.cliente?.nombre_completo || 'Sin cliente')"></p>
                 </div>
                 <button type="button" @click="detalle.abierto = false" aria-label="Cerrar"
                         class="text-texto-muted hover:text-texto -mt-1">

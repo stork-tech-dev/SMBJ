@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import registrar_auditoria, snapshot
-from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_SUPERVISOR, ROL_VENDEDOR
+from app.core.permisos import ROL_CUENTA_MAESTRA, ROL_DUENO, ROL_SUPERVISOR, ROL_VENDEDOR
 from app.core.utils import ahora_db, normalizar_texto
 from app.models.punto_de_venta import PuntoDeVenta, TipoPuntoVenta
 from app.models.rol import Rol
@@ -23,6 +23,11 @@ from app.services.roles import NoEncontrado, ReglaDeNegocio, obtener_rol
 # Campos que jamás salen en una respuesta. La exclusión real la garantizan
 # los schemas Pydantic; esta constante la usa la auditoría.
 CAMPOS_NUNCA_EXPUESTOS = ("password_hash", "clave_especial_hash")
+
+# Roles que no trabajan en un local —miran todos— y cuyo rol no se cambia
+# nunca: ni tienen Punto de Venta asignado ni se los puede pasar a otro perfil.
+ROLES_SIN_LOCAL = (ROL_DUENO, ROL_CUENTA_MAESTRA)
+MENSAJE_ROL_SIN_LOCAL = "Los usuarios dueño y cuenta maestra no tienen local asignado"
 
 
 class SinPermiso(Exception):
@@ -277,6 +282,8 @@ def crear_usuario(
     ).scalar_one_or_none():
         raise ReglaDeNegocio(f"Ya existe un usuario con el email '{email_limpio}'")
 
+    if rol.nombre in ROLES_SIN_LOCAL and local_asignado_id is not None:
+        raise ReglaDeNegocio(MENSAJE_ROL_SIN_LOCAL)
     local_id = _validar_local_asignado(db, local_asignado_id)
 
     usuario = Usuario(
@@ -336,6 +343,7 @@ def editar_usuario(
     validar_puede_gestionar(autor, usuario.rol)
     antes = snapshot(usuario)
 
+    rol_final = usuario.rol
     if rol_id is not None and rol_id != usuario.rol_id:
         rol_nuevo = obtener_rol(db, rol_id)
         validar_puede_gestionar(autor, rol_nuevo)
@@ -344,10 +352,13 @@ def editar_usuario(
             raise ReglaDeNegocio("No se puede asignar un rol inactivo")
         if rol_nuevo.nombre == ROL_CUENTA_MAESTRA:
             raise ReglaDeNegocio("No se puede asignar el rol cuenta_maestra")
-        if usuario.rol.nombre == ROL_CUENTA_MAESTRA:
-            raise ReglaDeNegocio("No se puede cambiar el rol de la Cuenta Maestra")
+        if usuario.rol.nombre in ROLES_SIN_LOCAL:
+            raise ReglaDeNegocio(
+                "No se puede cambiar el rol de un usuario dueño o cuenta maestra"
+            )
 
         usuario.rol_id = rol_nuevo.id
+        rol_final = rol_nuevo
 
     if nombre is not None:
         usuario.nombre = normalizar_texto(nombre) or usuario.nombre
@@ -368,7 +379,15 @@ def editar_usuario(
     if editar_celular:
         usuario.celular = celular
 
-    if editar_local:
+    if rol_final.nombre in ROLES_SIN_LOCAL:
+        # Dueño y Cuenta Maestra no tienen local: pedirlo es un error; si no
+        # lo mandan (alguien que pasa a dueño desde otro perfil) se limpia.
+        if editar_local and local_asignado_id is not None:
+            raise ReglaDeNegocio(MENSAJE_ROL_SIN_LOCAL)
+        if usuario.local_asignado_id is not None:
+            usuario.local_asignado_id = None
+            db.expire(usuario, ["local_asignado"])
+    elif editar_local:
         # El actual se lee ANTES de pisarlo: es lo que le permite a un usuario
         # conservar un punto de venta que se desactivó después de asignárselo.
         usuario.local_asignado_id = _validar_local_asignado(

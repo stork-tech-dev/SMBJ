@@ -352,14 +352,14 @@ def test_el_codigo_del_retiro_se_cambia_al_precio_de_lista(
     with pytest.raises(ReglaDeNegocio, match="cambio común"):
         servicio_cambios.iniciar_cambio(
             db, autor, tipo=TipoCambio.PROMOCION, punto_de_venta_id=local.id,
-            codigo_cambio=retiro.codigo_cambio,
+            codigos_cambio=[retiro.codigo_cambio],
         )
 
     cambio, _avisos = servicio_cambios.iniciar_cambio(
         db, autor, tipo=TipoCambio.COMUN, punto_de_venta_id=local.id,
-        codigo_cambio=retiro.codigo_cambio,
+        codigos_cambio=[retiro.codigo_cambio],
     )
-    assert cambio.retiro_mercaderia_origen_id == retiro.id
+    assert [o.retiro_mercaderia_id for o in cambio.origenes] == [retiro.id]
 
     item, _ = servicio_cambios.agregar_item_devuelto(db, cambio, variante.id)
     assert item.precio_reconocido == Decimal("10000")

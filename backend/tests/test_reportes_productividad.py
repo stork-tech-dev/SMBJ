@@ -174,7 +174,7 @@ def test_vendedores_cuenta_senas_y_cambios_confirmados(
 ):
     asegurar_turno(local.id, autor.id)
     efectivo = next(m for m in servicio_medios.listar_medios(db) if m.nombre == "Efectivo")
-    cliente = servicio_clientes.crear_cliente(db, autor, nombre="Marta", dni="20111222")
+    cliente = servicio_clientes.crear_cliente(db, autor, apellido="Prueba", email="cliente@prueba.com", nombre="Marta", dni="20111222")
     servicio_senas.registrar_sena(
         db, autor, cliente_id=cliente.id, monto=Decimal("1500"),
         punto_de_venta_id=local.id, medio_de_pago_id=efectivo.id,
