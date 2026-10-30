@@ -17,13 +17,15 @@
    suma nada: si sumara por su cuenta y diera distinto, la vendedora vería un
    número y el cliente pagaría otro.
 
-   Sin stock en el local, "Agregar al carrito" queda deshabilitado: el aviso
-   ya dice que puede ser un error de código, y dejar agregar igual invitaba
-   a vender lo que la pantalla misma está diciendo que no hay. El backend
-   (`POST /ventas/{id}/items`) sigue sin bloquearlo. #}
+   Sin stock en el local se puede agregar igual, pero el botón pasa a "Agregar
+   igual" y pide confirmar: si la vendedora tiene el producto en la mano, el
+   que está mal es el sistema (el stock queda en negativo, la señal para
+   auditarlo); lo más común, igual, es un código mal escaneado. El backend
+   (`POST /ventas/{id}/items`) tampoco lo bloquea. #}
 {% extends "pages/ventas/mobile/_base.html" %}
 
 {% from "components/icons.html" import icono %}
+{% from "components/modal_confirmacion.html" import modal_confirmacion %}
 {% from "components/boton_escanear.html" import boton_escanear %}
 {% from "components/venta_item.html" import venta_item_info %}
 {% from "components/beneficio_cumpleanos.html" import beneficio_cumpleanos %}
@@ -116,10 +118,10 @@
             <span x-text="aviso"></span>
         </p>
 
-        <button type="button" @click="agregar()" :disabled="agregando || sinStock"
+        <button type="button" @click="agregarConControl()" :disabled="agregando"
                 class="mt-5 w-full h-[3.25rem] rounded-input bg-primary text-white text-base
                        font-medium hover:bg-primary-hover disabled:opacity-60"
-                x-text="agregando ? 'Agregando…' : 'Agregar al carrito'"></button>
+                x-text="agregando ? 'Agregando…' : (sinStock ? 'Agregar igual' : 'Agregar al carrito')"></button>
     </section>
 
     <p x-show="!producto && !venta && !cargando" x-cloak
@@ -309,6 +311,10 @@
         </div>
     </div>
     {% endif %}
+
+    {# Agregar un producto sin stock en el local: pide controlar el código. #}
+    {{ modal_confirmacion(advertencia='confirmacion.advertencia',
+                          etiqueta_confirmar="'Agregar igual'", tono='primario') }}
     {% endif %}
 </div>
 {% endblock %}

@@ -24,6 +24,12 @@ const API_STOCK = '/api/v1/stock';
 // consulta de stock (con un filtro aplicado). Más que eso ya no es "estos
 // que encontré", es agregar a ciegas.
 const MAX_AGREGAR_JUNTOS = 4;
+// Lo que se le pide a la vendedora antes de agregar algo sin stock en el
+// local. Se puede vender —si lo tiene en la mano, el que está mal es el
+// sistema, y el stock queda en negativo para auditarlo—, pero lo más común
+// es un código mal escaneado. Lo usan el carrito y la consulta de stock.
+const AVISO_SIN_STOCK = 'No hay stock de este producto en el local. Controlá que el '
+    + 'código sea el del producto que tenés en la mano antes de agregarlo.';
 const API_TURNOS = '/api/v1/turnos';
 
 // Implementación compartida en app.js (Principio 2): la usa también
@@ -160,9 +166,8 @@ function carritoVenta(puedeDescontar = false) {
 
         /* --- Buscador --- */
 
-        // Sin stock, no se ofrece agregar: el aviso ya dice que puede ser
-        // un error de código, y agregar igual sería vender lo que la
-        // pantalla misma está diciendo que no hay en el local.
+        // Sin stock en el local: se puede agregar igual, pero pasando por una
+        // confirmación (`agregarConControl`).
         get sinStock() {
             return !!this.producto && !this.producto.stock_infinito && this.producto.stock <= 0;
         },
@@ -197,6 +202,28 @@ function carritoVenta(puedeDescontar = false) {
             } finally {
                 this.buscando = false;
             }
+        },
+
+        confirmacion: { abierta: false, titulo: '', mensaje: '', advertencia: '', accion: () => {} },
+
+        /* Con stock agrega directo; sin stock, primero pide controlar el
+           código: lo más común es haber escaneado otra cosa. */
+        agregarConControl() {
+            if (!this.producto) return;
+            if (!this.sinStock) {
+                this.agregar();
+                return;
+            }
+            this.confirmacion = {
+                abierta: true,
+                titulo: '¿Agregar sin stock?',
+                mensaje: `${this.producto.codigo} ${this.producto.descripcion}\n${this.pesos(this.producto.precio)}`,
+                advertencia: AVISO_SIN_STOCK,
+                accion: () => {
+                    this.confirmacion.abierta = false;
+                    this.agregar();
+                },
+            };
         },
 
         async agregar() {
@@ -748,11 +775,16 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
             // carrito del celular no puede vender lo de otro.
             if (!this.puntoDeVentaId) return false;
             const n = this.misFilas.length;
-            if (n === 1) return this.paraAgregar.length === 1;
+            // Un solo producto de mi local: se ofrece aunque esté en 0
+            // (pasa por la confirmación de `agregarAlCarrito`).
+            if (n === 1) return true;
             return this.hayFiltro && n <= MAX_AGREGAR_JUNTOS && this.paraAgregar.length > 0;
         },
 
         get textoAgregar() {
+            if (this.misFilas.length === 1 && this.disponible(this.misFilas[0]) === 0) {
+                return 'Agregar igual (sin stock)';
+            }
             const n = this.paraAgregar.length;
             return n > 1 ? `Agregar ${n} productos al carrito` : 'Agregar al carrito de compra';
         },
@@ -830,7 +862,8 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
         deslizando: { id: null, x0: 0, y0: 0, dx: 0, eje: null, ancho: 0 },
 
         sePuedeDeslizar(f) {
-            return this.puedeVender && !this.mostrarLocal(f) && this.disponible(f) > 0;
+            // Las de mi local, aunque estén en 0: sin stock pide confirmar.
+            return this.puedeVender && !this.mostrarLocal(f);
         },
 
         inicioDeslizar(f, e) {
@@ -885,11 +918,12 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
         },
 
         confirmarAgregar(f) {
+            const sinStock = this.disponible(f) === 0;
             this.confirmacion = {
                 abierta: true,
-                titulo: '¿Agregar al carrito?',
+                titulo: sinStock ? '¿Agregar sin stock?' : '¿Agregar al carrito?',
                 mensaje: `${this.nombreFila(f)}\n${this.pesos(f.precio_con_descuento)}`,
-                advertencia: '',
+                advertencia: sinStock ? AVISO_SIN_STOCK : '',
                 accion: () => {
                     this.confirmacion.abierta = false;
                     this.agregarFilas([f]);
@@ -904,11 +938,14 @@ function consultaStockMobile(puntoDeVentaId, puedeVender = false) {
          */
         agregarAlCarrito() {
             if (!this.puedeAgregar) return;
-            const filas = this.paraAgregar;
-            if (filas.length === 1) {
-                this.agregarFilas(filas);
+            if (this.misFilas.length === 1) {
+                // Uno solo: directo, o con confirmación si está en 0.
+                const [f] = this.misFilas;
+                if (this.disponible(f) === 0) this.confirmarAgregar(f);
+                else this.agregarFilas([f]);
                 return;
             }
+            const filas = this.paraAgregar;
 
             const sinStock = this.misFilas.length - filas.length;
             this.confirmacion = {

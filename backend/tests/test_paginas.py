@@ -2873,3 +2873,29 @@ def test_el_carrito_tiene_el_buscador_y_no_seguir_agregando(
     assert "Agregar al carrito" in html
     assert "Cerrar Venta" in html
     assert "Seguir agregando" not in html
+
+
+def test_el_carrito_deja_agregar_sin_stock_pidiendo_confirmacion(
+    client, db, crear_usuario, crear_punto_de_venta, dar_permiso, roles,
+):
+    """
+    Sin stock en el local el botón no se apaga: pasa a "Agregar igual" y abre
+    el diálogo del sistema, que pide controlar el código.
+    """
+    from app.models.dispositivo import Dispositivo
+    from app.models.punto_de_venta import TipoPuntoVenta
+
+    local = crear_punto_de_venta("MPO", "Patio Olmos", TipoPuntoVenta.LOCAL)
+    dar_permiso(rol_id=roles[ROL_VENDEDOR].id, modulo=Modulo.VENTAS, ver=True, crear=True)
+    crear_usuario("vende", ROL_VENDEDOR)
+    equipo = Dispositivo(descripcion="Caja", activo=True, punto_de_venta_id=local.id)
+    db.add(equipo)
+    db.flush()
+    client.cookies.set("device_uuid", str(equipo.uuid))
+    client.post("/api/v1/auth/login", json={"username": "vende", "password": "Test1234!"})
+
+    html = client.get("/ventas/carrito").text
+    assert "agregando || sinStock" not in html
+    assert "agregarConControl()" in html
+    assert "Agregar igual" in html
+    assert 'aria-labelledby="titulo-confirmacion"' in html
