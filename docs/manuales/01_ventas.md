@@ -65,7 +65,9 @@ Si en el inicio aparece **"Tenés una venta sin concluir"**, tocalo: te lleva a 
 - Escaneá la etiqueta con el lector o escribí el código y tocá la lupa.
 - **Con la cámara**: tocá el **ícono de la cámara** al lado del campo y centrá el código cuadrado de la etiqueta dentro del recuadro. Apenas lo lee, el celular vibra, la cámara se cierra y el producto se busca solo.
 - Aparece el producto con su foto, precio y stock en el local. Revisalo y tocá **"Agregar al carrito"**: se suma a la lista de abajo y el campo queda listo para el siguiente.
-- Si no hay stock en el local, aparece un aviso en rojo y no se puede agregar: puede ser un error de código.
+- Si no hay stock en el local, aparece un aviso en rojo y el botón dice **"Agregar igual"**. Al tocarlo, el sistema pregunta **"¿Agregar sin stock?"** y te pide que controles que el código sea el del producto que tenés en la mano (lo más común es un código mal escaneado). Si es correcto, tocá **"Agregar igual"**.
+
+> Al confirmar la venta, el stock de ese producto en el local queda **en negativo**: es la señal para que se revise ese artículo en la próxima auditoría.
 
 #### Quitar productos
 

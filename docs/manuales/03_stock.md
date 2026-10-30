@@ -57,7 +57,11 @@ No hace falta filtrar: **deslizá la fila del producto hacia un costado** (izqui
 - **Agregar**: lo suma al carrito y te deja en la consulta de stock, en el mismo lugar de la lista. Las unidades disponibles de ese producto bajan en 1.
 - **Cancelar**: no agrega nada.
 
-Si la deslizás poco, la fila vuelve a su lugar sin preguntar. Solo se pueden deslizar los productos de **tu local** que tienen unidades disponibles: los que están en 0 y los de otras sucursales no se agregan desde acá.
+Si la deslizás poco, la fila vuelve a su lugar sin preguntar. Solo se pueden deslizar los productos de **tu local**: los de otras sucursales no se agregan desde acá.
+
+Si el producto está **en 0**, igual se puede agregar: la pregunta pasa a ser **"¿Agregar sin stock?"**, con un aviso para que controles que el código sea el del producto que tenés en la mano. Al confirmar la venta, el stock queda en negativo.
+
+Si la búsqueda deja un solo producto de tu local y está en 0, el botón dice **"Agregar igual (sin stock)"** y pasa por la misma confirmación. Con varios productos, el botón agrega solo los que tienen stock; los que están en 0 se agregan de a uno, deslizándolos.
 
 ---
 
