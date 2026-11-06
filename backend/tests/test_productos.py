@@ -75,8 +75,25 @@ def producto(db, autor, config, categoria, proveedor):
 
 
 def test_el_sku_lo_genera_el_sistema(db, producto):
-    assert len(producto.sku) == 5
-    assert producto.sku[:2].isalpha() and producto.sku[2:].isdigit()
+    # La configuración de los tests es Soleil: 3 letras y 1 dígito, sin I ni O.
+    assert len(producto.sku) == 4
+    assert producto.sku[:3].isalpha() and producto.sku[3].isdigit()
+    assert not set(producto.sku) & set("IO")
+
+
+def test_mallorca_genera_dos_letras_y_dos_digitos(db, autor, config, categoria, proveedor):
+    config.letra_empresa = "M"
+    db.flush()
+
+    p = servicio.crear_producto(
+        db, autor, categoria_id=categoria.id, proveedor_id=proveedor.id,
+        precio_usd=Decimal("10"), descripcion="Producto de Mallorca",
+    )
+
+    assert len(p.sku) == 4
+    assert p.sku[:2].isalpha() and p.sku[2:].isdigit()
+    assert int(p.sku[2:]) >= 1
+    assert p.variantes[0].codigo_completo == p.sku
 
 
 def test_los_sku_no_se_repiten(db, autor, config, categoria, proveedor):
@@ -238,15 +255,52 @@ def test_todo_producto_nace_con_una_variante_base(db, producto):
     assert producto.tiene_variantes is False
 
 
-def test_el_codigo_de_la_base_es_letra_mas_sku(db, producto, config):
+def test_el_codigo_de_la_base_es_el_sku(db, producto, config):
     base = producto.variantes[0]
-    assert base.codigo_completo == f"S{producto.sku}"
+    assert base.codigo_completo == producto.sku
 
 
 def test_el_codigo_de_una_variante_incluye_el_sufijo(db, autor, producto, config):
     variante = servicio.agregar_variante(db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R")
-    assert variante.codigo_completo == f"S{producto.sku}R"
+    assert variante.codigo_completo == f"{producto.sku}R"
     assert variante.es_base is False
+
+
+def test_una_variante_nueva_de_un_producto_viejo_conserva_la_letra(db, autor, producto, config):
+    """Queda igual a las demás del producto, cuyas etiquetas ya están impresas."""
+    from app.core.codigos import digito_verificador
+
+    producto.sku = "AA005"
+    base = producto.variantes[0]
+    base.codigo_completo = "SAA005"
+    base.verificador = digito_verificador("SAA005")
+    db.flush()
+
+    variante = servicio.agregar_variante(
+        db, autor, producto.id, sufijo="R", descripcion_sufijo="Color R"
+    )
+
+    assert variante.codigo_completo == "SAA005R"
+
+
+@pytest.mark.parametrize("sufijo", ["I", "O", "i", "o"])
+def test_el_sufijo_de_una_variante_nueva_no_admite_i_ni_o(db, autor, producto, sufijo):
+    with pytest.raises(ReglaDeNegocio):
+        servicio.agregar_variante(
+            db, autor, producto.id, sufijo=sufijo, descripcion_sufijo="Color"
+        )
+
+
+def test_un_codigo_nuevo_se_encuentra_exacto_con_el_verificador(db, producto):
+    """Es lo que manda el lector de la etiqueta: el código más el dígito."""
+    base = producto.variantes[0]
+
+    filas, total = servicio.listar_variantes(
+        db, busqueda=f"{base.codigo_completo}{base.verificador}"
+    )
+
+    assert total == 1
+    assert filas[0].id == base.id
 
 
 def test_la_primera_variante_real_reemplaza_la_base(db, autor, producto):

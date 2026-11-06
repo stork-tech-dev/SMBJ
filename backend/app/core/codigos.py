@@ -7,7 +7,7 @@ prueban solas y se pueden usar desde un script o una importación masiva.
 Hay DOS verificadores en juego y conviene no confundirlos:
 
 - El **módulo 11** de acá viaja en la línea legible del código
-  (`SAB123R7`) y protege el TIPEO MANUAL.
+  (`AAB0R7`) y protege el TIPEO MANUAL.
 - La **corrección de errores Reed-Solomon** de DataMatrix (ISO/IEC 16022)
   va dentro del dibujo de la etiqueta, la calcula la librería al generarlo
   y protege la LECTURA: reconstruye módulos dañados y, si no puede, el
@@ -17,21 +17,60 @@ El módulo 11 es ponderado por posición, que es lo que permite detectar
 transposiciones (`AB123` vs `AB213`), el error humano más frecuente.
 """
 
+import re
 import string
+from dataclasses import dataclass
 
 # Alfabeto base36: los dígitos valen su valor y las letras siguen desde 10.
 # Es el mismo criterio que usan los códigos alfanuméricos con módulo 11.
 _ALFABETO = string.digits + string.ascii_uppercase
 _VALOR = {c: i for i, c in enumerate(_ALFABETO)}
 
-# Un SKU son 2 letras y 3 dígitos: AA001 … ZZ999.
-_LETRAS = string.ascii_uppercase
-_DIGITOS_POR_BLOQUE = 999
-SKU_MAXIMO = len(_LETRAS) * len(_LETRAS) * _DIGITOS_POR_BLOQUE  # 675.324
+# Sin I ni O: en una etiqueta se confunden con el 1 y el 0.
+_LETRAS_SKU = "".join(c for c in string.ascii_uppercase if c not in "IO")
+_SUFIJOS = "".join(c for c in _ALFABETO if c not in "IO")
+
+# Formato anterior (2 letras y 3 dígitos). Ya no se genera, pero los productos
+# que lo tienen conservan su código porque sus etiquetas están impresas.
+_SKU_LEGADO = re.compile(r"[A-Z]{2}(?!000)[0-9]{3}")
 
 
 class CodigoInvalido(ValueError):
     """El código no tiene la forma esperada."""
+
+
+@dataclass(frozen=True)
+class _FormatoSku:
+    """Cómo es el SKU de una empresa: N letras seguidas de un rango de dígitos."""
+
+    letras: int
+    digito_minimo: int
+    digito_maximo: int
+
+    @property
+    def ancho_digitos(self) -> int:
+        return len(str(self.digito_maximo))
+
+    @property
+    def por_bloque(self) -> int:
+        return self.digito_maximo - self.digito_minimo + 1
+
+    @property
+    def maximo(self) -> int:
+        return len(_LETRAS_SKU) ** self.letras * self.por_bloque
+
+
+_FORMATOS = {
+    "S": _FormatoSku(letras=3, digito_minimo=0, digito_maximo=9),  # Soleil: AAA0 … ZZZ9
+    "M": _FormatoSku(letras=2, digito_minimo=1, digito_maximo=99),  # Mallorca: AA01 … ZZ99
+}
+
+
+def _formato(letra_empresa: str) -> _FormatoSku:
+    formato = _FORMATOS.get((letra_empresa or "").strip().upper())
+    if formato is None:
+        raise CodigoInvalido(f"Letra de empresa inválida: '{letra_empresa}'")
+    return formato
 
 
 # ============================================================================
@@ -39,43 +78,64 @@ class CodigoInvalido(ValueError):
 # ============================================================================
 
 
-def codificar_sku(n: int) -> str:
-    """
-    Convierte un entero correlativo en un SKU de 5 caracteres.
+def sku_maximo(letra_empresa: str) -> int:
+    """Cantidad de SKU disponibles: 138.240 en Soleil y 57.024 en Mallorca."""
+    return _formato(letra_empresa).maximo
 
-    1 → 'AA001', 999 → 'AA999', 1000 → 'AB001', 675324 → 'ZZ999'.
+
+def es_sku_legado(sku: str) -> bool:
+    """True si el SKU tiene el formato anterior, que llevaba la letra de empresa."""
+    return _SKU_LEGADO.fullmatch(sku or "") is not None
+
+
+def codificar_sku(n: int, letra_empresa: str) -> str:
+    """
+    Convierte un entero correlativo en el SKU de la empresa.
+
+    Soleil:   1 → 'AAA0', 10 → 'AAA9', 11 → 'AAB0'.
+    Mallorca: 1 → 'AA01', 99 → 'AA99', 100 → 'AB01'.
 
     El correlativo lo da una SEQUENCE de PostgreSQL, no un MAX()+1: con la
     secuencia dos altas simultáneas obtienen números distintos sin
     bloquearse, y no puede haber SKU repetidos.
     """
+    formato = _formato(letra_empresa)
     if not isinstance(n, int) or n < 1:
         raise CodigoInvalido("El correlativo del SKU arranca en 1")
-    if n > SKU_MAXIMO:
+    if n > formato.maximo:
         raise CodigoInvalido(
-            f"Se agotaron los SKU disponibles: el máximo es {SKU_MAXIMO:,}"
+            f"Se agotaron los SKU disponibles: el máximo es {formato.maximo:,}"
         )
 
-    indice = n - 1
-    bloque, digitos = divmod(indice, _DIGITOS_POR_BLOQUE)
-    primera, segunda = divmod(bloque, len(_LETRAS))
+    bloque, resto = divmod(n - 1, formato.por_bloque)
+    letras = []
+    for _ in range(formato.letras):
+        bloque, indice = divmod(bloque, len(_LETRAS_SKU))
+        letras.append(_LETRAS_SKU[indice])
 
-    return f"{_LETRAS[primera]}{_LETRAS[segunda]}{digitos + 1:03d}"
+    digitos = formato.digito_minimo + resto
+    return f"{''.join(reversed(letras))}{digitos:0{formato.ancho_digitos}d}"
 
 
-def decodificar_sku(sku: str) -> int:
+def decodificar_sku(sku: str, letra_empresa: str) -> int:
     """Inverso de `codificar_sku`. Útil para validar y para los tests."""
+    formato = _formato(letra_empresa)
     sku = (sku or "").strip().upper()
-    if len(sku) != 5 or not sku[:2].isalpha() or not sku[2:].isdigit():
+    partes = re.fullmatch(
+        rf"([{_LETRAS_SKU}]{{{formato.letras}}})([0-9]{{{formato.ancho_digitos}}})", sku
+    )
+    if partes is None:
         raise CodigoInvalido(f"SKU con formato inválido: '{sku}'")
 
-    primera = _LETRAS.index(sku[0])
-    segunda = _LETRAS.index(sku[1])
-    digitos = int(sku[2:])
-    if digitos < 1:
-        raise CodigoInvalido("Los tres dígitos del SKU arrancan en 001")
+    digitos = int(partes.group(2))
+    if digitos < formato.digito_minimo:
+        raise CodigoInvalido(f"SKU con formato inválido: '{sku}'")
 
-    return (primera * len(_LETRAS) + segunda) * _DIGITOS_POR_BLOQUE + digitos
+    bloque = 0
+    for letra in partes.group(1):
+        bloque = bloque * len(_LETRAS_SKU) + _LETRAS_SKU.index(letra)
+
+    return bloque * formato.por_bloque + digitos - formato.digito_minimo + 1
 
 
 # ============================================================================
@@ -143,27 +203,35 @@ def codigo_es_valido(codigo_con_verificador: str) -> bool:
 
 def armar_codigo_completo(letra_empresa: str, sku: str, sufijo: str | None) -> str:
     """
-    Código de la variante: letra de la empresa + SKU + sufijo.
+    Código de la variante: SKU + sufijo. La variante BASE no lleva sufijo.
 
-    Ej.: 'S' + 'AB123' + 'R' → 'SAB123R'. La variante BASE no lleva
-    sufijo, así que queda 'SAB123'.
+    Ej.: 'AAB0' + 'R' → 'AAB0R'; la base queda 'AAB0'.
+
+    Un SKU legado lleva además la letra de la empresa adelante ('S' + 'AB123'
+    + 'R' → 'SAB123R'), para que una variante nueva quede igual a las demás
+    de su producto.
 
     Se calcula UNA vez, al crear la variante, y después no se recalcula
-    nunca: la etiqueta ya está impresa y pegada a la mercadería. Si la
-    empresa cambia de letra, los productos viejos conservan su código.
+    nunca: la etiqueta ya está impresa y pegada a la mercadería.
     """
     letra = (letra_empresa or "").strip().upper()
-    if len(letra) != 1 or letra not in _LETRAS:
-        raise CodigoInvalido(f"Letra de empresa inválida: '{letra_empresa}'")
+    _formato(letra)  # valida la letra
 
     sku_limpio = (sku or "").strip().upper()
-    decodificar_sku(sku_limpio)  # valida el formato
+    if es_sku_legado(sku_limpio):
+        prefijo = f"{letra}{sku_limpio}"
+    else:
+        decodificar_sku(sku_limpio, letra)  # valida el formato
+        prefijo = sku_limpio
 
     if sufijo is None:
-        return f"{letra}{sku_limpio}"
+        return prefijo
 
     sufijo_limpio = sufijo.strip().upper()
-    if len(sufijo_limpio) != 1 or sufijo_limpio not in _ALFABETO:
-        raise CodigoInvalido(f"Sufijo de variante inválido: '{sufijo}'")
+    if len(sufijo_limpio) != 1 or sufijo_limpio not in _SUFIJOS:
+        raise CodigoInvalido(
+            f"Sufijo de variante inválido: '{sufijo}'. "
+            "Tiene que ser una letra (salvo I y O) o un número"
+        )
 
-    return f"{letra}{sku_limpio}{sufijo_limpio}"
+    return f"{prefijo}{sufijo_limpio}"

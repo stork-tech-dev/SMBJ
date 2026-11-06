@@ -7,13 +7,14 @@ Son funciones puras, así que no necesitan base ni fixtures.
 import pytest
 
 from app.core.codigos import (
-    SKU_MAXIMO,
     CodigoInvalido,
     armar_codigo_completo,
     codificar_sku,
     codigo_es_valido,
     decodificar_sku,
     digito_verificador,
+    es_sku_legado,
+    sku_maximo,
 )
 from app.core.utils import redondear_hacia_arriba
 from decimal import Decimal
@@ -25,44 +26,77 @@ from decimal import Decimal
 
 
 @pytest.mark.parametrize(
-    "n,esperado",
+    "letra,n,esperado",
     [
-        (1, "AA001"),
-        (999, "AA999"),
-        (1000, "AB001"),
-        (1001, "AB002"),
-        (25 * 999 + 1, "AZ001"),
-        (26 * 999 + 1, "BA001"),
-        (SKU_MAXIMO, "ZZ999"),
+        ("S", 1, "AAA0"),
+        ("S", 10, "AAA9"),
+        ("S", 11, "AAB0"),
+        # Después de la H viene la J, y después de la N, la P.
+        ("S", 7 * 10 + 1, "AAH0"),
+        ("S", 8 * 10 + 1, "AAJ0"),
+        ("S", 13 * 10 + 1, "AAP0"),
+        ("S", 138240, "ZZZ9"),
+        ("M", 1, "AA01"),
+        ("M", 99, "AA99"),
+        ("M", 100, "AB01"),
+        ("M", 7 * 99 + 99, "AH99"),
+        ("M", 8 * 99 + 1, "AJ01"),
+        ("M", 24 * 99 + 1, "BA01"),
+        ("M", 57024, "ZZ99"),
     ],
 )
-def test_el_sku_avanza_en_orden(n, esperado):
-    assert codificar_sku(n) == esperado
+def test_el_sku_avanza_en_orden(letra, n, esperado):
+    assert codificar_sku(n, letra) == esperado
 
 
-def test_el_sku_es_reversible():
+@pytest.mark.parametrize("letra,maximo", [("S", 138240), ("M", 57024)])
+def test_la_capacidad_de_cada_empresa(letra, maximo):
+    assert sku_maximo(letra) == maximo
+
+
+@pytest.mark.parametrize("letra", ["S", "M"])
+def test_el_sku_recorre_todo_el_espacio_sin_repetir_ni_usar_i_u_o(letra):
     """Si `decodificar` no invirtiera a `codificar`, el correlativo mentiría."""
-    for n in (1, 42, 999, 1000, 12345, SKU_MAXIMO):
-        assert decodificar_sku(codificar_sku(n)) == n
+    vistos = set()
+    for n in range(1, sku_maximo(letra) + 1):
+        sku = codificar_sku(n, letra)
+        assert "I" not in sku and "O" not in sku
+        assert decodificar_sku(sku, letra) == n
+        vistos.add(sku)
+    assert len(vistos) == sku_maximo(letra)
 
 
-def test_el_sku_no_se_repite_en_todo_el_espacio():
-    """Muestra amplia: cada correlativo da un código distinto."""
-    muestra = list(range(1, 3000)) + [100000, 400000, SKU_MAXIMO]
-    codigos = {codificar_sku(n) for n in muestra}
-    assert len(codigos) == len(muestra)
+@pytest.mark.parametrize("letra", ["S", "M"])
+def test_el_sku_rechaza_correlativos_fuera_de_rango(letra):
+    for invalido in (0, -1, sku_maximo(letra) + 1):
+        with pytest.raises(CodigoInvalido):
+            codificar_sku(invalido, letra)
 
 
-@pytest.mark.parametrize("invalido", [0, -1, SKU_MAXIMO + 1])
-def test_el_sku_rechaza_correlativos_fuera_de_rango(invalido):
+@pytest.mark.parametrize(
+    "letra,invalido",
+    [
+        ("S", ""), ("S", "AAA"), ("S", "AA01"), ("S", "AAI0"), ("S", "AOA0"), ("S", "AB123"),
+        ("M", ""), ("M", "AA00"), ("M", "AAA0"), ("M", "AI01"), ("M", "OA01"), ("M", "AB123"),
+    ],
+)
+def test_decodificar_rechaza_formatos_invalidos(letra, invalido):
     with pytest.raises(CodigoInvalido):
-        codificar_sku(invalido)
+        decodificar_sku(invalido, letra)
 
 
-@pytest.mark.parametrize("invalido", ["", "ABC12", "A1234", "AB12", "AB0000", "AB000"])
-def test_decodificar_rechaza_formatos_invalidos(invalido):
+@pytest.mark.parametrize("letra", ["", "X", "SM", None])
+def test_el_sku_rechaza_una_empresa_desconocida(letra):
     with pytest.raises(CodigoInvalido):
-        decodificar_sku(invalido)
+        codificar_sku(1, letra)
+
+
+@pytest.mark.parametrize(
+    "sku,esperado",
+    [("AA001", True), ("ZZ999", True), ("AA000", False), ("AAA0", False), ("AA01", False), ("", False)],
+)
+def test_reconoce_el_sku_del_formato_anterior(sku, esperado):
+    assert es_sku_legado(sku) is esperado
 
 
 # ============================================================================
@@ -91,12 +125,12 @@ def test_el_verificador_detecta_transposiciones():
 def test_el_verificador_devuelve_un_solo_caracter():
     """Tiene que entrar en la columna CHAR(1)."""
     for n in range(1, 500):
-        assert len(digito_verificador(codificar_sku(n))) == 1
+        assert len(digito_verificador(codificar_sku(n, "S"))) == 1
 
 
 def test_el_verificador_usa_X_para_el_diez():
     """Como el CUIT: cuando da 10 se escribe 'X', no dos caracteres."""
-    vistos = {digito_verificador(codificar_sku(n)) for n in range(1, 2000)}
+    vistos = {digito_verificador(codificar_sku(n, "S")) for n in range(1, 2000)}
     assert "X" in vistos, "en 2000 códigos debería aparecer al menos un 10"
     assert vistos <= set("0123456789X")
 
@@ -129,26 +163,54 @@ def test_el_verificador_rechaza_caracteres_no_admitidos():
 # ============================================================================
 
 
-def test_el_codigo_completo_concatena_empresa_sku_y_sufijo():
-    assert armar_codigo_completo("S", "AB123", "R") == "SAB123R"
+@pytest.mark.parametrize(
+    "letra,sku,sufijo,esperado",
+    [
+        ("S", "AAB0", "R", "AAB0R"),
+        ("S", "AAB0", None, "AAB0"),
+        ("M", "AA01", "M", "AA01M"),
+        ("M", "AA01", None, "AA01"),
+        ("m", "aa01", "m", "AA01M"),
+    ],
+)
+def test_el_codigo_nuevo_no_lleva_letra_de_empresa(letra, sku, sufijo, esperado):
+    assert armar_codigo_completo(letra, sku, sufijo) == esperado
 
 
-def test_la_variante_base_no_lleva_sufijo():
-    assert armar_codigo_completo("S", "AB123", None) == "SAB123"
-
-
-def test_el_codigo_completo_normaliza_a_mayusculas():
-    assert armar_codigo_completo("s", "ab123", "r") == "SAB123R"
+@pytest.mark.parametrize(
+    "letra,sku,sufijo,esperado",
+    [
+        ("S", "AB123", "R", "SAB123R"),
+        ("S", "AB123", None, "SAB123"),
+        ("M", "AA005", "M", "MAA005M"),
+        ("s", "ab123", "r", "SAB123R"),
+    ],
+)
+def test_el_sku_del_formato_anterior_conserva_la_letra(letra, sku, sufijo, esperado):
+    assert armar_codigo_completo(letra, sku, sufijo) == esperado
 
 
 @pytest.mark.parametrize(
     "letra,sku,sufijo",
-    [("", "AB123", None), ("SM", "AB123", None), ("1", "AB123", None),
-     ("S", "MAL", None), ("S", "AB123", "RR"), ("S", "AB123", "-")],
+    [("", "AAB0", None), ("SM", "AAB0", None), ("1", "AB123", None),
+     ("S", "MAL", None), ("S", "AA01", None), ("M", "AAB0", None),
+     ("S", "AAB0", "RR"), ("S", "AAB0", "-")],
 )
 def test_el_codigo_completo_rechaza_partes_invalidas(letra, sku, sufijo):
     with pytest.raises(CodigoInvalido):
         armar_codigo_completo(letra, sku, sufijo)
+
+
+@pytest.mark.parametrize("sku", ["AAB0", "AB123"])
+@pytest.mark.parametrize("sufijo", ["I", "O", "i", "o"])
+def test_el_sufijo_no_admite_i_ni_o(sku, sufijo):
+    with pytest.raises(CodigoInvalido):
+        armar_codigo_completo("S", sku, sufijo)
+
+
+@pytest.mark.parametrize("sufijo", ["0", "1", "R"])
+def test_el_sufijo_admite_numeros_y_las_demas_letras(sufijo):
+    assert armar_codigo_completo("S", "AAB0", sufijo) == f"AAB0{sufijo}"
 
 
 # ============================================================================

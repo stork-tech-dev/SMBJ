@@ -1,0 +1,29 @@
+{# ===========================================================================
+   Macro: campo del sufijo de una variante.
+
+   Un carácter, sin I ni O (ver `armar_codigo_completo`): se confunden con el
+   1 y el 0 en la etiqueta. El `pattern` lo hace cumplir en el navegador y la
+   API lo revalida.
+
+   Parámetros:
+     id         id del input.
+     requerido  agrega el atributo `required`.
+
+   Uso:
+     {% from "components/campo_sufijo.html" import campo_sufijo %}
+     {{ campo_sufijo('va-sufijo', requerido=true) }}
+   =========================================================================== #}
+{% macro campo_sufijo(id, requerido=false) %}
+<div class="flex flex-col gap-1">
+    <label for="{{ id }}" class="text-sm font-semibold text-texto-header">
+        Sufijo<span class="text-danger ml-0.5">*</span>
+    </label>
+    <input id="{{ id }}" x-model="variante.sufijo"{% if requerido %} required{% endif %}
+           maxlength="1" pattern="[A-HJ-NP-Za-hj-np-z0-9]"
+           title="Un carácter: una letra (salvo I y O) o un número"
+           class="campo-linea uppercase font-mono">
+    <span class="text-xs text-texto-disabled">
+        Una letra (salvo I y O) o un número. Ej.: R de rojo, 1 de talle 1.
+    </span>
+</div>
+{% endmacro %}

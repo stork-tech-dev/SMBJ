@@ -175,8 +175,9 @@ class Variante(Base):
     """
     Unidad que efectivamente tiene stock y código de barras.
 
-    `codigo_completo` es `letra_empresa + sku + sufijo` y se congela al
-    crearse: las etiquetas se imprimen y se pegan a la mercadería, así que
+    `codigo_completo` es `sku + sufijo`, o `letra_empresa + sku + sufijo` en
+    los productos con SKU del formato anterior, y se congela al crearse: las
+    etiquetas se imprimen y se pegan a la mercadería, así que
     recalcularlo invalidaría lo que ya está en el depósito.
     """
 

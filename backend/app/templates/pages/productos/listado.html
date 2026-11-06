@@ -11,6 +11,7 @@
 {% from "components/paginacion.html" import paginacion %}
 {% from "components/miniatura.html" import miniatura %}
 {% from "components/producto_form.html" import producto_form_modal %}
+{% from "components/campo_sufijo.html" import campo_sufijo %}
 
 {% block contenido %}
 <div x-data="abmProductos()" x-init="cargar(); cargarCatalogos()">
@@ -539,21 +540,7 @@
                 </p>
 
                 <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    <div class="flex flex-col gap-1">
-                        <label for="va-sufijo" class="text-sm font-semibold text-texto-header">
-                            Sufijo<span class="text-danger ml-0.5">*</span>
-                        </label>
-                        {# Un carácter alfanumérico: es lo que admite el código
-                           (ver `armar_codigo_completo`). El `pattern` lo hace
-                           cumplir en el navegador y la API lo revalida. #}
-                        <input id="va-sufijo" x-model="variante.sufijo" required
-                               maxlength="1" pattern="[A-Za-z0-9]"
-                               title="Un carácter: letra o número"
-                               class="campo-linea uppercase font-mono">
-                        <span class="text-xs text-texto-disabled">
-                            Una letra o un número. Ej.: R de rojo, 1 de talle 1.
-                        </span>
-                    </div>
+                    {{ campo_sufijo('va-sufijo', requerido=true) }}
 
                     <div class="flex flex-col gap-1">
                         <label for="va-nombre" class="text-sm font-semibold text-texto-header">

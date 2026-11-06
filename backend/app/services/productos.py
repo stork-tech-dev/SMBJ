@@ -341,9 +341,9 @@ def _siguiente_sku(db: Session) -> str:
     distintos sin bloquearse. Un `MAX(sku) + 1` podría entregar el mismo
     número a las dos y hacer fallar una por el índice único.
     """
-    correlativo = db.execute(select(func.nextval("productos_sku_seq"))).scalar_one()
+    correlativo = db.execute(select(func.nextval("productos_codigo_seq"))).scalar_one()
     try:
-        return codificar_sku(int(correlativo))
+        return codificar_sku(int(correlativo), _letra_empresa(db))
     except CodigoInvalido as exc:
         raise ReglaDeNegocio(str(exc)) from exc
 
@@ -778,10 +778,10 @@ def listar_variantes(
     puede referirse a un artículo:
 
       1. Con el código de la etiqueta, que incluye el dígito verificador
-         (`SAB123R7`). Si el texto pasa la validación del dígito, se le saca
+         (`AAB0R7`, o `SAB123R7` en un producto anterior). Si el texto pasa la validación del dígito, se le saca
          el último carácter y se busca además el código EXACTO: es el caso
          del lector, y es el único que resuelve a una sola fila.
-      2. Con el SKU del producto (`AB123`), que trae todas sus variantes.
+      2. Con el SKU del producto (`AAB0` o `AB123`), que trae todas sus variantes.
       3. Con parte de la descripción.
 
     El paso 1 es lo que hace que el dígito verificador sirva para algo: un
